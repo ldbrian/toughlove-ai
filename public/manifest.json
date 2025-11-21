@@ -1,0 +1,22 @@
+{
+    "name": "毒伴 ToughLove",
+    "short_name": "毒伴",
+    "description": "反鸡汤式情绪陪伴 AI",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#050505",
+    "theme_color": "#050505",
+    "orientation": "portrait",
+    "icons": [
+      {
+        "src": "/toughlove-icon-512x512.png",  
+        "sizes": "192x192",
+        "type": "image/png"
+      },
+      {
+        "src": "/toughlove-icon-512x512.png",  
+        "sizes": "512x512",
+        "type": "image/png"
+      }
+    ]
+  }
