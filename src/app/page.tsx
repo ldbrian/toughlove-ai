@@ -1,14 +1,17 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { useChat } from 'ai/react'; // 3.4.33 版本绝对支持这个导入
+import { useChat } from 'ai/react';
 import { PERSONAS, PersonaType, UI_TEXT, LangType } from '@/lib/constants';
 import { getDeviceId } from '@/lib/utils';
-import { Send, Calendar, X, Share2, Languages, Download, Users } from 'lucide-react';
+import { Send, Calendar, X, Share2, Languages, Download, Users, Sparkles } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
 type DailyQuote = { content: string; date: string; persona: string; };
 type ViewState = 'selection' | 'chat';
+
+// 🔥 定义当前更新的版本号 (改这个值就会重新触发弹窗)
+const CURRENT_VERSION_KEY = 'toughlove_update_v1.2_echo';
 
 export default function Home() {
   const [view, setView] = useState<ViewState>('selection');
@@ -19,11 +22,13 @@ export default function Home() {
   const [quoteData, setQuoteData] = useState<DailyQuote | null>(null);
   const [isQuoteLoading, setIsQuoteLoading] = useState(false);
   const [showInstallModal, setShowInstallModal] = useState(false);
+  
+  // 👇 新增：更新弹窗状态
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const ui = UI_TEXT[lang];
 
-  // 1. 初始化 useChat
   const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages, setInput } = useChat({
     api: '/api/chat',
     onError: (err) => console.error("Stream Error:", err)
@@ -31,6 +36,30 @@ export default function Home() {
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  // 👇 新增：检测是否需要弹窗
+  useEffect(() => {
+    const hasSeenUpdate = localStorage.getItem(CURRENT_VERSION_KEY);
+    if (!hasSeenUpdate) {
+      // 延迟 1 秒弹出，体验更好
+      const timer = setTimeout(() => {
+        setShowUpdateModal(true);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  // 👇 新增：关闭弹窗并记录状态
+  const dismissUpdate = () => {
+    localStorage.setItem(CURRENT_VERSION_KEY, 'true');
+    setShowUpdateModal(false);
+  };
+
+  // 👇 新增：引导去体验 Echo
+  const handleTryNewFeature = () => {
+    dismissUpdate(); // 先记为已读
+    selectPersona('Echo'); // 直接切换到 Echo 并进入聊天
   };
 
   useEffect(() => { scrollToBottom(); }, [messages, isLoading, view]);
@@ -65,10 +94,8 @@ export default function Home() {
     } catch (e) { console.error(e); } finally { setIsQuoteLoading(false); }
   };
 
-  // 2. 自定义提交逻辑 (适配 3.x 动态传参)
   const onFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // 在这里把当前的人格和语言传给后端
     handleSubmit(e, {
       options: {
         body: {
@@ -131,16 +158,65 @@ export default function Home() {
           </main>
 
           <footer className="flex-none p-4 pb-6">
-            {/* 3. 这里改成 onFormSubmit */}
             <form onSubmit={onFormSubmit} className="relative flex items-center gap-2 bg-[#151515] p-2 rounded-[24px] border border-white/10 shadow-2xl focus-within:border-[#7F5CFF]/50 transition-all duration-300">
               <input type="text" value={input} onChange={handleInputChange} placeholder={ui.placeholder} className="flex-1 bg-transparent text-white text-sm px-4 py-2 focus:outline-none placeholder-gray-600" />
               <button type="submit" disabled={!input.trim() || isLoading} className="p-3 bg-[#7F5CFF] text-white rounded-full hover:bg-[#6b4bd6] disabled:opacity-30 transition-all transform active:scale-95"><Send size={18} fill="white" /></button>
             </form>
           </footer>
           
-          {/* Modals (保持不变) */}
+          {/* Modals */}
           {showQuote && (<div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-6 animate-[fadeIn_0.2s_ease-out]"><div className="w-full max-w-xs bg-[#1a1a1a] rounded-3xl border border-white/10 shadow-2xl overflow-hidden relative animate-[slideUp_0.4s_cubic-bezier(0.16,1,0.3,1)]"><button onClick={() => setShowQuote(false)} className="absolute top-4 right-4 p-2 text-gray-400 hover:text-white z-10"><X size={20} /></button><div className="p-8 flex flex-col items-center text-center space-y-6"><div className="text-sm font-bold text-[#7F5CFF] tracking-widest uppercase">{ui.dailyToxic}</div>{isQuoteLoading ? (<div className="py-10 space-y-4"><div className="w-12 h-12 border-2 border-[#7F5CFF] border-t-transparent rounded-full animate-spin mx-auto"/><p className="text-gray-500 text-xs animate-pulse">{ui.makingPoison}</p></div>) : (<><div className="text-4xl my-4">{currentP.avatar}</div><p className="text-xl font-medium leading-relaxed text-gray-200 font-serif">{quoteData?.content}</p><div className="w-8 h-1 bg-[#7F5CFF] rounded-full opacity-50"></div><div className="text-xs text-gray-500">{currentP.name} · {new Date().toLocaleDateString()}</div></>)}</div><div className="bg-[#111] p-4 border-t border-white/5 flex justify-center"><button className="flex items-center gap-2 text-xs text-gray-400 hover:text-white transition-colors"><Share2 size={14} /> {ui.save}</button></div></div></div>)}
+          
           {showInstallModal && (<div className="absolute inset-0 z-50 flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-[fadeIn_0.2s_ease-out]"><div className="absolute inset-0" onClick={() => setShowInstallModal(false)} /><div className="w-full max-w-sm bg-[#1a1a1a] rounded-t-3xl sm:rounded-3xl border border-white/10 shadow-2xl overflow-hidden relative z-10 animate-[slideUp_0.3s_ease-out]"><button onClick={() => setShowInstallModal(false)} className="absolute top-4 right-4 p-2 text-gray-400 hover:text-white"><X size={20} /></button><div className="p-6 space-y-6"><div className="flex items-center gap-4"><div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#7F5CFF] to-black flex items-center justify-center text-2xl border border-white/10">🥀</div><div><h3 className="text-lg font-bold text-white">安装“毒伴”</h3><p className="text-xs text-gray-400">像 App 一样常驻你的桌面</p></div></div><div className="space-y-4 text-sm text-gray-300"><div className="bg-white/5 p-4 rounded-xl border border-white/5"><p className="font-bold text-[#7F5CFF] mb-2">iOS</p><ol className="list-decimal list-inside space-y-2 opacity-80"><li>点击底部的 <span className="inline-block align-middle"><Share2 size={14}/></span> <strong>分享</strong></li><li>选择 <strong>添加到主屏幕</strong></li></ol></div></div></div></div></div>)}
+
+          {/* 👇 新增：版本更新弹窗 */}
+          {showUpdateModal && (
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-6 animate-[fadeIn_0.3s_ease-out]">
+              <div className="w-full max-w-sm bg-gradient-to-br from-[#111] to-[#0a0a0a] rounded-3xl border border-indigo-500/30 shadow-[0_0_50px_rgba(99,102,241,0.15)] overflow-hidden relative animate-[scaleIn_0.3s_cubic-bezier(0.16,1,0.3,1)]">
+                
+                {/* 关闭按钮 */}
+                <button 
+                  onClick={dismissUpdate}
+                  className="absolute top-4 right-4 p-2 text-gray-500 hover:text-white z-10 transition-colors"
+                >
+                  <X size={20} />
+                </button>
+
+                {/* 内容区域 */}
+                <div className="p-8 flex flex-col items-center text-center relative">
+                  {/* 背景装饰 */}
+                  <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-indigo-900/20 to-transparent pointer-events-none"></div>
+                  
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-bold uppercase tracking-wider mb-6">
+                    <Sparkles size={12} /> {ui.updateTitle}
+                  </div>
+
+                  <div className="relative w-20 h-20 mb-6">
+                     <div className="w-full h-full rounded-full bg-[#151515] flex items-center justify-center text-5xl border border-white/10 shadow-xl relative z-10">
+                       👁️
+                     </div>
+                     <div className="absolute inset-0 bg-indigo-500 blur-xl opacity-30 animate-pulse"></div>
+                  </div>
+
+                  <h3 className="text-xl font-bold text-white mb-3">{ui.updateDesc}</h3>
+                  <p className="text-sm text-gray-400 leading-relaxed">
+                    {ui.updateContent}
+                  </p>
+                </div>
+
+                {/* 底部按钮 */}
+                <div className="p-6 pt-0">
+                  <button 
+                    onClick={handleTryNewFeature}
+                    className="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition-all shadow-lg shadow-indigo-900/20 flex items-center justify-center gap-2 group"
+                  >
+                    {ui.tryNow}
+                    <span className="group-hover:translate-x-1 transition-transform">→</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
