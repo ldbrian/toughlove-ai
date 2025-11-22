@@ -5,7 +5,7 @@ import { useChat } from 'ai/react';
 import { PERSONAS, PersonaType, UI_TEXT, LangType } from '@/lib/constants';
 import { getDeviceId } from '@/lib/utils';
 import { getMemory, saveMemory } from '@/lib/storage';
-import { Send, Calendar, X, Share2, Languages, Download, Users, Sparkles, ImageIcon, FileText, RotateCcw, MoreVertical, Trash2, Coffee, Tag, Heart, Shield, Zap, Lock, Globe, UserPen } from 'lucide-react';
+import { Send, Calendar, X, Share2, Languages, Download, Users, Sparkles, ImageIcon, FileText, RotateCcw, MoreVertical, Trash2, Coffee, Tag, Heart, Shield, Zap, Lock, Globe, UserPen, Brain, Book } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import html2canvas from 'html2canvas';
 import { Message } from 'ai';
@@ -14,10 +14,12 @@ import posthog from 'posthog-js';
 type DailyQuote = { content: string; date: string; persona: string; };
 type ViewState = 'selection' | 'chat';
 
-const CURRENT_VERSION_KEY = 'toughlove_update_v1.4_memory';
+const CURRENT_VERSION_KEY = 'toughlove_update_v1.6_final'; 
 const LANGUAGE_KEY = 'toughlove_language_confirmed';
-const USER_NAME_KEY = 'toughlove_user_name'; // 👈 昵称 Key
+const USER_NAME_KEY = 'toughlove_user_name';
+const LAST_DIARY_TIME_KEY = 'toughlove_last_diary_time';
 
+// --- 组件：拟人化打字机 ---
 const Typewriter = ({ content, isThinking }: { content: string, isThinking?: boolean }) => {
   const [displayedContent, setDisplayedContent] = useState("");
   useEffect(() => {
@@ -37,6 +39,7 @@ const Typewriter = ({ content, isThinking }: { content: string, isThinking?: boo
 };
 
 export default function Home() {
+  // --- 状态定义 ---
   const [view, setView] = useState<ViewState>('selection');
   const [activePersona, setActivePersona] = useState<PersonaType>('Ash');
   const [lang, setLang] = useState<LangType>('zh');
@@ -50,20 +53,29 @@ export default function Home() {
   const [isGeneratingImg, setIsGeneratingImg] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   
-  // 👇 新增：昵称相关状态
+  // 档案 & 日记 & 昵称
+  const [showProfile, setShowProfile] = useState(false);
+  const [profileData, setProfileData] = useState<{tags: string[], diagnosis: string} | null>(null);
+  const [isProfileLoading, setIsProfileLoading] = useState(false);
+  const [showDiary, setShowDiary] = useState(false);
+  const [diaryContent, setDiaryContent] = useState("");
+  const [isDiaryLoading, setIsDiaryLoading] = useState(false);
+  const [hasNewDiary, setHasNewDiary] = useState(false);
+
   const [userName, setUserName] = useState("");
   const [showNameModal, setShowNameModal] = useState(false);
-  const [tempName, setTempName] = useState(""); // 弹窗里输入的临时名字
-
+  const [tempName, setTempName] = useState("");
   const [userTags, setUserTags] = useState<string[]>([]);
   const [interactionCount, setInteractionCount] = useState(0);
 
   const quoteCardRef = useRef<HTMLDivElement>(null);
+  const profileCardRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const ui = UI_TEXT[lang];
 
   const getTrustKey = (p: string) => `toughlove_trust_${p}`;
 
+  // --- 启动检查 ---
   useEffect(() => {
     const hasLang = localStorage.getItem(LANGUAGE_KEY);
     if (!hasLang) {
@@ -79,9 +91,16 @@ export default function Home() {
       }
     }
     
-    // 👇 初始化读取名字
     const storedName = localStorage.getItem(USER_NAME_KEY);
     if (storedName) setUserName(storedName);
+
+    // 检查日记状态 (模拟：距离上次查看超过一定时间就显示红点)
+    // 正式环境可以改为 6小时 = 6 * 60 * 60 * 1000
+    const lastDiaryTime = localStorage.getItem(LAST_DIARY_TIME_KEY);
+    const now = Date.now();
+    if (!lastDiaryTime || (now - parseInt(lastDiaryTime) > 60 * 1000)) { // 这里的 60 * 1000 是1分钟，方便测试
+       setHasNewDiary(true);
+    }
 
     posthog.capture('page_view', { lang: lang });
   }, []);
@@ -95,7 +114,6 @@ export default function Home() {
     if (!hasSeenUpdate) { setTimeout(() => setShowUpdateModal(true), 500); }
   };
 
-  // 👇 保存昵称
   const saveUserName = () => {
     const nameToSave = tempName.trim();
     setUserName(nameToSave);
@@ -104,6 +122,7 @@ export default function Home() {
     posthog.capture('username_set');
   };
 
+  // --- 核心 Chat Hook ---
   const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages, setInput } = useChat({
     api: '/api/chat',
     onError: (err) => console.error("Stream Error:", err),
@@ -117,17 +136,30 @@ export default function Home() {
     }
   });
 
+  // --- 逻辑: 信任度 & 同步 ---
   useEffect(() => {
     const storedCount = localStorage.getItem(getTrustKey(activePersona));
     setInteractionCount(storedCount ? parseInt(storedCount) : 0);
   }, [activePersona]);
 
+  const syncToCloud = async (currentMessages: any[]) => {
+    try {
+      await fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: getDeviceId(), persona: activePersona, messages: currentMessages })
+      });
+    } catch (e) { console.error("Cloud sync failed", e); }
+  };
+
   useEffect(() => {
     if (messages.length > 0 && view === 'chat') {
       saveMemory(activePersona, messages);
+      syncToCloud(messages);
     }
   }, [messages, activePersona, view]);
 
+  // --- 逻辑: 标签分析 ---
   const analyzeTags = async (currentMessages: any[]) => {
     try {
       const res = await fetch('/api/tag', {
@@ -155,25 +187,47 @@ export default function Home() {
   };
   useEffect(() => { scrollToBottom(); }, [messages, isLoading, view]);
 
+  // --- 交互函数 ---
   const toggleLanguage = () => {
     setLang(prev => prev === 'zh' ? 'en' : 'zh');
     setShowMenu(false);
   };
 
-  const selectPersona = (persona: PersonaType) => {
+  const selectPersona = async (persona: PersonaType) => {
     posthog.capture('persona_select', { persona: persona });
     setActivePersona(persona);
     setView('chat');
-    const history = getMemory(persona);
-    if (history.length === 0) {
-      const p = PERSONAS[persona];
-      const greetings = p.greetings[lang];
-      const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
-      const welcomeMsg: Message = { id: Date.now().toString(), role: 'assistant', content: randomGreeting };
-      setMessages([welcomeMsg]);
-      saveMemory(persona, [welcomeMsg]);
-    } else {
-      setMessages(history);
+    
+    const localHistory = getMemory(persona);
+    setMessages(localHistory);
+
+    try {
+      const res = await fetch(`/api/sync?userId=${getDeviceId()}&persona=${persona}`);
+      const data = await res.json();
+      
+      if (data.messages && data.messages.length > 0) {
+        if (data.messages.length >= localHistory.length) {
+          setMessages(data.messages);
+          saveMemory(persona, data.messages);
+        }
+      } else if (localHistory.length === 0) {
+        const p = PERSONAS[persona];
+        const greetings = p.greetings[lang];
+        const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
+        const welcomeMsg: Message = { id: Date.now().toString(), role: 'assistant', content: randomGreeting };
+        setMessages([welcomeMsg]);
+        saveMemory(persona, [welcomeMsg]);
+      }
+    } catch (e) {
+      console.error("Load cloud history failed", e);
+      if (localHistory.length === 0) {
+         const p = PERSONAS[persona];
+         const greetings = p.greetings[lang];
+         const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
+         const welcomeMsg: Message = { id: Date.now().toString(), role: 'assistant', content: randomGreeting };
+         setMessages([welcomeMsg]);
+         saveMemory(persona, [welcomeMsg]);
+      }
     }
   };
 
@@ -182,9 +236,11 @@ export default function Home() {
       posthog.capture('chat_reset', { persona: activePersona });
       setMessages([]);
       saveMemory(activePersona, []);
+      syncToCloud([]); 
       setShowMenu(false);
       setInteractionCount(0);
       localStorage.setItem(getTrustKey(activePersona), '0');
+      
       const p = PERSONAS[activePersona];
       const greetings = p.greetings[lang];
       const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
@@ -192,6 +248,7 @@ export default function Home() {
         const welcomeMsg: Message = { id: Date.now().toString(), role: 'assistant', content: randomGreeting };
         setMessages([welcomeMsg]);
         saveMemory(activePersona, [welcomeMsg]);
+        syncToCloud([welcomeMsg]);
       }, 100);
     }
   };
@@ -224,12 +281,76 @@ export default function Home() {
 
   const handleInstall = () => { posthog.capture('feature_install_click'); setShowInstallModal(true); setShowMenu(false); };
   const handleDonate = () => { posthog.capture('feature_donate_click'); window.open('https://www.buymeacoffee.com', '_blank'); setShowMenu(false); }
-  // 👇 打开修改昵称弹窗
-  const handleEditName = () => { 
-    setTempName(userName);
-    setShowNameModal(true); 
-    setShowMenu(false); 
-  }
+  const handleEditName = () => { setTempName(userName); setShowNameModal(true); setShowMenu(false); }
+
+  const handleOpenProfile = async () => {
+    posthog.capture('feature_profile_open');
+    setShowMenu(false);
+    setShowProfile(true);
+    setIsProfileLoading(true);
+    try {
+      const res = await fetch('/api/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: getDeviceId(), language: lang }),
+      });
+      const data = await res.json();
+      setProfileData(data);
+    } catch (e) { console.error(e); } finally { setIsProfileLoading(false); }
+  };
+
+  const handleOpenDiary = async () => {
+    setShowDiary(true);
+    // 只有当日记内容为空，或者有新日记标记时才请求
+    if (!diaryContent || hasNewDiary) {
+        setIsDiaryLoading(true);
+        try {
+            const res = await fetch('/api/diary', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    messages: messages,
+                    persona: activePersona,
+                    language: lang,
+                    userName: userName
+                }),
+            });
+            const data = await res.json();
+            
+            if (data.diary) {
+                setDiaryContent(data.diary);
+                setHasNewDiary(false);
+                localStorage.setItem(LAST_DIARY_TIME_KEY, Date.now().toString());
+                posthog.capture('diary_read', { persona: activePersona });
+            } else {
+                setDiaryContent(lang === 'zh' ? "（日记本是空的。看来你聊得还不够多，他懒得记。）" : "(Diary is empty. Chat more.)");
+            }
+        } catch (e) {
+            console.error(e);
+            setDiaryContent("Error loading diary.");
+        } finally {
+            setIsDiaryLoading(false);
+        }
+    }
+  };
+
+  const downloadProfileCard = async () => {
+    posthog.capture('feature_profile_download');
+    if (!profileCardRef.current) return;
+    setIsGeneratingImg(true);
+    try {
+      const canvas = await html2canvas(profileCardRef.current, {
+        backgroundColor: '#000000',
+        scale: 3,
+        useCORS: true,
+      } as any);
+      const image = canvas.toDataURL("image/png");
+      const link = document.createElement('a');
+      link.href = image;
+      link.download = `ToughLove_Profile_${new Date().toISOString().split('T')[0]}.png`;
+      link.click();
+    } catch (err) { alert("保存失败"); } finally { setIsGeneratingImg(false); }
+  };
 
   const fetchDailyQuote = async () => {
     posthog.capture('feature_quote_open');
@@ -267,17 +388,12 @@ export default function Home() {
   const onFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     posthog.capture('message_send', { persona: activePersona });
-    // 🔥 传入 userName
     handleSubmit(e, { options: { body: { persona: activePersona, language: lang, interactionCount, userName } } });
   };
 
   const getLevelInfo = (count: number) => {
-    if (count < 50) {
-      return { level: 1, label: lang === 'zh' ? '陌生人' : 'Stranger', max: 50, icon: <Shield size={12} />, bgClass: 'bg-[#0a0a0a]', borderClass: 'border-white/5', barColor: 'bg-gray-500', glowClass: '' };
-    }
-    if (count < 100) {
-      return { level: 2, label: lang === 'zh' ? '熟人' : 'Acquaintance', max: 100, icon: <Zap size={12} />, bgClass: 'bg-gradient-to-b from-[#0f172a] to-[#0a0a0a]', borderClass: 'border-blue-500/30', barColor: 'bg-blue-500', glowClass: 'shadow-[0_0_30px_rgba(59,130,246,0.1)]' };
-    }
+    if (count < 50) { return { level: 1, label: lang === 'zh' ? '陌生人' : 'Stranger', max: 50, icon: <Shield size={12} />, bgClass: 'bg-[#0a0a0a]', borderClass: 'border-white/5', barColor: 'bg-gray-500', glowClass: '' }; }
+    if (count < 100) { return { level: 2, label: lang === 'zh' ? '熟人' : 'Acquaintance', max: 100, icon: <Zap size={12} />, bgClass: 'bg-gradient-to-b from-[#0f172a] to-[#0a0a0a]', borderClass: 'border-blue-500/30', barColor: 'bg-blue-500', glowClass: 'shadow-[0_0_30px_rgba(59,130,246,0.1)]' }; }
     return { level: 3, label: lang === 'zh' ? '共犯' : 'Partner', max: 100, icon: <Heart size={12} />, bgClass: 'bg-[url("/grid.svg")] bg-fixed bg-[length:50px_50px] bg-[#0a0a0a]', customStyle: { background: 'radial-gradient(circle at 50% -20%, #1e1b4b 0%, #0a0a0a 60%)' }, borderClass: 'border-[#7F5CFF]/40', barColor: 'bg-[#7F5CFF]', glowClass: 'shadow-[0_0_40px_rgba(127,92,255,0.15)]' };
   };
 
@@ -289,44 +405,24 @@ export default function Home() {
     <div className="relative flex flex-col h-screen bg-[#050505] text-gray-100 overflow-hidden font-sans selection:bg-[#7F5CFF] selection:text-white">
       <div className="absolute top-[-20%] left-0 right-0 h-[500px] bg-gradient-to-b from-[#7F5CFF]/10 to-transparent blur-[100px] pointer-events-none" />
 
-      {/* 语言选择 */}
-      {showLangSetup && (
-        <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-6 animate-[fadeIn_0.5s_ease-out]">
-          <div className="mb-10 text-center">
-            <div className="w-20 h-20 bg-[#1a1a1a] rounded-full flex items-center justify-center text-4xl border border-white/10 mx-auto mb-4 shadow-[0_0_30px_rgba(127,92,255,0.3)]">🧬</div>
-            <h1 className="text-2xl font-bold text-white tracking-wider mb-2">TOUGHLOVE AI</h1>
-            <p className="text-gray-500 text-sm">Choose your language / 选择语言</p>
-          </div>
-          <div className="flex flex-col gap-4 w-full max-w-xs">
-            <button onClick={() => confirmLanguage('zh')} className={`p-6 rounded-2xl border transition-all flex items-center justify-between group ${lang === 'zh' ? 'bg-white/10 border-[#7F5CFF]' : 'bg-[#111] border-white/10 hover:border-white/30'}`}>
-              <div className="text-left"><div className="text-lg font-bold text-white">中文</div><div className="text-xs text-gray-500">Chinese</div></div>{lang === 'zh' && <div className="w-3 h-3 bg-[#7F5CFF] rounded-full shadow-[0_0_10px_#7F5CFF]"></div>}
-            </button>
-            <button onClick={() => confirmLanguage('en')} className={`p-6 rounded-2xl border transition-all flex items-center justify-between group ${lang === 'en' ? 'bg-white/10 border-[#7F5CFF]' : 'bg-[#111] border-white/10 hover:border-white/30'}`}>
-              <div className="text-left"><div className="text-lg font-bold text-white">English</div><div className="text-xs text-gray-500">English</div></div>{lang === 'en' && <div className="w-3 h-3 bg-[#7F5CFF] rounded-full shadow-[0_0_10px_#7F5CFF]"></div>}
-            </button>
-          </div>
-        </div>
-      )}
+      {showLangSetup && (<div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-6 animate-[fadeIn_0.5s_ease-out]"><div className="mb-10 text-center"><div className="w-20 h-20 bg-[#1a1a1a] rounded-full flex items-center justify-center text-4xl border border-white/10 mx-auto mb-4 shadow-[0_0_30px_rgba(127,92,255,0.3)]">🧬</div><h1 className="text-2xl font-bold text-white tracking-wider mb-2">TOUGHLOVE AI</h1><p className="text-gray-500 text-sm">Choose your language / 选择语言</p></div><div className="flex flex-col gap-4 w-full max-w-xs"><button onClick={() => confirmLanguage('zh')} className={`p-6 rounded-2xl border transition-all flex items-center justify-between group ${lang === 'zh' ? 'bg-white/10 border-[#7F5CFF]' : 'bg-[#111] border-white/10 hover:border-white/30'}`}><div className="text-left"><div className="text-lg font-bold text-white">中文</div><div className="text-xs text-gray-500">Chinese</div></div>{lang === 'zh' && <div className="w-3 h-3 bg-[#7F5CFF] rounded-full shadow-[0_0_10px_#7F5CFF]"></div>}</button><button onClick={() => confirmLanguage('en')} className={`p-6 rounded-2xl border transition-all flex items-center justify-between group ${lang === 'en' ? 'bg-white/10 border-[#7F5CFF]' : 'bg-[#111] border-white/10 hover:border-white/30'}`}><div className="text-left"><div className="text-lg font-bold text-white">English</div><div className="text-xs text-gray-500">English</div></div>{lang === 'en' && <div className="w-3 h-3 bg-[#7F5CFF] rounded-full shadow-[0_0_10px_#7F5CFF]"></div>}</button></div></div>)}
 
-      {/* 👇 新增：昵称设置弹窗 */}
-      {showNameModal && (
-        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6 animate-[fadeIn_0.2s_ease-out]">
-          <div className="w-full max-w-xs bg-[#1a1a1a] rounded-3xl border border-white/10 shadow-2xl p-6">
-            <div className="text-center mb-6">
-              <div className="inline-flex p-3 bg-white/5 rounded-full mb-3 text-[#7F5CFF]"><UserPen size={24}/></div>
-              <h3 className="text-lg font-bold text-white">{ui.editName}</h3>
+      {showNameModal && (<div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6 animate-[fadeIn_0.2s_ease-out]"><div className="w-full max-w-xs bg-[#1a1a1a] rounded-3xl border border-white/10 shadow-2xl p-6"><div className="text-center mb-6"><div className="inline-flex p-3 bg-white/5 rounded-full mb-3 text-[#7F5CFF]"><UserPen size={24}/></div><h3 className="text-lg font-bold text-white">{ui.editName}</h3></div><input type="text" value={tempName} onChange={(e) => setTempName(e.target.value)} placeholder={ui.namePlaceholder} className="w-full bg-[#111] border border-white/10 rounded-xl px-4 py-3 text-white focus:border-[#7F5CFF] outline-none mb-6 text-center" maxLength={10} /><div className="flex gap-3"><button onClick={() => setShowNameModal(false)} className="flex-1 py-3 rounded-xl bg-white/5 text-gray-400 text-sm hover:bg-white/10 transition-colors">Cancel</button><button onClick={saveUserName} className="flex-1 py-3 rounded-xl bg-[#7F5CFF] text-white font-bold text-sm hover:bg-[#6b4bd6] transition-colors">{ui.nameSave}</button></div></div></div>)}
+
+      {showProfile && (<div className="absolute inset-0 z-[160] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-[fadeIn_0.3s_ease-out]"><div className="w-full max-w-sm relative"><button onClick={() => setShowProfile(false)} className="absolute -top-12 right-0 p-2 text-gray-400 hover:text-white"><X size={24}/></button><div ref={profileCardRef} className="bg-[#050505] rounded-3xl border border-white/10 overflow-hidden shadow-2xl relative"><div className="h-32 bg-gradient-to-b from-[#7F5CFF]/20 to-transparent flex flex-col items-center justify-center"><div className="w-16 h-16 rounded-full bg-black border border-[#7F5CFF] flex items-center justify-center text-3xl shadow-[0_0_20px_rgba(127,92,255,0.4)]">🧠</div></div><div className="p-6 -mt-8 relative z-10"><h2 className="text-center text-xl font-bold text-white tracking-widest uppercase mb-1">{ui.profileTitle}</h2><p className="text-center text-xs text-gray-500 font-mono mb-6">ID: {getDeviceId().slice(0,8)}...</p>{isProfileLoading ? (<div className="py-10 text-center space-y-3"><div className="w-8 h-8 border-2 border-[#7F5CFF] border-t-transparent rounded-full animate-spin mx-auto"/><p className="text-xs text-gray-500 animate-pulse">{ui.analyzing}</p></div>) : (<div className="space-y-6"><div><div className="text-[10px] font-bold text-gray-600 uppercase mb-2 tracking-wider">{ui.tagsTitle}</div><div className="flex flex-wrap gap-2">{profileData?.tags && profileData.tags.length > 0 ? (profileData.tags.map((tag, i) => (<span key={i} className="px-3 py-1.5 rounded-md bg-[#1a1a1a] border border-white/10 text-xs text-gray-300">#{tag}</span>))) : (<span className="text-xs text-gray-600 italic">No data yet...</span>)}</div></div><div className="bg-[#111] p-4 rounded-xl border-l-2 border-[#7F5CFF] relative"><div className="absolute -top-3 left-3 bg-[#050505] px-1 text-[10px] font-bold text-[#7F5CFF]">{ui.diagnosisTitle}</div><p className="text-sm text-gray-300 leading-relaxed italic font-serif">"{profileData?.diagnosis}"</p></div><div className="text-center text-[9px] text-gray-700 pt-4 border-t border-white/5">GENERATED BY TOUGHLOVE AI</div></div>)}</div></div>{!isProfileLoading && (<button onClick={downloadProfileCard} disabled={isGeneratingImg} className="w-full mt-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-sm flex items-center justify-center gap-2 transition-colors">{isGeneratingImg ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/> : <ImageIcon size={16} />}{ui.saveCard}</button>)}</div></div>)}
+
+      {/* 日记本 */}
+      {showDiary && (
+        <div className="absolute inset-0 z-[160] flex items-center justify-center bg-black/90 backdrop-blur-md p-6 animate-[fadeIn_0.3s_ease-out]">
+          <div className="w-full max-w-sm bg-[#f5f5f0] text-[#1a1a1a] rounded-xl shadow-2xl relative overflow-hidden transform rotate-1">
+            <div className="h-8 bg-red-800/10 border-b border-red-800/20 flex items-center px-4 gap-2">
+                <div className="w-2 h-2 rounded-full bg-red-800/30"></div><div className="w-2 h-2 rounded-full bg-red-800/30"></div><div className="w-2 h-2 rounded-full bg-red-800/30"></div>
             </div>
-            <input 
-              type="text" 
-              value={tempName}
-              onChange={(e) => setTempName(e.target.value)}
-              placeholder={ui.namePlaceholder}
-              className="w-full bg-[#111] border border-white/10 rounded-xl px-4 py-3 text-white focus:border-[#7F5CFF] outline-none mb-6 text-center"
-              maxLength={10}
-            />
-            <div className="flex gap-3">
-              <button onClick={() => setShowNameModal(false)} className="flex-1 py-3 rounded-xl bg-white/5 text-gray-400 text-sm hover:bg-white/10 transition-colors">Cancel</button>
-              <button onClick={saveUserName} className="flex-1 py-3 rounded-xl bg-[#7F5CFF] text-white font-bold text-sm hover:bg-[#6b4bd6] transition-colors">{ui.nameSave}</button>
+            <button onClick={() => setShowDiary(false)} className="absolute top-2 right-2 p-1 text-gray-400 hover:text-black z-10"><X size={20}/></button>
+            <div className="p-6 pt-4 min-h-[300px] flex flex-col">
+                <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 border-b border-gray-300 pb-2 flex justify-between items-center"><span>{new Date().toLocaleDateString()}</span><span className="text-[#7F5CFF]">{currentP.name}'s Note</span></div>
+                <div className="flex-1 font-serif text-sm leading-7 text-gray-800 whitespace-pre-line relative"><div className="absolute inset-0 pointer-events-none opacity-10 bg-[url('https://www.transparenttextures.com/patterns/notebook.png')]"></div>{isDiaryLoading ? (<div className="flex flex-col items-center justify-center h-40 gap-3 opacity-50"><div className="w-6 h-6 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"/><span className="text-xs">Thinking...</span></div>) : (<Typewriter content={diaryContent} isThinking={false} />)}</div>
+                <div className="mt-6 pt-4 border-t border-gray-300 text-center"><p className="text-[10px] text-gray-400 italic">Confidential. Do not share.</p></div>
             </div>
           </div>
         </div>
@@ -334,57 +430,39 @@ export default function Home() {
 
       {view === 'selection' && (
         <div className="z-10 flex flex-col h-full w-full max-w-4xl mx-auto p-6 animate-[fadeIn_0.5s_ease-out]">
-          <div className="flex justify-between items-center mb-8">
-             <h1 className="text-2xl font-bold tracking-wider">{ui.selectPersona}</h1>
-             <button onClick={toggleLanguage} className="p-2 text-gray-400 hover:text-white flex items-center gap-1"><Languages size={18} /> <span className="text-xs font-bold uppercase">{lang}</span></button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 overflow-y-auto pb-10">
-            {(Object.keys(PERSONAS) as PersonaType[]).map((key) => {
-              const p = PERSONAS[key];
-              return (
-                <div key={key} onClick={() => selectPersona(key)} className="group relative bg-[#111] border border-white/10 hover:border-[#7F5CFF]/50 rounded-3xl p-6 cursor-pointer transition-all duration-300 hover:shadow-[0_0_30px_rgba(127,92,255,0.15)] flex flex-col items-center text-center">
-                  <div className={`w-16 h-16 rounded-full bg-gradient-to-b from-[#222] to-[#111] flex items-center justify-center text-3xl mb-4 border border-white/5 shadow-lg group-hover:scale-110 transition-transform duration-300`}>{p.avatar}<div className={`absolute w-full h-full rounded-full blur-xl opacity-0 group-hover:opacity-40 transition-opacity duration-300 ${p.color.replace('text-', 'bg-')}`}></div></div>
-                  <h3 className="text-xl font-bold text-white mb-1">{p.name}</h3><p className={`text-sm font-medium mb-4 ${p.color}`}>{p.title[lang]}</p><p className="text-gray-400 text-sm italic mb-6 min-h-[3rem] font-serif opacity-80">{p.slogan[lang]}</p>
-                  <div className="flex flex-wrap justify-center gap-2 mb-6">{p.tags[lang].map((tag, i) => (<span key={i} className="text-[10px] px-2 py-1 rounded-md bg-white/5 text-gray-400 border border-white/5">● {tag}</span>))}</div>
-                  <button className="w-full py-3 rounded-xl bg-[#7F5CFF]/10 text-[#7F5CFF] font-bold text-sm group-hover:bg-[#7F5CFF] group-hover:text-white transition-colors">{ui.selectBtn}</button>
-                </div>
-              );
-            })}
-          </div>
+          <div className="flex justify-between items-center mb-8"><h1 className="text-2xl font-bold tracking-wider">{ui.selectPersona}</h1><button onClick={toggleLanguage} className="p-2 text-gray-400 hover:text-white flex items-center gap-1"><Languages size={18} /> <span className="text-xs font-bold uppercase">{lang}</span></button></div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 overflow-y-auto pb-10">{(Object.keys(PERSONAS) as PersonaType[]).map((key) => {const p = PERSONAS[key];return (<div key={key} onClick={() => selectPersona(key)} className="group relative bg-[#111] border border-white/10 hover:border-[#7F5CFF]/50 rounded-3xl p-6 cursor-pointer transition-all duration-300 hover:shadow-[0_0_30px_rgba(127,92,255,0.15)] flex flex-col items-center text-center"><div className={`w-16 h-16 rounded-full bg-gradient-to-b from-[#222] to-[#111] flex items-center justify-center text-3xl mb-4 border border-white/5 shadow-lg group-hover:scale-110 transition-transform duration-300`}>{p.avatar}<div className={`absolute w-full h-full rounded-full blur-xl opacity-0 group-hover:opacity-40 transition-opacity duration-300 ${p.color.replace('text-', 'bg-')}`}></div></div><h3 className="text-xl font-bold text-white mb-1">{p.name}</h3><p className={`text-sm font-medium mb-4 ${p.color}`}>{p.title[lang]}</p><p className="text-gray-400 text-sm italic mb-6 min-h-[3rem] font-serif opacity-80">{p.slogan[lang]}</p><div className="flex flex-wrap justify-center gap-2 mb-6">{p.tags[lang].map((tag, i) => (<span key={i} className="text-[10px] px-2 py-1 rounded-md bg-white/5 text-gray-400 border border-white/5">● {tag}</span>))}</div><button className="w-full py-3 rounded-xl bg-[#7F5CFF]/10 text-[#7F5CFF] font-bold text-sm group-hover:bg-[#7F5CFF] group-hover:text-white transition-colors">{ui.selectBtn}</button></div>);})}</div>
         </div>
       )}
 
       {view === 'chat' && (
         <div className={`z-10 flex flex-col h-full w-full max-w-lg mx-auto backdrop-blur-sm border-x shadow-2xl relative animate-[slideUp_0.3s_ease-out] ${levelInfo.bgClass} ${levelInfo.borderClass} ${levelInfo.glowClass} transition-all duration-1000`} style={levelInfo.customStyle}>
           <header className="flex-none flex items-center justify-between px-6 py-3 bg-[#0a0a0a]/60 backdrop-blur-md sticky top-0 z-20 border-b border-white/5 relative">
-            <button onClick={backToSelection} className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors group">
-              <div className="p-2 bg-white/5 rounded-full group-hover:bg-[#7F5CFF] transition-colors"><Users size={16} className="group-hover:text-white" /></div>
-            </button>
+            <button onClick={backToSelection} className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors group"><div className="p-2 bg-white/5 rounded-full group-hover:bg-[#7F5CFF] transition-colors"><Users size={16} className="group-hover:text-white" /></div></button>
             <div className="flex flex-col items-center cursor-pointer group" onClick={handleExport} title={ui.export}>
               <h1 className="font-bold text-sm tracking-wider text-white flex items-center gap-2">{currentP.avatar} {currentP.name}<span className={`text-[9px] px-1.5 py-0.5 rounded bg-white/10 border border-white/10 ${levelInfo.barColor.replace('bg-', 'text-')} flex items-center gap-1`}>{levelInfo.icon} Lv.{levelInfo.level}</span></h1>
               <p className={`text-[10px] font-medium opacity-70 tracking-wide ${currentP.color} group-hover:underline`}>{currentP.title[lang]}</p>
             </div>
             <div className="flex items-center gap-2 relative">
-              <button onClick={fetchDailyQuote} className="p-2 text-gray-400 hover:text-[#7F5CFF] relative"><Calendar size={20} /><span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span></button>
-              <button onClick={() => setShowMenu(!showMenu)} className="p-2 text-gray-400 hover:text-white relative"><MoreVertical size={20} /><span className="absolute top-1 right-1 w-2 h-2 bg-[#7F5CFF] rounded-full"></span></button>
               
-              {/* Menu */}
-              {showMenu && (<><div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)}></div><div className="absolute top-12 right-0 mt-2 w-48 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden animate-[fadeIn_0.2s_ease-out] flex flex-col p-1">
-                {/* 👇 新增：修改昵称按钮 */}
-                <button onClick={handleEditName} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left">
-                  <UserPen size={16} className="text-[#7F5CFF]" /> {userName || ui.editName}
+              {/* 👇🔥 强提示日记入口 👇 */}
+              <div className="relative">
+                <button onClick={handleOpenDiary} className={`p-2 rounded-full transition-all duration-300 group relative ${hasNewDiary ? 'text-white bg-white/10' : 'text-gray-400 hover:text-white'}`}>
+                  <Book size={20} className={hasNewDiary ? "animate-pulse" : ""} />
+                  {hasNewDiary && (<span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border border-[#0a0a0a]"></span>)}
                 </button>
-                
-                <button onClick={handleInstall} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Download size={16} /> {ui.install}</button>
-                <button onClick={handleExport} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><FileText size={16} /> {ui.export}</button>
-                <button onClick={toggleLanguage} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Languages size={16} /> {ui.language}</button>
-                <button onClick={handleDonate} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-yellow-400 hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Coffee size={16} /> Buy me a coffee</button>
-                <div className="h-[1px] bg-white/5 my-1 mx-2"></div>
-                <button onClick={handleReset} className="flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors w-full text-left"><RotateCcw size={16} /> {ui.reset}</button></div></>)}
+                {hasNewDiary && (<div onClick={handleOpenDiary} className="absolute top-12 right-[-10px] z-50 animate-bounce cursor-pointer"><div className="absolute -top-1 right-4 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[8px] border-b-[#7F5CFF]"></div><div className="bg-[#7F5CFF] text-white text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-[0_0_15px_rgba(127,92,255,0.6)] whitespace-nowrap border border-white/20">{lang === 'zh' ? '解锁新日记 🔓' : 'New Secret Log 🔓'}</div></div>)}
+              </div>
+
+              <button onClick={fetchDailyQuote} className="p-2 text-gray-400 hover:text-[#7F5CFF] relative"><Calendar size={20} /><span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span></button>
+              <button onClick={() => setShowMenu(!showMenu)} className="p-2 text-gray-400 hover:text-white relative"><MoreVertical size={20} /></button>
+              
+              {showMenu && (<><div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)}></div><div className="absolute top-12 right-0 mt-2 w-48 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden animate-[fadeIn_0.2s_ease-out] flex flex-col p-1"><button onClick={handleEditName} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><UserPen size={16} className="text-[#7F5CFF]" /> {userName || ui.editName}</button><button onClick={handleOpenProfile} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Brain size={16} /> {ui.profile}</button><div className="h-[1px] bg-white/5 my-1 mx-2"></div><button onClick={handleInstall} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Download size={16} /> {ui.install}</button><button onClick={handleExport} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><FileText size={16} /> {ui.export}</button><button onClick={toggleLanguage} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Languages size={16} /> {ui.language}</button><button onClick={handleDonate} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-yellow-400 hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Coffee size={16} /> Buy me a coffee</button><div className="h-[1px] bg-white/5 my-1 mx-2"></div><button onClick={handleReset} className="flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors w-full text-left"><RotateCcw size={16} /> {ui.reset}</button></div></>)}
             </div>
             <div className="absolute bottom-0 left-0 w-full h-[2px] bg-white/5"><div className={`h-full ${levelInfo.barColor} shadow-[0_0_10px_currentColor] transition-all duration-500`} style={{ width: `${levelInfo.level === 3 ? 100 : progressPercent}%` }}/></div>
           </header>
 
+          {/* Main & Footer (代码保持不变) */}
           <main className="flex-1 overflow-y-auto px-4 py-6 space-y-6 scroll-smooth">
             {messages.length === 0 && (
               <div className="h-full flex flex-col items-center justify-center text-center space-y-6 opacity-60"><div className={`w-20 h-20 rounded-full bg-gradient-to-b from-white/5 to-transparent flex items-center justify-center text-4xl mb-2 border border-white/5 shadow-[0_0_30px_rgba(0,0,0,0.5)] animate-pulse`}>{currentP.avatar}</div><div className="space-y-2 px-8"><p className="text-white/80 text-lg font-light">{lang === 'zh' ? '我是' : 'I am'} <span className={currentP.color}>{currentP.name}</span>.</p><p className="text-sm text-gray-400 italic font-serif">{currentP.slogan[lang]}</p></div></div>
