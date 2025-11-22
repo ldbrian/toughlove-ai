@@ -5,21 +5,43 @@ import { useChat } from 'ai/react';
 import { PERSONAS, PersonaType, UI_TEXT, LangType } from '@/lib/constants';
 import { getDeviceId } from '@/lib/utils';
 import { getMemory, saveMemory } from '@/lib/storage';
-import { Send, Calendar, X, Share2, Languages, Download, Users, Sparkles, ImageIcon, FileText, RotateCcw, MoreVertical, Trash2, Coffee, Tag, Heart, Shield, Zap, Lock } from 'lucide-react';
+import { Send, Calendar, X, Share2, Languages, Download, Users, Sparkles, ImageIcon, FileText, RotateCcw, MoreVertical, Trash2, Coffee, Tag, Heart, Shield, Zap, Lock, Globe } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import html2canvas from 'html2canvas';
 import { Message } from 'ai';
+import posthog from 'posthog-js'; // 🔥 引入 PostHog
 
 type DailyQuote = { content: string; date: string; persona: string; };
 type ViewState = 'selection' | 'chat';
 
 const CURRENT_VERSION_KEY = 'toughlove_update_v1.4_memory';
+const LANGUAGE_KEY = 'toughlove_language_confirmed';
+
+// 👇 Typewriter 组件保持不变
+const Typewriter = ({ content, isThinking }: { content: string, isThinking?: boolean }) => {
+  const [displayedContent, setDisplayedContent] = useState("");
+  useEffect(() => {
+    if (!isThinking) {
+      setDisplayedContent(content);
+      return;
+    }
+    if (displayedContent.length < content.length) {
+      const delay = Math.random() * 30 + 20;
+      const timer = setTimeout(() => {
+        setDisplayedContent(content.slice(0, displayedContent.length + 1));
+      }, delay);
+      return () => clearTimeout(timer);
+    }
+  }, [content, displayedContent, isThinking]);
+  return <ReactMarkdown>{displayedContent}</ReactMarkdown>;
+};
 
 export default function Home() {
   const [view, setView] = useState<ViewState>('selection');
   const [activePersona, setActivePersona] = useState<PersonaType>('Ash');
   const [lang, setLang] = useState<LangType>('zh');
-  
+  const [showLangSetup, setShowLangSetup] = useState(false);
+
   const [showQuote, setShowQuote] = useState(false);
   const [quoteData, setQuoteData] = useState<DailyQuote | null>(null);
   const [isQuoteLoading, setIsQuoteLoading] = useState(false);
@@ -37,6 +59,43 @@ export default function Home() {
 
   const getTrustKey = (p: string) => `toughlove_trust_${p}`;
 
+  // Boot Sequence
+  useEffect(() => {
+    const hasLang = localStorage.getItem(LANGUAGE_KEY);
+    if (!hasLang) {
+      const browserLang = navigator.language.toLowerCase();
+      if (!browserLang.startsWith('zh')) {
+        setLang('en');
+      }
+      setShowLangSetup(true);
+    }
+
+    if (hasLang) {
+      const hasSeenUpdate = localStorage.getItem(CURRENT_VERSION_KEY);
+      if (!hasSeenUpdate) {
+        const timer = setTimeout(() => setShowUpdateModal(true), 1500);
+        return () => clearTimeout(timer);
+      }
+    }
+    
+    // 🔥 埋点：页面访问
+    posthog.capture('page_view', { lang: lang });
+  }, []);
+
+  const confirmLanguage = (selectedLang: LangType) => {
+    setLang(selectedLang);
+    localStorage.setItem(LANGUAGE_KEY, 'true');
+    setShowLangSetup(false);
+    
+    // 🔥 埋点：选择语言
+    posthog.capture('language_set', { language: selectedLang });
+
+    const hasSeenUpdate = localStorage.getItem(CURRENT_VERSION_KEY);
+    if (!hasSeenUpdate) {
+      setTimeout(() => setShowUpdateModal(true), 500);
+    }
+  };
+
   const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages, setInput } = useChat({
     api: '/api/chat',
     onError: (err) => console.error("Stream Error:", err),
@@ -44,6 +103,11 @@ export default function Home() {
       const newCount = interactionCount + 1;
       setInteractionCount(newCount);
       localStorage.setItem(getTrustKey(activePersona), newCount.toString());
+      
+      // 🔥 埋点：消息发送成功 (每10条记录一次，防止数据量过大，或者记录关键节点)
+      if (newCount === 1 || newCount === 50 || newCount === 100) {
+        posthog.capture('trust_milestone', { persona: activePersona, level: newCount });
+      }
     }
   });
 
@@ -66,7 +130,11 @@ export default function Home() {
         body: JSON.stringify({ messages: currentMessages, userId: getDeviceId() }),
       });
       const data = await res.json();
-      if (data.tags && data.tags.length > 0) setUserTags(data.tags);
+      if (data.tags && data.tags.length > 0) {
+        setUserTags(data.tags);
+        // 🔥 埋点：标签生成
+        posthog.capture('tags_generated', { tags: data.tags });
+      }
     } catch (e) { console.error("Tagging failed", e); }
   };
 
@@ -76,14 +144,6 @@ export default function Home() {
       if (lastMsg.role === 'assistant') analyzeTags(messages);
     }
   }, [messages, isLoading]);
-
-  useEffect(() => {
-    const hasSeenUpdate = localStorage.getItem(CURRENT_VERSION_KEY);
-    if (!hasSeenUpdate) {
-      const timer = setTimeout(() => setShowUpdateModal(true), 1000);
-      return () => clearTimeout(timer);
-    }
-  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -96,9 +156,13 @@ export default function Home() {
   };
 
   const selectPersona = (persona: PersonaType) => {
+    // 🔥 埋点：选择人格
+    posthog.capture('persona_select', { persona: persona });
+    
     setActivePersona(persona);
     setView('chat');
     const history = getMemory(persona);
+    
     if (history.length === 0) {
       const p = PERSONAS[persona];
       const greetings = p.greetings[lang];
@@ -113,6 +177,9 @@ export default function Home() {
 
   const handleReset = () => {
     if (confirm(ui.resetConfirm)) {
+      // 🔥 埋点：重置
+      posthog.capture('chat_reset', { persona: activePersona });
+      
       setMessages([]);
       saveMemory(activePersona, []);
       setShowMenu(false);
@@ -131,15 +198,24 @@ export default function Home() {
 
   const backToSelection = () => setView('selection');
   const dismissUpdate = () => { localStorage.setItem(CURRENT_VERSION_KEY, 'true'); setShowUpdateModal(false); };
-  const handleTryNewFeature = () => { dismissUpdate(); selectPersona('Echo'); };
+  
+  const handleTryNewFeature = () => { 
+    // 🔥 埋点：点击更新公告按钮
+    posthog.capture('update_click_try');
+    dismissUpdate(); 
+    selectPersona('Echo'); 
+  };
 
   const handleExport = () => {
+    // 🔥 埋点：导出
+    posthog.capture('feature_export', { persona: activePersona });
+    
     if (messages.length === 0) return;
     const dateStr = new Date().toLocaleString();
     const header = `================================\n${ui.exportFileName}\nDate: ${dateStr}\nPersona: ${currentP.name}\n================================\n\n`;
     const body = messages.map(m => {
       const role = m.role === 'user' ? 'ME' : currentP.name.toUpperCase();
-      return `[${role}]:\n${m.content}\n`;
+      return `[${role}]:\n${m.content.replace(/\|\|\|/g, '\n')}\n`;
     }).join('\n--------------------------------\n\n');
     const blob = new Blob([header + body], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -154,10 +230,21 @@ export default function Home() {
     setShowMenu(false);
   };
 
-  const handleInstall = () => { setShowInstallModal(true); setShowMenu(false); };
-  const handleDonate = () => { window.open('https://www.buymeacoffee.com', '_blank'); setShowMenu(false); }
+  const handleInstall = () => { 
+    posthog.capture('feature_install_click');
+    setShowInstallModal(true); 
+    setShowMenu(false); 
+  };
+  const handleDonate = () => { 
+    posthog.capture('feature_donate_click');
+    window.open('https://www.buymeacoffee.com', '_blank'); 
+    setShowMenu(false); 
+  }
 
   const fetchDailyQuote = async () => {
+    // 🔥 埋点：点击毒签
+    posthog.capture('feature_quote_open');
+    
     setShowQuote(true);
     setIsQuoteLoading(true);
     try {
@@ -172,6 +259,9 @@ export default function Home() {
   };
 
   const downloadQuoteCard = async () => {
+    // 🔥 埋点：下载海报
+    posthog.capture('feature_poster_download', { persona: activePersona });
+
     if (!quoteCardRef.current) return;
     setIsGeneratingImg(true);
     try {
@@ -190,60 +280,52 @@ export default function Home() {
 
   const onFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // 🔥 埋点：发送消息
+    posthog.capture('message_send', { persona: activePersona });
     handleSubmit(e, { options: { body: { persona: activePersona, language: lang, interactionCount } } });
   };
 
-  const currentP = PERSONAS[activePersona];
-
-  // 🔥 核心逻辑：根据信任度计算样式和文案
   const getLevelInfo = (count: number) => {
     if (count < 50) {
-      return { 
-        level: 1, 
-        label: lang === 'zh' ? '陌生人' : 'Stranger', 
-        max: 50, 
-        icon: <Shield size={12} />,
-        // Lv1: 黑色冷感，白色微光
-        bgClass: 'bg-[#0a0a0a]',
-        borderClass: 'border-white/5',
-        barColor: 'bg-gray-500',
-        glowClass: ''
-      };
+      return { level: 1, label: lang === 'zh' ? '陌生人' : 'Stranger', max: 50, icon: <Shield size={12} />, bgClass: 'bg-[#0a0a0a]', borderClass: 'border-white/5', barColor: 'bg-gray-500', glowClass: '' };
     }
     if (count < 100) {
-      return { 
-        level: 2, 
-        label: lang === 'zh' ? '熟人' : 'Acquaintance', 
-        max: 100, 
-        icon: <Zap size={12} />,
-        // Lv2: 深蓝微光
-        bgClass: 'bg-gradient-to-b from-[#0f172a] to-[#0a0a0a]',
-        borderClass: 'border-blue-500/30',
-        barColor: 'bg-blue-500',
-        glowClass: 'shadow-[0_0_30px_rgba(59,130,246,0.1)]'
-      };
+      return { level: 2, label: lang === 'zh' ? '熟人' : 'Acquaintance', max: 100, icon: <Zap size={12} />, bgClass: 'bg-gradient-to-b from-[#0f172a] to-[#0a0a0a]', borderClass: 'border-blue-500/30', barColor: 'bg-blue-500', glowClass: 'shadow-[0_0_30px_rgba(59,130,246,0.1)]' };
     }
-    return { 
-      level: 3, 
-      label: lang === 'zh' ? '共犯' : 'Partner', 
-      max: 100, 
-      icon: <Heart size={12} />,
-      // Lv3: 品牌紫光，网格纹理
-      bgClass: 'bg-[url("/grid.svg")] bg-fixed bg-[length:50px_50px] bg-[#0a0a0a]', // 需要你找个 grid svg，或者这里直接用颜色模拟
-      // 这里用 CSS 渐变模拟高级感
-      customStyle: { background: 'radial-gradient(circle at 50% -20%, #1e1b4b 0%, #0a0a0a 60%)' }, 
-      borderClass: 'border-[#7F5CFF]/40',
-      barColor: 'bg-[#7F5CFF]',
-      glowClass: 'shadow-[0_0_40px_rgba(127,92,255,0.15)]'
-    };
+    return { level: 3, label: lang === 'zh' ? '共犯' : 'Partner', max: 100, icon: <Heart size={12} />, bgClass: 'bg-[url("/grid.svg")] bg-fixed bg-[length:50px_50px] bg-[#0a0a0a]', customStyle: { background: 'radial-gradient(circle at 50% -20%, #1e1b4b 0%, #0a0a0a 60%)' }, borderClass: 'border-[#7F5CFF]/40', barColor: 'bg-[#7F5CFF]', glowClass: 'shadow-[0_0_40px_rgba(127,92,255,0.15)]' };
   };
 
+  const currentP = PERSONAS[activePersona];
   const levelInfo = getLevelInfo(interactionCount);
   const progressPercent = Math.min(100, (interactionCount / levelInfo.max) * 100);
 
   return (
     <div className="relative flex flex-col h-screen bg-[#050505] text-gray-100 overflow-hidden font-sans selection:bg-[#7F5CFF] selection:text-white">
       <div className="absolute top-[-20%] left-0 right-0 h-[500px] bg-gradient-to-b from-[#7F5CFF]/10 to-transparent blur-[100px] pointer-events-none" />
+
+      {/* 语言选择遮罩 */}
+      {showLangSetup && (
+        <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-6 animate-[fadeIn_0.5s_ease-out]">
+          <div className="mb-10 text-center">
+            <div className="w-20 h-20 bg-[#1a1a1a] rounded-full flex items-center justify-center text-4xl border border-white/10 mx-auto mb-4 shadow-[0_0_30px_rgba(127,92,255,0.3)]">
+              🧬
+            </div>
+            <h1 className="text-2xl font-bold text-white tracking-wider mb-2">TOUGHLOVE AI</h1>
+            <p className="text-gray-500 text-sm">Choose your language / 选择语言</p>
+          </div>
+          
+          <div className="flex flex-col gap-4 w-full max-w-xs">
+            <button onClick={() => confirmLanguage('zh')} className={`p-6 rounded-2xl border transition-all flex items-center justify-between group ${lang === 'zh' ? 'bg-white/10 border-[#7F5CFF]' : 'bg-[#111] border-white/10 hover:border-white/30'}`}>
+              <div className="text-left"><div className="text-lg font-bold text-white">中文</div><div className="text-xs text-gray-500">Chinese</div></div>
+              {lang === 'zh' && <div className="w-3 h-3 bg-[#7F5CFF] rounded-full shadow-[0_0_10px_#7F5CFF]"></div>}
+            </button>
+            <button onClick={() => confirmLanguage('en')} className={`p-6 rounded-2xl border transition-all flex items-center justify-between group ${lang === 'en' ? 'bg-white/10 border-[#7F5CFF]' : 'bg-[#111] border-white/10 hover:border-white/30'}`}>
+              <div className="text-left"><div className="text-lg font-bold text-white">English</div><div className="text-xs text-gray-500">English</div></div>
+              {lang === 'en' && <div className="w-3 h-3 bg-[#7F5CFF] rounded-full shadow-[0_0_10px_#7F5CFF]"></div>}
+            </button>
+          </div>
+        </div>
+      )}
 
       {view === 'selection' && (
         <div className="z-10 flex flex-col h-full w-full max-w-4xl mx-auto p-6 animate-[fadeIn_0.5s_ease-out]">
@@ -267,69 +349,57 @@ export default function Home() {
         </div>
       )}
 
-      {/* 🔥 Chat View UI 更新：动态背景和 Header 进度条 */}
       {view === 'chat' && (
-        <div 
-          className={`z-10 flex flex-col h-full w-full max-w-lg mx-auto backdrop-blur-sm border-x shadow-2xl relative animate-[slideUp_0.3s_ease-out] 
-            ${levelInfo.bgClass} ${levelInfo.borderClass} ${levelInfo.glowClass} transition-all duration-1000`}
-          style={levelInfo.customStyle}
-        >
+        <div className={`z-10 flex flex-col h-full w-full max-w-lg mx-auto backdrop-blur-sm border-x shadow-2xl relative animate-[slideUp_0.3s_ease-out] ${levelInfo.bgClass} ${levelInfo.borderClass} ${levelInfo.glowClass} transition-all duration-1000`} style={levelInfo.customStyle}>
           <header className="flex-none flex items-center justify-between px-6 py-3 bg-[#0a0a0a]/60 backdrop-blur-md sticky top-0 z-20 border-b border-white/5 relative">
             <button onClick={backToSelection} className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors group">
               <div className="p-2 bg-white/5 rounded-full group-hover:bg-[#7F5CFF] transition-colors"><Users size={16} className="group-hover:text-white" /></div>
             </button>
-            
             <div className="flex flex-col items-center cursor-pointer group" onClick={handleExport} title={ui.export}>
-              <h1 className="font-bold text-sm tracking-wider text-white flex items-center gap-2">
-                {currentP.avatar} {currentP.name}
-                {/* 等级徽章 */}
-                <span className={`text-[9px] px-1.5 py-0.5 rounded bg-white/10 border border-white/10 ${levelInfo.barColor.replace('bg-', 'text-')} flex items-center gap-1`}>
-                  {levelInfo.icon} Lv.{levelInfo.level}
-                </span>
-              </h1>
+              <h1 className="font-bold text-sm tracking-wider text-white flex items-center gap-2">{currentP.avatar} {currentP.name}<span className={`text-[9px] px-1.5 py-0.5 rounded bg-white/10 border border-white/10 ${levelInfo.barColor.replace('bg-', 'text-')} flex items-center gap-1`}>{levelInfo.icon} Lv.{levelInfo.level}</span></h1>
               <p className={`text-[10px] font-medium opacity-70 tracking-wide ${currentP.color} group-hover:underline`}>{currentP.title[lang]}</p>
             </div>
-
             <div className="flex items-center gap-2 relative">
-              <button onClick={fetchDailyQuote} className="p-2 text-gray-400 hover:text-[#7F5CFF] relative">
-                <Calendar size={20} /><span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
-              </button>
-              <button onClick={() => setShowMenu(!showMenu)} className="p-2 text-gray-400 hover:text-white relative">
-                <MoreVertical size={20} /><span className="absolute top-1 right-1 w-2 h-2 bg-[#7F5CFF] rounded-full"></span>
-              </button>
-              
-              {/* Menu (移除了进度条，因为移到了 Header 底部) */}
-              {showMenu && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)}></div>
-                  <div className="absolute top-12 right-0 mt-2 w-48 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden animate-[fadeIn_0.2s_ease-out] flex flex-col p-1">
-                    <button onClick={handleInstall} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Download size={16} className="text-[#7F5CFF]" /> {ui.install}</button>
-                    <button onClick={handleExport} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><FileText size={16} /> {ui.export}</button>
-                    <button onClick={toggleLanguage} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Languages size={16} /> {ui.language}</button>
-                    <button onClick={handleDonate} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-yellow-400 hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Coffee size={16} /> Buy me a coffee</button>
-                    <div className="h-[1px] bg-white/5 my-1 mx-2"></div>
-                    <button onClick={handleReset} className="flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors w-full text-left"><RotateCcw size={16} /> {ui.reset}</button>
-                  </div>
-                </>
-              )}
+              <button onClick={fetchDailyQuote} className="p-2 text-gray-400 hover:text-[#7F5CFF] relative"><Calendar size={20} /><span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span></button>
+              <button onClick={() => setShowMenu(!showMenu)} className="p-2 text-gray-400 hover:text-white relative"><MoreVertical size={20} /><span className="absolute top-1 right-1 w-2 h-2 bg-[#7F5CFF] rounded-full"></span></button>
+              {showMenu && (<><div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)}></div><div className="absolute top-12 right-0 mt-2 w-48 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden animate-[fadeIn_0.2s_ease-out] flex flex-col p-1"><button onClick={handleInstall} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Download size={16} className="text-[#7F5CFF]" /> {ui.install}</button><button onClick={handleExport} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><FileText size={16} /> {ui.export}</button><button onClick={toggleLanguage} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Languages size={16} /> {ui.language}</button><button onClick={handleDonate} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-yellow-400 hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Coffee size={16} /> Buy me a coffee</button><div className="h-[1px] bg-white/5 my-1 mx-2"></div><button onClick={handleReset} className="flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors w-full text-left"><RotateCcw size={16} /> {ui.reset}</button></div></>)}
             </div>
-
-            {/* 🔥 Header 底部的细进度条 */}
-            <div className="absolute bottom-0 left-0 w-full h-[2px] bg-white/5">
-              <div 
-                className={`h-full ${levelInfo.barColor} shadow-[0_0_10px_currentColor] transition-all duration-500`} 
-                style={{ width: `${levelInfo.level === 3 ? 100 : progressPercent}%` }}
-              />
-            </div>
+            <div className="absolute bottom-0 left-0 w-full h-[2px] bg-white/5"><div className={`h-full ${levelInfo.barColor} shadow-[0_0_10px_currentColor] transition-all duration-500`} style={{ width: `${levelInfo.level === 3 ? 100 : progressPercent}%` }}/></div>
           </header>
 
           <main className="flex-1 overflow-y-auto px-4 py-6 space-y-6 scroll-smooth">
             {messages.length === 0 && (
               <div className="h-full flex flex-col items-center justify-center text-center space-y-6 opacity-60"><div className={`w-20 h-20 rounded-full bg-gradient-to-b from-white/5 to-transparent flex items-center justify-center text-4xl mb-2 border border-white/5 shadow-[0_0_30px_rgba(0,0,0,0.5)] animate-pulse`}>{currentP.avatar}</div><div className="space-y-2 px-8"><p className="text-white/80 text-lg font-light">{lang === 'zh' ? '我是' : 'I am'} <span className={currentP.color}>{currentP.name}</span>.</p><p className="text-sm text-gray-400 italic font-serif">{currentP.slogan[lang]}</p></div></div>
             )}
-            {messages.map((msg) => (
-              <div key={msg.id} className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-[slideUp_0.1s_ease-out]`}><div className={`max-w-[85%] px-5 py-3.5 text-sm leading-6 shadow-md backdrop-blur-sm ${msg.role === 'user' ? 'bg-gradient-to-br from-[#7F5CFF] to-[#6242db] text-white rounded-2xl rounded-tr-sm' : 'bg-[#1a1a1a]/90 text-gray-200 rounded-2xl rounded-tl-sm border border-white/5'}`}><div className="markdown"><ReactMarkdown>{msg.content}</ReactMarkdown></div></div></div>
-            ))}
+            
+            {messages.map((msg, msgIdx) => {
+              const isLastMessage = msgIdx === messages.length - 1;
+              const isAI = msg.role !== 'user';
+              
+              return (
+                <div key={msg.id} className={`flex w-full ${!isAI ? 'justify-end' : 'justify-start'} animate-[slideUp_0.1s_ease-out]`}>
+                  <div className={`max-w-[85%] space-y-1`}>
+                    {!isAI ? (
+                      <div className="px-5 py-3.5 text-sm leading-6 shadow-md backdrop-blur-sm bg-gradient-to-br from-[#7F5CFF] to-[#6242db] text-white rounded-2xl rounded-tr-sm">
+                        <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      </div>
+                    ) : (
+                      msg.content.split('|||').map((part, partIdx, arr) => {
+                        if (!part.trim()) return null;
+                        const isLastPart = partIdx === arr.length - 1;
+                        const shouldType = isLastMessage && isLoading && isLastPart;
+                        return (
+                          <div key={partIdx} className="px-5 py-3.5 text-sm leading-6 shadow-md backdrop-blur-sm bg-[#1a1a1a]/90 text-gray-200 rounded-2xl rounded-tl-sm border border-white/5 animate-[slideUp_0.2s_ease-out]">
+                            <Typewriter content={part.trim()} isThinking={shouldType} />
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            
             {isLoading && messages.length > 0 && messages[messages.length - 1].role === 'user' && (
                <div className="flex justify-start w-full animate-pulse"><div className="flex items-center gap-2 bg-[#1a1a1a] px-4 py-3 rounded-2xl rounded-tl-sm border border-white/5"><span className="text-xs text-gray-500">{ui.loading}</span></div></div>
             )}
@@ -347,6 +417,7 @@ export default function Home() {
           
           {showInstallModal && (<div className="absolute inset-0 z-50 flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-[fadeIn_0.2s_ease-out]"><div className="absolute inset-0" onClick={() => setShowInstallModal(false)} /><div className="w-full max-w-sm bg-[#1a1a1a] rounded-t-3xl sm:rounded-3xl border border-white/10 shadow-2xl overflow-hidden relative z-10 animate-[slideUp_0.3s_ease-out]"><button onClick={() => setShowInstallModal(false)} className="absolute top-4 right-4 p-2 text-gray-400 hover:text-white"><X size={20} /></button><div className="p-6 space-y-6"><div className="flex items-center gap-4"><div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#7F5CFF] to-black flex items-center justify-center text-2xl border border-white/10">🥀</div><div><h3 className="text-lg font-bold text-white">安装“毒伴”</h3><p className="text-xs text-gray-400">像 App 一样常驻你的桌面</p></div></div><div className="space-y-4 text-sm text-gray-300"><div className="bg-white/5 p-4 rounded-xl border border-white/5"><p className="font-bold text-[#7F5CFF] mb-2">iOS</p><ol className="list-decimal list-inside space-y-2 opacity-80"><li>点击底部的 <span className="inline-block align-middle"><Share2 size={14}/></span> <strong>分享</strong></li><li>选择 <strong>添加到主屏幕</strong></li></ol></div></div></div></div></div>)}
 
+          {/* 更新弹窗 */}
           {showUpdateModal && (<div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-6 animate-[fadeIn_0.3s_ease-out]"><div className="w-full max-w-sm bg-gradient-to-br from-[#111] to-[#0a0a0a] rounded-3xl border border-indigo-500/30 shadow-[0_0_50px_rgba(99,102,241,0.15)] overflow-hidden relative animate-[scaleIn_0.3s_cubic-bezier(0.16,1,0.3,1)]"><button onClick={dismissUpdate} className="absolute top-4 right-4 p-2 text-gray-500 hover:text-white z-10 transition-colors"><X size={20} /></button><div className="p-8 flex flex-col items-center text-center relative"><div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-indigo-900/20 to-transparent pointer-events-none"></div><div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-bold uppercase tracking-wider mb-6"><Sparkles size={12} /> {ui.updateTitle}</div><div className="relative w-20 h-20 mb-6"><div className="w-full h-full rounded-full bg-[#151515] flex items-center justify-center text-5xl border border-white/10 shadow-xl relative z-10">👁️</div><div className="absolute inset-0 bg-indigo-500 blur-xl opacity-30 animate-pulse"></div></div><h3 className="text-xl font-bold text-white mb-3">{ui.updateDesc}</h3><p className="text-sm text-gray-400 leading-relaxed whitespace-pre-line">{ui.updateContent}</p></div><div className="p-6 pt-0"><button onClick={handleTryNewFeature} className="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition-all shadow-lg shadow-indigo-900/20 flex items-center justify-center gap-2 group">{ui.tryNow}<span className="group-hover:translate-x-1 transition-transform">→</span></button></div></div></div>)}
         </div>
       )}
