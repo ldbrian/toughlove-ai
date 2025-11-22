@@ -132,7 +132,7 @@ export default function Home() {
         backgroundColor: '#111111',
         scale: 3,
         useCORS: true,
-      });
+      }as any);
       const image = canvas.toDataURL("image/png");
       const link = document.createElement('a');
       link.href = image;
