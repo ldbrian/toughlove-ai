@@ -19,7 +19,12 @@ export const UI_TEXT = {
     updateTitle: "新角色上线",
     updateDesc: "v1.2 更新：‘灵魂解剖师’ Echo 已加入。",
     updateContent: "他不喜欢安慰人，但他能看穿你潜意识里的恐惧。准备好直面真实了吗？",
-    tryNow: "立即体验 Echo"
+    tryNow: "立即体验 Echo",
+    // 👇 新增功能文案
+    export: "导出记录",
+    reset: "重开一局",
+    resetConfirm: "确定要清除这段记忆并重新开始吗？（此操作不可撤销）",
+    exportFileName: "毒伴_诊疗记录"
   },
   en: {
     placeholder: "Say something human...",
@@ -38,7 +43,12 @@ export const UI_TEXT = {
      updateTitle: "New Arrival",
      updateDesc: "v1.2 Update: Echo, the Soul Anatomist.",
      updateContent: "He doesn't comfort. He dissects your subconscious fears. Are you ready for the truth?",
-     tryNow: "Try Echo Now"
+     tryNow: "Try Echo Now",
+     // 👇 新增功能文案
+    export: "Export Chat",
+    reset: "Restart Session",
+    resetConfirm: "Are you sure you want to wipe this memory and start over? (Irreversible)",
+    exportFileName: "ToughLove_Session"
   }
 };
 

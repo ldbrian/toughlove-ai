@@ -4,8 +4,8 @@ import { useState, useRef, useEffect } from 'react';
 import { useChat } from 'ai/react';
 import { PERSONAS, PersonaType, UI_TEXT, LangType } from '@/lib/constants';
 import { getDeviceId } from '@/lib/utils';
-import { getMemory, saveMemory } from '@/lib/storage'; // 👈 引入刚才写的工具
-import { Send, Calendar, X, Share2, Languages, Download, Users, Sparkles, ImageIcon, Trash2 } from 'lucide-react';
+import { getMemory, saveMemory } from '@/lib/storage';
+import { Send, Calendar, X, Share2, Languages, Download, Users, Sparkles, ImageIcon, FileText, RotateCcw } from 'lucide-react'; // 👈 引入了 FileText (导出) 和 RotateCcw (重开)
 import ReactMarkdown from 'react-markdown';
 import html2canvas from 'html2canvas';
 
@@ -16,7 +16,6 @@ const CURRENT_VERSION_KEY = 'toughlove_update_v1.2_echo';
 
 export default function Home() {
   const [view, setView] = useState<ViewState>('selection');
-  // 默认人格改为 null 或者从缓存读取上次选的，这里为了简单还是默认 Ash
   const [activePersona, setActivePersona] = useState<PersonaType>('Ash');
   const [lang, setLang] = useState<LangType>('zh');
   
@@ -31,44 +30,30 @@ export default function Home() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const ui = UI_TEXT[lang];
 
-  // 🔥 核心升级：useChat 配置
   const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages, setInput } = useChat({
     api: '/api/chat',
-    // 1. 初始数据：虽然这里可以传 initialMessages，但因为我们要在切换人格时动态加载，所以主要靠 setMessages
     onError: (err) => console.error("Stream Error:", err),
-    // 2. 自动保存：每次 AI 回复完，把最新的 messages 列表存到当前人格的格子里
-    onFinish: (message, options) => {
-      // 注意：onFinish 里的 message 参数只是最后这一条，我们需要存完整的 messages
-      // 但此时 state 里的 messages 可能还没更新完，所以最稳妥的是在 useEffect 里存
-      // 不过 useChat 没有直接提供 "allMessages" 在 onFinish 里，
-      // 所以我们改用 useEffect 监听 [messages] 变化来存，更稳。
+    onFinish: (message) => {
+      // 流式传输结束时，虽然这里拿不到完整列表，但下面的 useEffect 会负责保存
     }
   });
 
-  // 🔥 监听消息变化 -> 自动保存
+  // 自动保存记忆
   useEffect(() => {
-    // 只有当有消息，且不在加载状态(避免流式输出时频繁写入)，或者流式输出结束时存
-    // 为了简单稳妥：只要 messages 变了且不是空的，就存一下
     if (messages.length > 0 && view === 'chat') {
       saveMemory(activePersona, messages);
     }
   }, [messages, activePersona, view]);
 
-  // 🔥 切换人格时 -> 读取记忆
-  // 我们把这个逻辑放在 selectPersona 里，或者用 useEffect 监听 activePersona
-  // 推荐放在 useEffect，这样逻辑更收敛
+  // 读取记忆
   useEffect(() => {
-    // 当进入聊天页面时，读取记忆
     if (view === 'chat') {
       const history = getMemory(activePersona);
-      setMessages(history); // 恢复历史
+      setMessages(history);
     }
   }, [activePersona, view, setMessages]);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
+  // 版本弹窗检测
   useEffect(() => {
     const hasSeenUpdate = localStorage.getItem(CURRENT_VERSION_KEY);
     if (!hasSeenUpdate) {
@@ -76,6 +61,23 @@ export default function Home() {
       return () => clearTimeout(timer);
     }
   }, []);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => { scrollToBottom(); }, [messages, isLoading, view]);
+
+  const toggleLanguage = () => {
+    setLang(prev => prev === 'zh' ? 'en' : 'zh');
+  };
+
+  const selectPersona = (persona: PersonaType) => {
+    setActivePersona(persona);
+    setView('chat');
+  };
+
+  const backToSelection = () => setView('selection');
 
   const dismissUpdate = () => {
     localStorage.setItem(CURRENT_VERSION_KEY, 'true');
@@ -87,26 +89,36 @@ export default function Home() {
     selectPersona('Echo');
   };
 
-  useEffect(() => { scrollToBottom(); }, [messages, isLoading, view]);
+  // 👇 功能 A: 导出聊天记录
+  const handleExport = () => {
+    if (messages.length === 0) return;
 
-  const toggleLanguage = () => {
-    setLang(prev => prev === 'zh' ? 'en' : 'zh');
+    // 生成格式化的文本内容
+    const dateStr = new Date().toLocaleString();
+    const header = `================================\n${ui.exportFileName}\nDate: ${dateStr}\nPersona: ${currentP.name}\n================================\n\n`;
+    
+    const body = messages.map(m => {
+      const role = m.role === 'user' ? 'ME' : currentP.name.toUpperCase();
+      return `[${role}]:\n${m.content}\n`;
+    }).join('\n--------------------------------\n\n');
+
+    const fullText = header + body;
+
+    // 创建下载链接
+    const blob = new Blob([fullText], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${ui.exportFileName}_${activePersona}_${new Date().toISOString().split('T')[0]}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
-  const selectPersona = (persona: PersonaType) => {
-    setActivePersona(persona);
-    // 注意：这里不需要手动 setMessages([])，因为上面的 useEffect 会在 activePersona 变了之后，
-    // 自动去 localStorage 读这个人的历史。如果是空的，它自然就是空的。
-    setView('chat');
-  };
-
-  const backToSelection = () => setView('selection');
-
-  // 👇 新增：清空当前对话功能 (有些用户想重开)
-  const clearCurrentChat = () => {
-    if (confirm(lang === 'zh' ? '确定要清除和他的记忆吗？' : 'Clear memory with this persona?')) {
+  // 👇 功能 B: 重开一局 (Session Reset)
+  const handleReset = () => {
+    if (confirm(ui.resetConfirm)) {
       setMessages([]); // 清空界面
-      saveMemory(activePersona, []); // 清空缓存
+      saveMemory(activePersona, []); // 清空本地存储
     }
   };
 
@@ -132,7 +144,7 @@ export default function Home() {
         backgroundColor: '#111111',
         scale: 3,
         useCORS: true,
-      }as any);
+      } as any);
       const image = canvas.toDataURL("image/png");
       const link = document.createElement('a');
       link.href = image;
@@ -181,12 +193,33 @@ export default function Home() {
       {view === 'chat' && (
         <div className="z-10 flex flex-col h-full w-full max-w-lg mx-auto bg-[#0a0a0a]/80 backdrop-blur-sm border-x border-white/5 shadow-2xl relative animate-[slideUp_0.3s_ease-out]">
           <header className="flex-none flex items-center justify-between px-6 py-4 bg-[#0a0a0a]/60 backdrop-blur-md sticky top-0 z-20 border-b border-white/5">
-            <button onClick={backToSelection} className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors group"><div className="p-2 bg-white/5 rounded-full group-hover:bg-[#7F5CFF] transition-colors"><Users size={16} className="group-hover:text-white" /></div></button>
-            <div className="flex flex-col items-center"><h1 className="font-bold text-sm tracking-wider text-white flex items-center gap-2">{currentP.avatar} {currentP.name}</h1><p className={`text-[10px] font-medium opacity-70 tracking-wide ${currentP.color}`}>{currentP.title[lang]}</p></div>
-            <div className="flex items-center gap-2">
-              {/* 👇 新增：清除记忆按钮 */}
-              <button onClick={clearCurrentChat} className="p-2 text-gray-500 hover:text-red-500 transition-colors"><Trash2 size={18} /></button>
-              <button onClick={fetchDailyQuote} className="p-2 text-gray-400 hover:text-[#7F5CFF] relative"><Calendar size={20} /><span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span></button>
+            {/* 左侧：返回 */}
+            <button onClick={backToSelection} className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors group">
+              <div className="p-2 bg-white/5 rounded-full group-hover:bg-[#7F5CFF] transition-colors"><Users size={16} className="group-hover:text-white" /></div>
+            </button>
+            
+            {/* 中间：角色名 (点击导出) */}
+            <div className="flex flex-col items-center cursor-pointer group" onClick={handleExport} title={ui.export}>
+              <h1 className="font-bold text-sm tracking-wider text-white flex items-center gap-2">
+                {currentP.avatar} {currentP.name}
+              </h1>
+              <p className={`text-[10px] font-medium opacity-70 tracking-wide ${currentP.color} group-hover:underline`}>
+                {currentP.title[lang]}
+              </p>
+            </div>
+
+            {/* 右侧：功能区 */}
+            <div className="flex items-center gap-1">
+              {/* 重开按钮 */}
+              <button onClick={handleReset} className="p-2 text-gray-500 hover:text-red-400 hover:bg-white/5 rounded-full transition-colors" title={ui.reset}>
+                <RotateCcw size={18} />
+              </button>
+              
+              {/* 毒签按钮 */}
+              <button onClick={fetchDailyQuote} className="p-2 text-gray-400 hover:text-[#7F5CFF] relative" title={ui.dailyToxic}>
+                <Calendar size={20} />
+                <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+              </button>
             </div>
           </header>
 
@@ -210,7 +243,6 @@ export default function Home() {
             </form>
           </footer>
           
-          {/* Modals */}
           {showQuote && (<div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-6 animate-[fadeIn_0.2s_ease-out]"><div className="w-full max-w-xs relative"><button onClick={() => setShowQuote(false)} className="absolute -top-10 right-0 p-2 text-white/50 hover:text-white"><X size={24} /></button><div ref={quoteCardRef} className="bg-[#111] rounded-3xl border border-white/10 shadow-2xl overflow-hidden relative animate-[slideUp_0.4s_cubic-bezier(0.16,1,0.3,1)]"><div className={`absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-transparent via-${currentP.color.split('-')[1]}-500 to-transparent opacity-50`}></div><div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div><div className="p-8 flex flex-col items-center text-center space-y-6"><div className="text-xs font-black text-[#7F5CFF] tracking-[0.2em] uppercase flex items-center gap-2"><Sparkles size={12}/> {ui.dailyToxic}</div>{isQuoteLoading ? (<div className="py-10 space-y-4"><div className="w-12 h-12 border-2 border-[#7F5CFF] border-t-transparent rounded-full animate-spin mx-auto"/><p className="text-gray-500 text-xs animate-pulse">{ui.makingPoison}</p></div>) : (<><div className="relative"><div className="text-5xl my-4 grayscale contrast-125">{currentP.avatar}</div></div><p className="text-xl font-bold leading-relaxed text-gray-100 font-serif min-h-[80px] flex items-center justify-center">“{quoteData?.content}”</p><div className="w-full h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent"></div><div className="flex flex-col items-center gap-1"><div className={`text-xs font-bold ${currentP.color} uppercase tracking-widest`}>{currentP.name}</div><div className="text-[10px] text-gray-600">ToughLove AI · {new Date().toLocaleDateString()}</div></div></>)}</div></div>{!isQuoteLoading && (<div className="mt-4 flex gap-3"><button onClick={downloadQuoteCard} disabled={isGeneratingImg} className="flex-1 py-3 rounded-xl bg-[#7F5CFF] text-white font-bold text-sm shadow-lg shadow-purple-900/20 flex items-center justify-center gap-2 active:scale-95 transition-transform">{isGeneratingImg ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/> : <ImageIcon size={16} />}{isGeneratingImg ? "生成中..." : "保存海报"}</button></div>)}</div></div>)}
           
           {showInstallModal && (<div className="absolute inset-0 z-50 flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-[fadeIn_0.2s_ease-out]"><div className="absolute inset-0" onClick={() => setShowInstallModal(false)} /><div className="w-full max-w-sm bg-[#1a1a1a] rounded-t-3xl sm:rounded-3xl border border-white/10 shadow-2xl overflow-hidden relative z-10 animate-[slideUp_0.3s_ease-out]"><button onClick={() => setShowInstallModal(false)} className="absolute top-4 right-4 p-2 text-gray-400 hover:text-white"><X size={20} /></button><div className="p-6 space-y-6"><div className="flex items-center gap-4"><div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#7F5CFF] to-black flex items-center justify-center text-2xl border border-white/10">🥀</div><div><h3 className="text-lg font-bold text-white">安装“毒伴”</h3><p className="text-xs text-gray-400">像 App 一样常驻你的桌面</p></div></div><div className="space-y-4 text-sm text-gray-300"><div className="bg-white/5 p-4 rounded-xl border border-white/5"><p className="font-bold text-[#7F5CFF] mb-2">iOS</p><ol className="list-decimal list-inside space-y-2 opacity-80"><li>点击底部的 <span className="inline-block align-middle"><Share2 size={14}/></span> <strong>分享</strong></li><li>选择 <strong>添加到主屏幕</strong></li></ol></div></div></div></div></div>)}
