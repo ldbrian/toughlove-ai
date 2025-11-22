@@ -5,9 +5,10 @@ import { useChat } from 'ai/react';
 import { PERSONAS, PersonaType, UI_TEXT, LangType } from '@/lib/constants';
 import { getDeviceId } from '@/lib/utils';
 import { getMemory, saveMemory } from '@/lib/storage';
-import { Send, Calendar, X, Share2, Languages, Download, Users, Sparkles, ImageIcon, FileText, RotateCcw } from 'lucide-react'; // 👈 引入了 FileText (导出) 和 RotateCcw (重开)
+import { Send, Calendar, X, Share2, Languages, Download, Users, Sparkles, ImageIcon, FileText, RotateCcw, MoreVertical, Trash2, Coffee, Tag } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import html2canvas from 'html2canvas';
+import { Message } from 'ai';
 
 type DailyQuote = { content: string; date: string; persona: string; };
 type ViewState = 'selection' | 'chat';
@@ -25,35 +26,61 @@ export default function Home() {
   const [showInstallModal, setShowInstallModal] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [isGeneratingImg, setIsGeneratingImg] = useState(false);
-  const quoteCardRef = useRef<HTMLDivElement>(null);
+  const [showMenu, setShowMenu] = useState(false);
+  
+  // 存储用户标签
+  const [userTags, setUserTags] = useState<string[]>([]);
 
+  const quoteCardRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const ui = UI_TEXT[lang];
 
   const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages, setInput } = useChat({
     api: '/api/chat',
     onError: (err) => console.error("Stream Error:", err),
-    onFinish: (message) => {
-      // 流式传输结束时，虽然这里拿不到完整列表，但下面的 useEffect 会负责保存
-    }
   });
 
-  // 自动保存记忆
+  // 自动保存
   useEffect(() => {
     if (messages.length > 0 && view === 'chat') {
       saveMemory(activePersona, messages);
     }
   }, [messages, activePersona, view]);
 
-  // 读取记忆
-  useEffect(() => {
-    if (view === 'chat') {
-      const history = getMemory(activePersona);
-      setMessages(history);
-    }
-  }, [activePersona, view, setMessages]);
+  // 标签分析函数
+  const analyzeTags = async (currentMessages: any[]) => {
+    console.log("🚀 触发标签分析..."); 
+    try {
+      const res = await fetch('/api/tag', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          messages: currentMessages, 
+          userId: getDeviceId() 
+        }),
+      });
+      const data = await res.json();
+      console.log("✅ API 返回:", data);
 
-  // 版本弹窗检测
+      if (data.tags && data.tags.length > 0) {
+        setUserTags(data.tags);
+      }
+    } catch (e) {
+      console.error("❌ Tagging request failed", e);
+    }
+  };
+
+  // 自动触发分析 (每2轮对话)
+  useEffect(() => {
+    if (!isLoading && messages.length >= 4 && messages.length % 4 === 0) {
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg.role === 'assistant') {
+        analyzeTags(messages);
+      }
+    }
+  }, [messages, isLoading]);
+
+  // 版本更新检测
   useEffect(() => {
     const hasSeenUpdate = localStorage.getItem(CURRENT_VERSION_KEY);
     if (!hasSeenUpdate) {
@@ -65,62 +92,86 @@ export default function Home() {
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
-
   useEffect(() => { scrollToBottom(); }, [messages, isLoading, view]);
 
+  // 交互函数
   const toggleLanguage = () => {
     setLang(prev => prev === 'zh' ? 'en' : 'zh');
+    setShowMenu(false);
   };
 
   const selectPersona = (persona: PersonaType) => {
     setActivePersona(persona);
     setView('chat');
+    const history = getMemory(persona);
+    
+    if (history.length === 0) {
+      const p = PERSONAS[persona];
+      const greetings = p.greetings[lang];
+      const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
+      const welcomeMsg: Message = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: randomGreeting
+      };
+      setMessages([welcomeMsg]);
+      saveMemory(persona, [welcomeMsg]);
+    } else {
+      setMessages(history);
+    }
+  };
+
+  const handleReset = () => {
+    if (confirm(ui.resetConfirm)) {
+      setMessages([]);
+      saveMemory(activePersona, []);
+      setShowMenu(false);
+      const p = PERSONAS[activePersona];
+      const greetings = p.greetings[lang];
+      const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
+      setTimeout(() => {
+        const welcomeMsg: Message = { id: Date.now().toString(), role: 'assistant', content: randomGreeting };
+        setMessages([welcomeMsg]);
+        saveMemory(activePersona, [welcomeMsg]);
+      }, 100);
+    }
   };
 
   const backToSelection = () => setView('selection');
-
+  
   const dismissUpdate = () => {
     localStorage.setItem(CURRENT_VERSION_KEY, 'true');
     setShowUpdateModal(false);
   };
-
+  
   const handleTryNewFeature = () => {
     dismissUpdate();
     selectPersona('Echo');
   };
 
-  // 👇 功能 A: 导出聊天记录
   const handleExport = () => {
     if (messages.length === 0) return;
-
-    // 生成格式化的文本内容
     const dateStr = new Date().toLocaleString();
     const header = `================================\n${ui.exportFileName}\nDate: ${dateStr}\nPersona: ${currentP.name}\n================================\n\n`;
-    
     const body = messages.map(m => {
       const role = m.role === 'user' ? 'ME' : currentP.name.toUpperCase();
       return `[${role}]:\n${m.content}\n`;
     }).join('\n--------------------------------\n\n');
-
-    const fullText = header + body;
-
-    // 创建下载链接
-    const blob = new Blob([fullText], { type: 'text/plain;charset=utf-8' });
+    const blob = new Blob([header + body], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `${ui.exportFileName}_${activePersona}_${new Date().toISOString().split('T')[0]}.txt`;
+    a.style.display = 'none';
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    setShowMenu(false);
   };
 
-  // 👇 功能 B: 重开一局 (Session Reset)
-  const handleReset = () => {
-    if (confirm(ui.resetConfirm)) {
-      setMessages([]); // 清空界面
-      saveMemory(activePersona, []); // 清空本地存储
-    }
-  };
+  const handleInstall = () => { setShowInstallModal(true); setShowMenu(false); };
+  const handleDonate = () => { window.open('https://www.buymeacoffee.com', '_blank'); setShowMenu(false); }
 
   const fetchDailyQuote = async () => {
     setShowQuote(true);
@@ -150,11 +201,7 @@ export default function Home() {
       link.href = image;
       link.download = `ToughLove_${activePersona}_${new Date().toISOString().split('T')[0]}.png`;
       link.click();
-    } catch (err) {
-      alert("保存失败");
-    } finally {
-      setIsGeneratingImg(false);
-    }
+    } catch (err) { alert("保存失败"); } finally { setIsGeneratingImg(false); }
   };
 
   const onFormSubmit = (e: React.FormEvent) => {
@@ -192,38 +239,64 @@ export default function Home() {
 
       {view === 'chat' && (
         <div className="z-10 flex flex-col h-full w-full max-w-lg mx-auto bg-[#0a0a0a]/80 backdrop-blur-sm border-x border-white/5 shadow-2xl relative animate-[slideUp_0.3s_ease-out]">
-          <header className="flex-none flex items-center justify-between px-6 py-4 bg-[#0a0a0a]/60 backdrop-blur-md sticky top-0 z-20 border-b border-white/5">
-            {/* 左侧：返回 */}
+          
+          {/* Header */}
+          <header className="flex-none flex items-center justify-between px-6 py-4 bg-[#0a0a0a]/60 backdrop-blur-md sticky top-0 z-20 border-b border-white/5 relative">
             <button onClick={backToSelection} className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors group">
               <div className="p-2 bg-white/5 rounded-full group-hover:bg-[#7F5CFF] transition-colors"><Users size={16} className="group-hover:text-white" /></div>
             </button>
             
-            {/* 中间：角色名 (点击导出) */}
             <div className="flex flex-col items-center cursor-pointer group" onClick={handleExport} title={ui.export}>
-              <h1 className="font-bold text-sm tracking-wider text-white flex items-center gap-2">
-                {currentP.avatar} {currentP.name}
-              </h1>
-              <p className={`text-[10px] font-medium opacity-70 tracking-wide ${currentP.color} group-hover:underline`}>
-                {currentP.title[lang]}
-              </p>
+              <h1 className="font-bold text-sm tracking-wider text-white flex items-center gap-2">{currentP.avatar} {currentP.name}</h1>
+              <p className={`text-[10px] font-medium opacity-70 tracking-wide ${currentP.color} group-hover:underline`}>{currentP.title[lang]}</p>
             </div>
 
-            {/* 右侧：功能区 */}
-            <div className="flex items-center gap-1">
-              {/* 重开按钮 */}
-              <button onClick={handleReset} className="p-2 text-gray-500 hover:text-red-400 hover:bg-white/5 rounded-full transition-colors" title={ui.reset}>
-                <RotateCcw size={18} />
+            <div className="flex items-center gap-2 relative">
+              <button onClick={fetchDailyQuote} className="p-2 text-gray-400 hover:text-[#7F5CFF] relative">
+                <Calendar size={20} /><span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
               </button>
               
-              {/* 毒签按钮 */}
-              <button onClick={fetchDailyQuote} className="p-2 text-gray-400 hover:text-[#7F5CFF] relative" title={ui.dailyToxic}>
-                <Calendar size={20} />
-                <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+              {/* 菜单按钮 */}
+              <button onClick={() => setShowMenu(!showMenu)} className="p-2 text-gray-400 hover:text-white relative">
+                <MoreVertical size={20} /><span className="absolute top-1 right-1 w-2 h-2 bg-[#7F5CFF] rounded-full"></span>
               </button>
+              
+              {/* 下拉菜单 */}
+              {showMenu && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)}></div>
+                  <div className="absolute top-12 right-0 mt-2 w-48 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden animate-[fadeIn_0.2s_ease-out] flex flex-col p-1">
+                    <button onClick={handleInstall} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Download size={16} className="text-[#7F5CFF]" /> {ui.install}</button>
+                    <button onClick={handleExport} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><FileText size={16} /> {ui.export}</button>
+                    <button onClick={toggleLanguage} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Languages size={16} /> {ui.language}</button>
+                    <button onClick={handleDonate} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-yellow-400 hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Coffee size={16} /> Buy me a coffee</button>
+                    <div className="h-[1px] bg-white/5 my-1 mx-2"></div>
+                    <button onClick={handleReset} className="flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors w-full text-left"><RotateCcw size={16} /> {ui.reset}</button>
+                    
+                    {/* 👇 调试区：FORCE ANALYZE 按钮 👇 */}
+                    {/*<div className="px-4 py-2 text-[10px] text-gray-600 border-t border-white/5 bg-black/20">
+                       <div className="flex items-center justify-between mb-1">
+                         <div className="flex items-center gap-1 text-[#7F5CFF]"><Tag size={10}/> <span className="font-bold">TAGS</span></div>
+                         <button 
+                           onClick={() => analyzeTags(messages)} 
+                           disabled={messages.length < 2}
+                           className="text-[9px] bg-white/10 px-2 py-0.5 rounded hover:bg-white/20 disabled:opacity-30"
+                         >
+                           FORCE ANALYZE
+                         </button>
+                       </div>
+                       <div className="leading-relaxed break-words">
+                         {userTags.length > 0 ? userTags.map(t => `#${t} `) : 'Listening...'}
+                       </div>
+                    </div>*/}
+                  </div>
+                </>
+              )}
             </div>
           </header>
 
           <main className="flex-1 overflow-y-auto px-4 py-6 space-y-6 scroll-smooth">
+            {/* 聊天区域 */}
             {messages.length === 0 && (
               <div className="h-full flex flex-col items-center justify-center text-center space-y-6 opacity-60"><div className={`w-20 h-20 rounded-full bg-gradient-to-b from-white/5 to-transparent flex items-center justify-center text-4xl mb-2 border border-white/5 shadow-[0_0_30px_rgba(0,0,0,0.5)] animate-pulse`}>{currentP.avatar}</div><div className="space-y-2 px-8"><p className="text-white/80 text-lg font-light">{lang === 'zh' ? '我是' : 'I am'} <span className={currentP.color}>{currentP.name}</span>.</p><p className="text-sm text-gray-400 italic font-serif">{currentP.slogan[lang]}</p></div></div>
             )}
@@ -243,10 +316,11 @@ export default function Home() {
             </form>
           </footer>
           
+          {/* Modals */}
           {showQuote && (<div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-6 animate-[fadeIn_0.2s_ease-out]"><div className="w-full max-w-xs relative"><button onClick={() => setShowQuote(false)} className="absolute -top-10 right-0 p-2 text-white/50 hover:text-white"><X size={24} /></button><div ref={quoteCardRef} className="bg-[#111] rounded-3xl border border-white/10 shadow-2xl overflow-hidden relative animate-[slideUp_0.4s_cubic-bezier(0.16,1,0.3,1)]"><div className={`absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-transparent via-${currentP.color.split('-')[1]}-500 to-transparent opacity-50`}></div><div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div><div className="p-8 flex flex-col items-center text-center space-y-6"><div className="text-xs font-black text-[#7F5CFF] tracking-[0.2em] uppercase flex items-center gap-2"><Sparkles size={12}/> {ui.dailyToxic}</div>{isQuoteLoading ? (<div className="py-10 space-y-4"><div className="w-12 h-12 border-2 border-[#7F5CFF] border-t-transparent rounded-full animate-spin mx-auto"/><p className="text-gray-500 text-xs animate-pulse">{ui.makingPoison}</p></div>) : (<><div className="relative"><div className="text-5xl my-4 grayscale contrast-125">{currentP.avatar}</div></div><p className="text-xl font-bold leading-relaxed text-gray-100 font-serif min-h-[80px] flex items-center justify-center">“{quoteData?.content}”</p><div className="w-full h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent"></div><div className="flex flex-col items-center gap-1"><div className={`text-xs font-bold ${currentP.color} uppercase tracking-widest`}>{currentP.name}</div><div className="text-[10px] text-gray-600">ToughLove AI · {new Date().toLocaleDateString()}</div></div></>)}</div></div>{!isQuoteLoading && (<div className="mt-4 flex gap-3"><button onClick={downloadQuoteCard} disabled={isGeneratingImg} className="flex-1 py-3 rounded-xl bg-[#7F5CFF] text-white font-bold text-sm shadow-lg shadow-purple-900/20 flex items-center justify-center gap-2 active:scale-95 transition-transform">{isGeneratingImg ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/> : <ImageIcon size={16} />}{isGeneratingImg ? "生成中..." : "保存海报"}</button></div>)}</div></div>)}
           
           {showInstallModal && (<div className="absolute inset-0 z-50 flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-[fadeIn_0.2s_ease-out]"><div className="absolute inset-0" onClick={() => setShowInstallModal(false)} /><div className="w-full max-w-sm bg-[#1a1a1a] rounded-t-3xl sm:rounded-3xl border border-white/10 shadow-2xl overflow-hidden relative z-10 animate-[slideUp_0.3s_ease-out]"><button onClick={() => setShowInstallModal(false)} className="absolute top-4 right-4 p-2 text-gray-400 hover:text-white"><X size={20} /></button><div className="p-6 space-y-6"><div className="flex items-center gap-4"><div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#7F5CFF] to-black flex items-center justify-center text-2xl border border-white/10">🥀</div><div><h3 className="text-lg font-bold text-white">安装“毒伴”</h3><p className="text-xs text-gray-400">像 App 一样常驻你的桌面</p></div></div><div className="space-y-4 text-sm text-gray-300"><div className="bg-white/5 p-4 rounded-xl border border-white/5"><p className="font-bold text-[#7F5CFF] mb-2">iOS</p><ol className="list-decimal list-inside space-y-2 opacity-80"><li>点击底部的 <span className="inline-block align-middle"><Share2 size={14}/></span> <strong>分享</strong></li><li>选择 <strong>添加到主屏幕</strong></li></ol></div></div></div></div></div>)}
-          
+
           {showUpdateModal && (<div className="absolute inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-6 animate-[fadeIn_0.3s_ease-out]"><div className="w-full max-w-sm bg-gradient-to-br from-[#111] to-[#0a0a0a] rounded-3xl border border-indigo-500/30 shadow-[0_0_50px_rgba(99,102,241,0.15)] overflow-hidden relative animate-[scaleIn_0.3s_cubic-bezier(0.16,1,0.3,1)]"><button onClick={dismissUpdate} className="absolute top-4 right-4 p-2 text-gray-500 hover:text-white z-10 transition-colors"><X size={20} /></button><div className="p-8 flex flex-col items-center text-center relative"><div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-indigo-900/20 to-transparent pointer-events-none"></div><div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-bold uppercase tracking-wider mb-6"><Sparkles size={12} /> {ui.updateTitle}</div><div className="relative w-20 h-20 mb-6"><div className="w-full h-full rounded-full bg-[#151515] flex items-center justify-center text-5xl border border-white/10 shadow-xl relative z-10">👁️</div><div className="absolute inset-0 bg-indigo-500 blur-xl opacity-30 animate-pulse"></div></div><h3 className="text-xl font-bold text-white mb-3">{ui.updateDesc}</h3><p className="text-sm text-gray-400 leading-relaxed">{ui.updateContent}</p></div><div className="p-6 pt-0"><button onClick={handleTryNewFeature} className="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition-all shadow-lg shadow-indigo-900/20 flex items-center justify-center gap-2 group">{ui.tryNow}<span className="group-hover:translate-x-1 transition-transform">→</span></button></div></div></div>)}
         </div>
       )}
