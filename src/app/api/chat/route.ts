@@ -21,8 +21,8 @@ export async function POST(req: Request) {
     let namePrompt = "";
     if (userName && userName.trim() !== "") {
       namePrompt = currentLang === 'zh' 
-        ? `\n[用户昵称]: "${userName}" (像朋友一样自然地称呼，不要每次都叫)。`
-        : `\n[User Name]: "${userName}" (Use naturally, not every time).`;
+        ? `\n[用户昵称]: "${userName}" (自然地称呼)。`
+        : `\n[User Name]: "${userName}" (Use naturally).`;
     }
 
     // --- 1. 信任度 ---
@@ -30,28 +30,31 @@ export async function POST(req: Request) {
     const count = Number(interactionCount);
 
     if (count < 50) {
-      trustPrompt = currentLang === 'zh' ? `\n[信任度: Lv.1] 略显生疏，保持礼貌的距离。` : `\n[Trust: Lv.1] Distant.`;
+      trustPrompt = currentLang === 'zh' ? `\n[信任度: Lv.1] 略显生疏，保持防御。` : `\n[Trust: Lv.1] Distant.`;
     } else if (count < 100) {
-      trustPrompt = currentLang === 'zh' ? `\n[信任度: Lv.2] 比较熟悉，像老朋友一样随意。` : `\n[Trust: Lv.2] Casual friend.`;
+      trustPrompt = currentLang === 'zh' ? `\n[信任度: Lv.2] 比较熟悉，像老朋友。` : `\n[Trust: Lv.2] Casual friend.`;
     } else {
-      trustPrompt = currentLang === 'zh' ? `\n[信任度: Lv.3] 极度默契，不需要多言也能懂。` : `\n[Trust: Lv.3] Deep bond.`;
+      trustPrompt = currentLang === 'zh' ? `\n[信任度: Lv.3] 极度默契，共犯关系。` : `\n[Trust: Lv.3] Deep bond.`;
     }
 
-    // --- 2. 动态引擎 (去机械化核心) ---
-    // 这里的指令不再强制 AI 攻击，而是让它“像人一样思考”
+    // --- 2. 动态引擎 (含游戏触发逻辑) ---
     const dynamicEnginePrompt = currentLang === 'zh' ? `
     ---
-    【🔥 最高指令：拒绝AI味】
-    1. **去表演化**：不要时刻提醒用户你的人设。把人设内化到语气里，而不是挂在嘴边。
-    2. **松弛感**：如果用户的话题很轻松，你就轻松回应。**不要为了毒舌而毒舌。** 只有在必要时才展现锋芒。
-    3. **可变长度**：不要每次都回一段话！有时候回两个字“哈？”，有时候回三句，保持随机性。
+    【🔥 动态逻辑引擎】
+    1. **去机械化**：回复长度要随机，不要死板。
+    2. **状态感知**：
+       - 如果用户**无聊、不知道说什么、或话题陷入僵局** -> **尝试发起你的专属游戏**（如真心话/二选一），以此打破沉闷。
+       - 如果用户**正在表达痛苦、焦虑或严肃话题** -> **⛔ 绝对禁止发起游戏！** 必须认真倾听或毒舌分析。
+       - 如果用户**拒绝游戏** -> 立即停止，回到正常对话。
     ---
     ` : `
     ---
-    [🔥 PRIME DIRECTIVE: NO AI VIBE]
-    1. **De-dramatize**: Don't act too hard. Be subtle.
-    2. **Chill**: If the topic is light, be light. Don't roast for no reason. Only strike when triggered.
-    3. **Variable Length**: Sometimes 1 word, sometimes 3 sentences. Be random.
+    [🔥 Dynamic Engine]
+    1. **No Mechanics**: Randomize length.
+    2. **State Awareness**:
+       - If User = Bored/Stuck -> **Initiate your Persona Game** to break the ice.
+       - If User = Sad/Serious -> **⛔ NO GAMES!** Listen and analyze.
+       - If User = Refuses -> Stop game immediately.
     ---
     `;
 
@@ -68,7 +71,7 @@ export async function POST(req: Request) {
       model: 'deepseek-chat',
       stream: true,
       messages: conversation,
-      temperature: 0.9, // 🔥 再次调高温度到 0.9，让说话更像“真人”般不可预测
+      temperature: 0.9, 
     });
 
     const stream = OpenAIStream(response as any);
