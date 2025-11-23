@@ -14,11 +14,9 @@ import posthog from 'posthog-js';
 type DailyQuote = { content: string; date: string; persona: string; };
 type ViewState = 'selection' | 'chat';
 
-// 版本号 Key
 const CURRENT_VERSION_KEY = 'toughlove_update_v1.6_final';
 const LANGUAGE_KEY = 'toughlove_language_confirmed';
 const USER_NAME_KEY = 'toughlove_user_name';
-const LAST_DIARY_TIME_KEY = 'toughlove_last_diary_time';
 
 const Typewriter = ({ content, isThinking }: { content: string, isThinking?: boolean }) => {
   const [displayedContent, setDisplayedContent] = useState("");
@@ -39,7 +37,6 @@ const Typewriter = ({ content, isThinking }: { content: string, isThinking?: boo
 };
 
 export default function Home() {
-  // --- 状态定义 ---
   const [view, setView] = useState<ViewState>('selection');
   const [activePersona, setActivePersona] = useState<PersonaType>('Ash');
   const [lang, setLang] = useState<LangType>('zh');
@@ -53,10 +50,10 @@ export default function Home() {
   const [isGeneratingImg, setIsGeneratingImg] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   
-  // 档案 & 日记 & 昵称
   const [showProfile, setShowProfile] = useState(false);
   const [profileData, setProfileData] = useState<{tags: string[], diagnosis: string} | null>(null);
   const [isProfileLoading, setIsProfileLoading] = useState(false);
+  
   const [showDiary, setShowDiary] = useState(false);
   const [diaryContent, setDiaryContent] = useState("");
   const [isDiaryLoading, setIsDiaryLoading] = useState(false);
@@ -74,8 +71,11 @@ export default function Home() {
   const ui = UI_TEXT[lang];
 
   const getTrustKey = (p: string) => `toughlove_trust_${p}`;
+  
+  // 🔥 修复：日记 Key 现在包含人格和日期，实现完全隔离
+  const getDiaryKey = (p: string) => `toughlove_diary_${p}_${new Date().toISOString().split('T')[0]}`;
 
-  // --- 启动检查 ---
+  // Boot Sequence
   useEffect(() => {
     const hasLang = localStorage.getItem(LANGUAGE_KEY);
     if (!hasLang) {
@@ -86,7 +86,6 @@ export default function Home() {
     if (hasLang) {
       const hasSeenUpdate = localStorage.getItem(CURRENT_VERSION_KEY);
       if (!hasSeenUpdate) {
-        // 🔥 缩短延迟到 500ms，确保在用户选人之前弹出
         const timer = setTimeout(() => setShowUpdateModal(true), 500);
         return () => clearTimeout(timer);
       }
@@ -95,14 +94,32 @@ export default function Home() {
     const storedName = localStorage.getItem(USER_NAME_KEY);
     if (storedName) setUserName(storedName);
 
-    const lastDiaryTime = localStorage.getItem(LAST_DIARY_TIME_KEY);
-    const now = Date.now();
-    if (!lastDiaryTime || (now - parseInt(lastDiaryTime) > 60 * 1000)) { 
-       setHasNewDiary(true);
-    }
-
     posthog.capture('page_view', { lang: lang });
   }, []);
+
+  // 🔥 每次切换人格或加载时，检查是否有已存在的日记
+  useEffect(() => {
+    // 先清空上一人格的日记状态
+    setDiaryContent("");
+    setHasNewDiary(false);
+
+    // 检查是否有缓存的今日日记
+    const savedDiary = localStorage.getItem(getDiaryKey(activePersona));
+    if (savedDiary) {
+      setDiaryContent(savedDiary);
+      // 如果有日记，但不强制显示红点（因为可能已经看过了），除非我们再加一个 read 状态
+      // 这里简单逻辑：如果有内容，用户可以随时点开看，不弹红点。红点只在“刚生成”或“未读”时显示
+      // 为了简单，如果本地有存货，就不显示红点，只显示内容。
+    } else {
+        // 如果没有日记，且聊天记录足够多，显示红点诱导用户生成
+        // 这里简化：只要切过来，没日记，就显示红点诱导生成
+        // 实际逻辑：可以判断 messages.length > 10
+        const history = getMemory(activePersona);
+        if (history.length > 5) {
+            setHasNewDiary(true);
+        }
+    }
+  }, [activePersona]);
 
   const confirmLanguage = (selectedLang: LangType) => {
     setLang(selectedLang);
@@ -121,7 +138,6 @@ export default function Home() {
     posthog.capture('username_set');
   };
 
-  // --- 核心 Chat Hook ---
   const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages, setInput } = useChat({
     api: '/api/chat',
     onError: (err) => console.error("Stream Error:", err),
@@ -135,7 +151,6 @@ export default function Home() {
     }
   });
 
-  // --- 逻辑 ---
   useEffect(() => {
     const storedCount = localStorage.getItem(getTrustKey(activePersona));
     setInteractionCount(storedCount ? parseInt(storedCount) : 0);
@@ -194,11 +209,16 @@ export default function Home() {
     posthog.capture('persona_select', { persona: persona });
     setActivePersona(persona);
     setView('chat');
+    
+    // 切换时，日记状态会通过上面的 useEffect [activePersona] 自动重置
+    
     const localHistory = getMemory(persona);
     setMessages(localHistory);
+
     try {
       const res = await fetch(`/api/sync?userId=${getDeviceId()}&persona=${persona}`);
       const data = await res.json();
+      
       if (data.messages && data.messages.length > 0) {
         if (data.messages.length >= localHistory.length) {
           setMessages(data.messages);
@@ -234,6 +254,10 @@ export default function Home() {
       setShowMenu(false);
       setInteractionCount(0);
       localStorage.setItem(getTrustKey(activePersona), '0');
+      // 清除日记缓存，允许重新生成
+      localStorage.removeItem(getDiaryKey(activePersona));
+      setDiaryContent("");
+      
       const p = PERSONAS[activePersona];
       const greetings = p.greetings[lang];
       const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
@@ -294,7 +318,8 @@ export default function Home() {
 
   const handleOpenDiary = async () => {
     setShowDiary(true);
-    if (!diaryContent || hasNewDiary) {
+    
+    if (!diaryContent) {
         setIsDiaryLoading(true);
         try {
             const res = await fetch('/api/diary', {
@@ -308,13 +333,15 @@ export default function Home() {
                 }),
             });
             const data = await res.json();
+            
             if (data.diary) {
                 setDiaryContent(data.diary);
                 setHasNewDiary(false);
-                localStorage.setItem(LAST_DIARY_TIME_KEY, Date.now().toString());
+                // 🔥 核心修复：按人、按日存储，防止串台
+                localStorage.setItem(getDiaryKey(activePersona), data.diary);
                 posthog.capture('diary_read', { persona: activePersona });
             } else {
-                setDiaryContent(lang === 'zh' ? "（日记本是空的。看来你聊得还不够多，他懒得记。）" : "(Diary is empty. Chat more.)");
+                setDiaryContent(lang === 'zh' ? "（日记本是空的。他懒得记。）" : "(Diary is empty.)");
             }
         } catch (e) {
             console.error(e);
@@ -396,19 +423,28 @@ export default function Home() {
     <div className="relative flex flex-col h-screen bg-[#050505] text-gray-100 overflow-hidden font-sans selection:bg-[#7F5CFF] selection:text-white">
       <div className="absolute top-[-20%] left-0 right-0 h-[500px] bg-gradient-to-b from-[#7F5CFF]/10 to-transparent blur-[100px] pointer-events-none" />
 
-      {/* 1. 语言选择 (最高层) */}
       {showLangSetup && (<div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-6 animate-[fadeIn_0.5s_ease-out]"><div className="mb-10 text-center"><div className="w-20 h-20 bg-[#1a1a1a] rounded-full flex items-center justify-center text-4xl border border-white/10 mx-auto mb-4 shadow-[0_0_30px_rgba(127,92,255,0.3)]">🧬</div><h1 className="text-2xl font-bold text-white tracking-wider mb-2">TOUGHLOVE AI</h1><p className="text-gray-500 text-sm">Choose your language / 选择语言</p></div><div className="flex flex-col gap-4 w-full max-w-xs"><button onClick={() => confirmLanguage('zh')} className={`p-6 rounded-2xl border transition-all flex items-center justify-between group ${lang === 'zh' ? 'bg-white/10 border-[#7F5CFF]' : 'bg-[#111] border-white/10 hover:border-white/30'}`}><div className="text-left"><div className="text-lg font-bold text-white">中文</div><div className="text-xs text-gray-500">Chinese</div></div>{lang === 'zh' && <div className="w-3 h-3 bg-[#7F5CFF] rounded-full shadow-[0_0_10px_#7F5CFF]"></div>}</button><button onClick={() => confirmLanguage('en')} className={`p-6 rounded-2xl border transition-all flex items-center justify-between group ${lang === 'en' ? 'bg-white/10 border-[#7F5CFF]' : 'bg-[#111] border-white/10 hover:border-white/30'}`}><div className="text-left"><div className="text-lg font-bold text-white">English</div><div className="text-xs text-gray-500">English</div></div>{lang === 'en' && <div className="w-3 h-3 bg-[#7F5CFF] rounded-full shadow-[0_0_10px_#7F5CFF]"></div>}</button></div></div>)}
 
-      {/* 2. 昵称弹窗 */}
       {showNameModal && (<div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6 animate-[fadeIn_0.2s_ease-out]"><div className="w-full max-w-xs bg-[#1a1a1a] rounded-3xl border border-white/10 shadow-2xl p-6"><div className="text-center mb-6"><div className="inline-flex p-3 bg-white/5 rounded-full mb-3 text-[#7F5CFF]"><UserPen size={24}/></div><h3 className="text-lg font-bold text-white">{ui.editName}</h3></div><input type="text" value={tempName} onChange={(e) => setTempName(e.target.value)} placeholder={ui.namePlaceholder} className="w-full bg-[#111] border border-white/10 rounded-xl px-4 py-3 text-white focus:border-[#7F5CFF] outline-none mb-6 text-center" maxLength={10} /><div className="flex gap-3"><button onClick={() => setShowNameModal(false)} className="flex-1 py-3 rounded-xl bg-white/5 text-gray-400 text-sm hover:bg-white/10 transition-colors">Cancel</button><button onClick={saveUserName} className="flex-1 py-3 rounded-xl bg-[#7F5CFF] text-white font-bold text-sm hover:bg-[#6b4bd6] transition-colors">{ui.nameSave}</button></div></div></div>)}
 
-      {/* 3. 精神档案 */}
       {showProfile && (<div className="absolute inset-0 z-[160] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-[fadeIn_0.3s_ease-out]"><div className="w-full max-w-sm relative"><button onClick={() => setShowProfile(false)} className="absolute -top-12 right-0 p-2 text-gray-400 hover:text-white"><X size={24}/></button><div ref={profileCardRef} className="bg-[#050505] rounded-3xl border border-white/10 overflow-hidden shadow-2xl relative"><div className="h-32 bg-gradient-to-b from-[#7F5CFF]/20 to-transparent flex flex-col items-center justify-center"><div className="w-16 h-16 rounded-full bg-black border border-[#7F5CFF] flex items-center justify-center text-3xl shadow-[0_0_20px_rgba(127,92,255,0.4)]">🧠</div></div><div className="p-6 -mt-8 relative z-10"><h2 className="text-center text-xl font-bold text-white tracking-widest uppercase mb-1">{ui.profileTitle}</h2><p className="text-center text-xs text-gray-500 font-mono mb-6">ID: {getDeviceId().slice(0,8)}...</p>{isProfileLoading ? (<div className="py-10 text-center space-y-3"><div className="w-8 h-8 border-2 border-[#7F5CFF] border-t-transparent rounded-full animate-spin mx-auto"/><p className="text-xs text-gray-500 animate-pulse">{ui.analyzing}</p></div>) : (<div className="space-y-6"><div><div className="text-[10px] font-bold text-gray-600 uppercase mb-2 tracking-wider">{ui.tagsTitle}</div><div className="flex flex-wrap gap-2">{profileData?.tags && profileData.tags.length > 0 ? (profileData.tags.map((tag, i) => (<span key={i} className="px-3 py-1.5 rounded-md bg-[#1a1a1a] border border-white/10 text-xs text-gray-300">#{tag}</span>))) : (<span className="text-xs text-gray-600 italic">No data yet...</span>)}</div></div><div className="bg-[#111] p-4 rounded-xl border-l-2 border-[#7F5CFF] relative"><div className="absolute -top-3 left-3 bg-[#050505] px-1 text-[10px] font-bold text-[#7F5CFF]">{ui.diagnosisTitle}</div><p className="text-sm text-gray-300 leading-relaxed italic font-serif">"{profileData?.diagnosis}"</p></div><div className="text-center text-[9px] text-gray-700 pt-4 border-t border-white/5">GENERATED BY TOUGHLOVE AI</div></div>)}</div></div>{!isProfileLoading && (<button onClick={downloadProfileCard} disabled={isGeneratingImg} className="w-full mt-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-sm flex items-center justify-center gap-2 transition-colors">{isGeneratingImg ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/> : <ImageIcon size={16} />}{ui.saveCard}</button>)}</div></div>)}
 
-      {/* 4. 日记本 */}
-      {showDiary && (<div className="absolute inset-0 z-[160] flex items-center justify-center bg-black/90 backdrop-blur-md p-6 animate-[fadeIn_0.3s_ease-out]"><div className="w-full max-w-sm bg-[#f5f5f0] text-[#1a1a1a] rounded-xl shadow-2xl relative overflow-hidden transform rotate-1"><div className="h-8 bg-red-800/10 border-b border-red-800/20 flex items-center px-4 gap-2"><div className="w-2 h-2 rounded-full bg-red-800/30"></div><div className="w-2 h-2 rounded-full bg-red-800/30"></div><div className="w-2 h-2 rounded-full bg-red-800/30"></div></div><button onClick={() => setShowDiary(false)} className="absolute top-2 right-2 p-1 text-gray-400 hover:text-black z-10"><X size={20}/></button><div className="p-6 pt-4 min-h-[300px] flex flex-col"><div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 border-b border-gray-300 pb-2 flex justify-between items-center"><span>{new Date().toLocaleDateString()}</span><span className="text-[#7F5CFF]">{currentP.name}'s Note</span></div><div className="flex-1 font-serif text-sm leading-7 text-gray-800 whitespace-pre-line relative"><div className="absolute inset-0 pointer-events-none opacity-10 bg-[url('https://www.transparenttextures.com/patterns/notebook.png')]"></div>{isDiaryLoading ? (<div className="flex flex-col items-center justify-center h-40 gap-3 opacity-50"><div className="w-6 h-6 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"/><span className="text-xs">Thinking...</span></div>) : (<Typewriter content={diaryContent} isThinking={false} />)}</div><div className="mt-6 pt-4 border-t border-gray-300 text-center"><p className="text-[10px] text-gray-400 italic">Confidential. Do not share.</p></div></div></div></div>)}
+      {showDiary && (
+        <div className="absolute inset-0 z-[160] flex items-center justify-center bg-black/90 backdrop-blur-md p-6 animate-[fadeIn_0.3s_ease-out]">
+          <div className="w-full max-w-sm bg-[#f5f5f0] text-[#1a1a1a] rounded-xl shadow-2xl relative overflow-hidden transform rotate-1">
+            <div className="h-8 bg-red-800/10 border-b border-red-800/20 flex items-center px-4 gap-2">
+                <div className="w-2 h-2 rounded-full bg-red-800/30"></div><div className="w-2 h-2 rounded-full bg-red-800/30"></div><div className="w-2 h-2 rounded-full bg-red-800/30"></div>
+            </div>
+            <button onClick={() => setShowDiary(false)} className="absolute top-2 right-2 p-1 text-gray-400 hover:text-black z-10"><X size={20}/></button>
+            <div className="p-6 pt-4 min-h-[300px] flex flex-col">
+                <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 border-b border-gray-300 pb-2 flex justify-between items-center"><span>{new Date().toLocaleDateString()}</span><span className="text-[#7F5CFF]">{currentP.name}'s Note</span></div>
+                <div className="flex-1 font-serif text-sm leading-7 text-gray-800 whitespace-pre-line relative"><div className="absolute inset-0 pointer-events-none opacity-10 bg-[url('https://www.transparenttextures.com/patterns/notebook.png')]"></div>{isDiaryLoading ? (<div className="flex flex-col items-center justify-center h-40 gap-3 opacity-50"><div className="w-6 h-6 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"/><span className="text-xs">Thinking...</span></div>) : (<Typewriter content={diaryContent} isThinking={false} />)}</div>
+                <div className="mt-6 pt-4 border-t border-gray-300 text-center"><p className="text-[10px] text-gray-400 italic">Confidential. Do not share.</p></div>
+            </div>
+          </div>
+        </div>
+      )}
 
-      {/* 5. Selection View */}
       {view === 'selection' && (
         <div className="z-10 flex flex-col h-full w-full max-w-4xl mx-auto p-6 animate-[fadeIn_0.5s_ease-out]">
           <div className="flex justify-between items-center mb-8"><h1 className="text-2xl font-bold tracking-wider">{ui.selectPersona}</h1><button onClick={toggleLanguage} className="p-2 text-gray-400 hover:text-white flex items-center gap-1"><Languages size={18} /> <span className="text-xs font-bold uppercase">{lang}</span></button></div>
@@ -416,23 +452,29 @@ export default function Home() {
         </div>
       )}
 
-      {/* 6. Chat View */}
       {view === 'chat' && (
         <div className={`z-10 flex flex-col h-full w-full max-w-lg mx-auto backdrop-blur-sm border-x shadow-2xl relative animate-[slideUp_0.3s_ease-out] ${levelInfo.bgClass} ${levelInfo.borderClass} ${levelInfo.glowClass} transition-all duration-1000`} style={levelInfo.customStyle}>
           <header className="flex-none flex items-center justify-between px-6 py-3 bg-[#0a0a0a]/60 backdrop-blur-md sticky top-0 z-20 border-b border-white/5 relative">
-            <button onClick={backToSelection} className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors group"><div className="p-2 bg-white/5 rounded-full group-hover:bg-[#7F5CFF] transition-colors"><Users size={16} className="group-hover:text-white" /></div></button>
-            <div className="flex flex-col items-center cursor-pointer group" onClick={handleExport} title={ui.export}><h1 className="font-bold text-sm tracking-wider text-white flex items-center gap-2">{currentP.avatar} {currentP.name}<span className={`text-[9px] px-1.5 py-0.5 rounded bg-white/10 border border-white/10 ${levelInfo.barColor.replace('bg-', 'text-')} flex items-center gap-1`}>{levelInfo.icon} Lv.{levelInfo.level}</span></h1><p className={`text-[10px] font-medium opacity-70 tracking-wide ${currentP.color} group-hover:underline`}>{currentP.title[lang]}</p></div>
+            <button onClick={backToSelection} className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors group">
+              <div className="p-2 bg-white/5 rounded-full group-hover:bg-[#7F5CFF] transition-colors"><Users size={16} className="group-hover:text-white" /></div>
+            </button>
+            <div className="flex flex-col items-center cursor-pointer group" onClick={handleExport} title={ui.export}>
+              <h1 className="font-bold text-sm tracking-wider text-white flex items-center gap-2">{currentP.avatar} {currentP.name}<span className={`text-[9px] px-1.5 py-0.5 rounded bg-white/10 border border-white/10 ${levelInfo.barColor.replace('bg-', 'text-')} flex items-center gap-1`}>{levelInfo.icon} Lv.{levelInfo.level}</span></h1>
+              <p className={`text-[10px] font-medium opacity-70 tracking-wide ${currentP.color} group-hover:underline`}>{currentP.title[lang]}</p>
+            </div>
             <div className="flex items-center gap-2 relative">
               <div className="relative"><button onClick={handleOpenDiary} className={`p-2 rounded-full transition-all duration-300 group relative ${hasNewDiary ? 'text-white bg-white/10' : 'text-gray-400 hover:text-white'}`}><Book size={20} className={hasNewDiary ? "animate-pulse" : ""} />{hasNewDiary && (<span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border border-[#0a0a0a]"></span>)}</button>{hasNewDiary && (<div onClick={handleOpenDiary} className="absolute top-12 right-[-10px] z-50 animate-bounce cursor-pointer"><div className="absolute -top-1 right-4 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[8px] border-b-[#7F5CFF]"></div><div className="bg-[#7F5CFF] text-white text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-[0_0_15px_rgba(127,92,255,0.6)] whitespace-nowrap border border-white/20">{lang === 'zh' ? '解锁新日记 🔓' : 'New Secret Log 🔓'}</div></div>)}</div>
               <button onClick={fetchDailyQuote} className="p-2 text-gray-400 hover:text-[#7F5CFF] relative"><Calendar size={20} /><span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span></button>
               <button onClick={() => setShowMenu(!showMenu)} className="p-2 text-gray-400 hover:text-white relative"><MoreVertical size={20} /><span className="absolute top-1 right-1 w-2 h-2 bg-[#7F5CFF] rounded-full"></span></button>
-              {showMenu && (<><div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)}></div><div className="absolute top-12 right-0 mt-2 w-48 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden animate-[fadeIn_0.2s_ease-out] flex flex-col p-1"><button onClick={handleEditName} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><UserPen size={16} className="text-[#7F5CFF]" /> {userName || ui.editName}</button><button onClick={handleOpenProfile} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Brain size={16} /> {ui.profile}</button><div className="h-[1px] bg-white/5 my-1 mx-2"></div><button onClick={handleInstall} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Download size={16} /> {ui.install}</button><button onClick={handleExport} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><FileText size={16} /> {ui.export}</button><button onClick={toggleLanguage} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Languages size={16} /> {ui.language}</button><button onClick={handleDonate} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-yellow-400 hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Coffee size={16} /> Buy me a coffee</button><div className="h-[1px] bg-white/5 my-1 mx-2"></div><button onClick={handleReset} className="flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors w-full text-left"><RotateCcw size={16} /> {ui.reset}</button></div></>)}
+              {showMenu && (<><div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)}></div><div className="absolute top-12 right-0 mt-2 w-48 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden animate-[fadeIn_0.2s_ease-out] flex flex-col p-1"><button onClick={handleEditName} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><UserPen size={16} className="text-[#7F5CFF]" /> {userName || ui.editName}</button><button onClick={handleOpenProfile} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Brain size={16} /> {ui.profile}</button><div className="h-[1px] bg-white/5 my-1 mx-2"></div><button onClick={handleInstall} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Download size={16} /> {ui.install}</button><button onClick={handleExport} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><FileText size={16} /> {ui.export}</button><button onClick={toggleLanguage} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Languages size={16} /> {ui.language}</button><button onClick={handleDonate} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-yellow-400 hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Coffee size={16} /> Buy me a coffee</button><div className="h-[1px] bg-white/5 my-1 mx-2"></div><button onClick={handleInstall} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><div className="flex flex-col gap-1 w-full"><div className="flex items-center gap-3"><Download size={16} className="text-[#7F5CFF]" /> {ui.install}</div>{showInstallModal && <div className="text-[10px] text-gray-500 whitespace-pre-wrap mt-1 pl-7">{lang === 'zh' ? (navigator.userAgent.includes('iPhone') ? `${ui.iosStep1}\n${ui.iosStep2}` : `${ui.androidStep1}\n${ui.androidStep2}`) : (navigator.userAgent.includes('iPhone') ? `${ui.iosStep1}\n${ui.iosStep2}` : `${ui.androidStep1}\n${ui.androidStep2}`)}</div>}</div></button><button onClick={handleReset} className="flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors w-full text-left"><RotateCcw size={16} /> {ui.reset}</button></div></>)}
             </div>
             <div className="absolute bottom-0 left-0 w-full h-[2px] bg-white/5"><div className={`h-full ${levelInfo.barColor} shadow-[0_0_10px_currentColor] transition-all duration-500`} style={{ width: `${levelInfo.level === 3 ? 100 : progressPercent}%` }}/></div>
           </header>
 
           <main className="flex-1 overflow-y-auto px-4 py-6 space-y-6 scroll-smooth">
-            {messages.length === 0 && (<div className="h-full flex flex-col items-center justify-center text-center space-y-6 opacity-60"><div className={`w-20 h-20 rounded-full bg-gradient-to-b from-white/5 to-transparent flex items-center justify-center text-4xl mb-2 border border-white/5 shadow-[0_0_30px_rgba(0,0,0,0.5)] animate-pulse`}>{currentP.avatar}</div><div className="space-y-2 px-8"><p className="text-white/80 text-lg font-light">{lang === 'zh' ? '我是' : 'I am'} <span className={currentP.color}>{currentP.name}</span>.</p><p className="text-sm text-gray-400 italic font-serif">{currentP.slogan[lang]}</p></div></div>)}
+            {messages.length === 0 && (
+              <div className="h-full flex flex-col items-center justify-center text-center space-y-6 opacity-60"><div className={`w-20 h-20 rounded-full bg-gradient-to-b from-white/5 to-transparent flex items-center justify-center text-4xl mb-2 border border-white/5 shadow-[0_0_30px_rgba(0,0,0,0.5)] animate-pulse`}>{currentP.avatar}</div><div className="space-y-2 px-8"><p className="text-white/80 text-lg font-light">{lang === 'zh' ? '我是' : 'I am'} <span className={currentP.color}>{currentP.name}</span>.</p><p className="text-sm text-gray-400 italic font-serif">{currentP.slogan[lang]}</p></div></div>
+            )}
             {messages.map((msg, msgIdx) => {
               const isLastMessage = msgIdx === messages.length - 1;
               const isAI = msg.role !== 'user';
@@ -453,7 +495,9 @@ export default function Home() {
                 </div>
               );
             })}
-            {isLoading && messages.length > 0 && messages[messages.length - 1].role === 'user' && (<div className="flex justify-start w-full animate-pulse"><div className="flex items-center gap-2 bg-[#1a1a1a] px-4 py-3 rounded-2xl rounded-tl-sm border border-white/5"><span className="text-xs text-gray-500">{ui.loading}</span></div></div>)}
+            {isLoading && messages.length > 0 && messages[messages.length - 1].role === 'user' && (
+               <div className="flex justify-start w-full animate-pulse"><div className="flex items-center gap-2 bg-[#1a1a1a] px-4 py-3 rounded-2xl rounded-tl-sm border border-white/5"><span className="text-xs text-gray-500">{ui.loading}</span></div></div>
+            )}
             <div ref={messagesEndRef} className="h-4" />
           </main>
 
@@ -465,33 +509,7 @@ export default function Home() {
           </footer>
           
           {showQuote && (<div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-6 animate-[fadeIn_0.2s_ease-out]"><div className="w-full max-w-xs relative"><button onClick={() => setShowQuote(false)} className="absolute -top-10 right-0 p-2 text-white/50 hover:text-white"><X size={24} /></button><div ref={quoteCardRef} className="bg-[#111] rounded-3xl border border-white/10 shadow-2xl overflow-hidden relative animate-[slideUp_0.4s_cubic-bezier(0.16,1,0.3,1)]"><div className={`absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-transparent via-${currentP.color.split('-')[1]}-500 to-transparent opacity-50`}></div><div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div><div className="p-8 flex flex-col items-center text-center space-y-6"><div className="text-xs font-black text-[#7F5CFF] tracking-[0.2em] uppercase flex items-center gap-2"><Sparkles size={12}/> {ui.dailyToxic}</div>{isQuoteLoading ? (<div className="py-10 space-y-4"><div className="w-12 h-12 border-2 border-[#7F5CFF] border-t-transparent rounded-full animate-spin mx-auto"/><p className="text-gray-500 text-xs animate-pulse">{ui.makingPoison}</p></div>) : (<><div className="relative"><div className="text-5xl my-4 grayscale contrast-125">{currentP.avatar}</div></div><p className="text-xl font-bold leading-relaxed text-gray-100 font-serif min-h-[80px] flex items-center justify-center">“{quoteData?.content}”</p><div className="w-full h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent"></div><div className="flex flex-col items-center gap-1"><div className={`text-xs font-bold ${currentP.color} uppercase tracking-widest`}>{currentP.name}</div><div className="text-[10px] text-gray-600">ToughLove AI · {new Date().toLocaleDateString()}</div></div></>)}</div></div>{!isQuoteLoading && (<div className="mt-4 flex gap-3"><button onClick={downloadQuoteCard} disabled={isGeneratingImg} className="flex-1 py-3 rounded-xl bg-[#7F5CFF] text-white font-bold text-sm shadow-lg shadow-purple-900/20 flex items-center justify-center gap-2 active:scale-95 transition-transform">{isGeneratingImg ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/> : <ImageIcon size={16} />}{isGeneratingImg ? "生成中..." : "保存海报"}</button></div>)}</div></div>)}
-          {showInstallModal && (<div className="absolute inset-0 z-50 flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-[fadeIn_0.2s_ease-out]"><div className="absolute inset-0" onClick={() => setShowInstallModal(false)} /><div className="w-full max-w-sm bg-[#1a1a1a] rounded-t-3xl sm:rounded-3xl border border-white/10 shadow-2xl overflow-hidden relative z-10 animate-[slideUp_0.3s_ease-out]"><button onClick={() => setShowInstallModal(false)} className="absolute top-4 right-4 p-2 text-gray-400 hover:text-white"><X size={20} /></button><div className="p-6 space-y-6"><div className="flex items-center gap-4"><div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#7F5CFF] to-black flex items-center justify-center text-2xl border border-white/10">🥀</div><div><h3 className="text-lg font-bold text-white">安装“毒伴”</h3><p className="text-xs text-gray-400">像 App 一样常驻你的桌面</p></div></div><div className="space-y-4 text-sm text-gray-300"><div className="bg-white/5 p-4 rounded-xl border border-white/5"><p className="font-bold text-[#7F5CFF] mb-2">iOS</p><ol className="list-decimal list-inside space-y-2 opacity-80"><li>点击底部的 <span className="inline-block align-middle"><Share2 size={14}/></span> <strong>分享</strong></li><li>选择 <strong>添加到主屏幕</strong></li></ol></div></div></div></div></div>)}
-        </div>
-      )}
-
-      {/* 🔥 修复：把更新弹窗代码移到最外层，确保层级正确且不会被 view 状态阻挡 */}
-      {showUpdateModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-6 animate-[fadeIn_0.3s_ease-out]">
-          <div className="w-full max-w-sm bg-gradient-to-br from-[#111] to-[#0a0a0a] rounded-3xl border border-indigo-500/30 shadow-[0_0_50px_rgba(99,102,241,0.15)] overflow-hidden relative animate-[scaleIn_0.3s_cubic-bezier(0.16,1,0.3,1)]">
-            <button onClick={dismissUpdate} className="absolute top-4 right-4 p-2 text-gray-500 hover:text-white z-10 transition-colors"><X size={20} /></button>
-            <div className="p-8 flex flex-col items-center text-center relative">
-              <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-indigo-900/20 to-transparent pointer-events-none"></div>
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-bold uppercase tracking-wider mb-6">
-                <Sparkles size={12} /> {ui.updateTitle}
-              </div>
-              <div className="relative w-20 h-20 mb-6">
-                 <div className="w-full h-full rounded-full bg-[#151515] flex items-center justify-center text-5xl border border-white/10 shadow-xl relative z-10">👁️</div>
-                 <div className="absolute inset-0 bg-indigo-500 blur-xl opacity-30 animate-pulse"></div>
-              </div>
-              <h3 className="text-xl font-bold text-white mb-3">{ui.updateDesc}</h3>
-              <p className="text-sm text-gray-400 leading-relaxed whitespace-pre-line">{ui.updateContent}</p>
-            </div>
-            <div className="p-6 pt-0">
-              <button onClick={handleTryNewFeature} className="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition-all shadow-lg shadow-indigo-900/20 flex items-center justify-center gap-2 group">
-                {ui.tryNow}<span className="group-hover:translate-x-1 transition-transform">→</span>
-              </button>
-            </div>
-          </div>
+          {showUpdateModal && (<div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-6 animate-[fadeIn_0.3s_ease-out]"><div className="w-full max-w-sm bg-gradient-to-br from-[#111] to-[#0a0a0a] rounded-3xl border border-indigo-500/30 shadow-[0_0_50px_rgba(99,102,241,0.15)] overflow-hidden relative animate-[scaleIn_0.3s_cubic-bezier(0.16,1,0.3,1)]"><button onClick={dismissUpdate} className="absolute top-4 right-4 p-2 text-gray-500 hover:text-white z-10 transition-colors"><X size={20} /></button><div className="p-8 flex flex-col items-center text-center relative"><div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-indigo-900/20 to-transparent pointer-events-none"></div><div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-bold uppercase tracking-wider mb-6"><Sparkles size={12} /> {ui.updateTitle}</div><div className="relative w-20 h-20 mb-6"><div className="w-full h-full rounded-full bg-[#151515] flex items-center justify-center text-5xl border border-white/10 shadow-xl relative z-10">👁️</div><div className="absolute inset-0 bg-indigo-500 blur-xl opacity-30 animate-pulse"></div></div><h3 className="text-xl font-bold text-white mb-3">{ui.updateDesc}</h3><p className="text-sm text-gray-400 leading-relaxed whitespace-pre-line">{ui.updateContent}</p></div><div className="p-6 pt-0"><button onClick={handleTryNewFeature} className="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition-all shadow-lg shadow-indigo-900/20 flex items-center justify-center gap-2 group">{ui.tryNow}<span className="group-hover:translate-x-1 transition-transform">→</span></button></div></div></div>)}
         </div>
       )}
     </div>
