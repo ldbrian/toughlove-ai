@@ -45,13 +45,15 @@ export const UI_TEXT = {
     diaryPlaceholder: "Ash 正在偷偷写关于你的坏话...",
     readDiary: "偷看日记",
     
-    // 👇 新增：详细安装引导
-    installTitle: "安装到桌面",
-    installDesc: "获得全屏沉浸体验，且更稳定。",
-    iosStep1: "1. 点击浏览器底部的分享按钮",
-    iosStep2: "2. 下滑找到“添加到主屏幕”",
-    androidStep1: "1. 点击右上角的菜单 (···)",
-    androidStep2: "2. 选择“安装应用”或“添加到主屏幕”"
+    // 👇 新增：详细安装引导 (区分系统)
+    installGuideTitle: "安装到桌面",
+    installGuideDesc: "像原生 App 一样全屏运行，体验更佳。",
+    iosStep1: "点击浏览器底部的“分享”按钮",
+    iosStep2: "下滑找到并点击“添加到主屏幕”",
+    iosStep3: "点击右上角的“添加”即可",
+    androidStep1: "点击浏览器右上角的菜单 (···)",
+    androidStep2: "选择“安装应用”或“添加到主屏幕”",
+    androidStep3: "点击“安装”即可"
   },
   en: {
     placeholder: "Say something human...",
@@ -96,13 +98,15 @@ export const UI_TEXT = {
     diaryPlaceholder: "Ash is writing trash about you...",
     readDiary: "Peek Diary",
 
-    // 👇 New: Detailed Install Guide
-    installTitle: "Install App",
-    installDesc: "For full-screen immersive experience.",
-    iosStep1: "1. Tap the 'Share' button at the bottom",
-    iosStep2: "2. Scroll down and tap 'Add to Home Screen'",
-    androidStep1: "1. Tap the menu (···) at the top right",
-    androidStep2: "2. Select 'Install App' or 'Add to Home Screen'"
+    // 👇 New: Install Guide
+    installGuideTitle: "Install App",
+    installGuideDesc: "For full-screen immersive experience.",
+    iosStep1: "Tap the 'Share' button at the bottom",
+    iosStep2: "Scroll down & tap 'Add to Home Screen'",
+    iosStep3: "Tap 'Add' at the top right",
+    androidStep1: "Tap the menu (···) at the top right",
+    androidStep2: "Select 'Install App' or 'Add to Home Screen'",
+    androidStep3: "Tap 'Install' to finish"
   }
 };
 
