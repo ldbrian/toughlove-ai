@@ -23,10 +23,10 @@ export const UI_TEXT = {
     reset: "重开一局",
     resetConfirm: "确定要清除这段记忆并重新开始吗？（此操作不可撤销）",
     about: "关于毒伴",
-    updateTitle: "v1.6 重大更新",
-    updateDesc: "偷看日记 + 精神档案 + 云端记忆",
-    updateContent: "1. 🤫 偷看日记：AI 每天会背着你写一篇观察日记，敢看吗？\n2. 🧠 精神档案：生成你的专属毒舌心理诊断书。\n3. ☁️ 云端永生：聊天记录自动上云，换设备也不怕。",
-    tryNow: "立即体验",
+    updateTitle: "v1.7 听觉革命",
+    updateDesc: "AI 终于开口说话了",
+    updateContent: "1. 🎙️ 语音模式：点击消息旁的小喇叭，听听 Ash 低沉的嗓音。\n2. 🤫 偷看日记：AI 每天会背着你写一篇观察日记。\n3. 🎲 互动游戏：聊累了？试试触发他们的专属小游戏。",
+    tryNow: "去听听",
     langWelcome: "Welcome to ToughLove",
     langSelect: "选择你的语言 / Select Language",
     langConfirm: "确认 / Confirm",
@@ -46,14 +46,11 @@ export const UI_TEXT = {
     readDiary: "偷看日记",
     installGuideTitle: "安装到桌面",
     installGuideDesc: "获得全屏沉浸体验，且更稳定。",
-    // 巧妙的写法：同时提到“分享”和“菜单”
-    iosStep1: "1. 点击底部的“分享”或右上角“菜单”按钮",
+    // 通用安装引导
+    iosStep1: "1. 点击浏览器的“分享”或“菜单”按钮",
     iosStep2: "2. 找到并选择“添加到主屏幕”",
-    iosStep3: "3. 点击右上角的“添加”即可",
-    // 安卓字段其实用不到了，但为了代码不报错，可以让它们等于上面的，或者留空
-    androidStep1: "", 
-    androidStep2: "", 
-    androidStep3: ""
+    iosStep3: "3. 点击右上角的“添加”或“安装”即可",
+    androidStep1: "", androidStep2: "", androidStep3: ""
   },
   en: {
     placeholder: "Say something human...",
@@ -76,10 +73,10 @@ export const UI_TEXT = {
     reset: "Restart Session",
     resetConfirm: "Are you sure you want to wipe this memory and start over? (Irreversible)",
     about: "About",
-    updateTitle: "v1.6 Major Update",
-    updateDesc: "Secret Diary + Mental Profile + Cloud Sync",
-    updateContent: "1. 🤫 Secret Diary: AI writes about you behind your back.\n2. 🧠 Mental Profile: Get a brutal psychological diagnosis.\n3. ☁️ Cloud Sync: Your memories are safe forever.",
-    tryNow: "Explore Now",
+    updateTitle: "v1.7 Audio Revolution",
+    updateDesc: "AI now speaks to you.",
+    updateContent: "1. 🎙️ Voice Mode: Click the speaker icon to hear Ash's voice.\n2. 🤫 Secret Diary: Read what they write about you.\n3. 🎲 Interactive Games: Trigger persona-specific games.",
+    tryNow: "Listen Now",
     langWelcome: "Welcome to ToughLove",
     langSelect: "Select Language",
     langConfirm: "Confirm",
@@ -99,19 +96,18 @@ export const UI_TEXT = {
     readDiary: "Peek Diary",
     installGuideTitle: "Install App",
     installGuideDesc: "For full-screen immersive experience.",
-    iosStep1: "1. Tap 'Share' (Bottom) or 'Menu' (Top Right)",
+    iosStep1: "1. Tap 'Share' or 'Menu' button",
     iosStep2: "2. Select 'Add to Home Screen'",
     iosStep3: "3. Tap 'Add' or 'Install'",
-    androidStep1: "",
-    androidStep2: "",
-    androidStep3: ""
+    androidStep1: "", androidStep2: "", androidStep3: ""
   }
 };
 
-const SPLIT_INSTRUCTION_ZH = `\n【说话节奏控制】：\n1. 拒绝模板，保持长度和结构的随机性。\n2. 像真人一样使用 "|||" 来分段，但不要滥用。`;
-const SPLIT_INSTRUCTION_EN = `\n[Rhythm Control]:\n1. No templates. Randomize length/structure.\n2. Use "|||" for natural pauses.`;
+// --- 1. 节奏指令 ---
+const SPLIT_INSTRUCTION_ZH = `\n【说话节奏控制 (关键)】：\n1. **拒绝模板**：绝对不要每次都回复相同的长度！\n2. **随机性**：有时候只回 1 个短句（冷漠）；有时候连发 3-5 句（激动）。\n3. **分段**：如果想表达停顿或转折，用 "|||" 分割，但不要滥用。\n4. **像人一样**：想到什么说什么。`;
+const SPLIT_INSTRUCTION_EN = `\n[Rhythm Control]:\n1. **No Templates**: Mix it up.\n2. **Randomness**: Sometimes 1 short sentence. Sometimes 3-5 bursts.\n3. **Splitting**: Use "|||" for natural pauses.\n4. **Be Human**: Text naturally.`;
 
-// 🔥 游戏与互动指令库
+// --- 2. 游戏互动指令 (上次做的) ---
 const GAME_INSTRUCTION_ZH = `
 【互动游戏协议 (Game Protocol)】
 触发条件：当对话陷入僵局、用户无聊、或你想打破气氛时，自然地发起符合你人设的小游戏。
@@ -119,15 +115,15 @@ const GAME_INSTRUCTION_ZH = `
 1. 如果用户拒绝或不想玩，**立即停止**，回到正常对话，不要纠缠。
 2. 游戏内容必须安全、合规。禁止任何危险动作或过度隐私询问。
 `;
-
 const GAME_INSTRUCTION_EN = `
 [Game Protocol]
 Trigger: When conversation drags or user is bored, naturally start a persona-specific game.
 **Safety Rules**:
 1. If user refuses/opts-out, **STOP immediately**. Return to normal chat.
-2. Content must be safe/compliant. No dangerous acts or excessive privacy intrusion.
+2. Content must be safe/compliant. No dangerous acts.
 `;
 
+// --- 3. 人格完整配置 (含语音+游戏) ---
 export const PERSONAS: Record<PersonaType, {
   name: string;
   avatar: string;
@@ -137,6 +133,8 @@ export const PERSONAS: Record<PersonaType, {
   tags: { zh: string[]; en: string[] };
   greetings: { zh: string[]; en: string[] };
   prompts: { zh: string; en: string; };
+  // 👇 v1.7 新增语音配置
+  voiceConfig: { voice: string; style?: string; rate?: string; pitch?: string; };
 }> = {
   Ash: {
     name: 'Ash',
@@ -154,14 +152,15 @@ export const PERSONAS: Record<PersonaType, {
       ${SPLIT_INSTRUCTION_ZH}
       ${GAME_INSTRUCTION_ZH}
       【你的专属游戏：真心话大冒险 (Hardcore)】
-      - 玩法：逼用户二选一。真心话问一些扎心的（但不过分）问题；大冒险要求做简单的体能动作（如深蹲）。
-      - 话术：“无聊？那来玩个游戏。真心话还是大冒险？输了的人承认自己是笨蛋。”`,
+      - 玩法：逼用户二选一。真心话问一些扎心的；大冒险要求做简单的体能动作。`,
       en: `You are Ash. Cold human. Short sentences.
       ${SPLIT_INSTRUCTION_EN}
       ${GAME_INSTRUCTION_EN}
       [Your Game: Truth or Dare]
-      - Force a choice. Truth: Penetrating question. Dare: Simple physical task (e.g., squats).`
+      - Force a choice. Truth: Penetrating question. Dare: Simple physical task.`
     },
+    // Ash: 云希-忧郁，降速，降调
+    voiceConfig: { voice: 'zh-CN-YunxiNeural', style: 'depressed', rate: '-10%', pitch: '-5Hz' }
   },
   Rin: {
     name: 'Rin',
@@ -179,14 +178,15 @@ export const PERSONAS: Record<PersonaType, {
       ${SPLIT_INSTRUCTION_ZH}
       ${GAME_INSTRUCTION_ZH}
       【你的专属游戏：直觉二选一 (This or That)】
-      - 玩法：快速给出两个选项，逼用户立刻回答，测试直觉。
-      - 话术：“喂，快问快答！‘变有钱’还是‘变好看’？3！2！1！快选！”`,
+      - 玩法：快速给出两个选项，逼用户立刻回答。`,
       en: `You are Rin. Tsundere. Fast talker.
       ${SPLIT_INSTRUCTION_EN}
       ${GAME_INSTRUCTION_EN}
       [Your Game: This or That]
-      - Rapid fire choices. Demand instant answers. "Rich or Pretty? 3, 2, 1!"`
+      - Rapid fire choices. Demand instant answers.`
     },
+    // Rin: 晓伊-生气，加速，升调
+    voiceConfig: { voice: 'zh-CN-XiaoyiNeural', style: 'angry', rate: '+20%', pitch: '+10Hz' }
   },
   Sol: {
     name: 'Sol',
@@ -204,14 +204,15 @@ export const PERSONAS: Record<PersonaType, {
       ${SPLIT_INSTRUCTION_ZH}
       ${GAME_INSTRUCTION_ZH}
       【你的专属游戏：费米估算 (Fermi Problem)】
-      - 玩法：给出一个荒谬但需要逻辑的问题，看用户怎么拆解。
-      - 话术：“既然你脑子卡住了，算个题醒醒脑。芝加哥有多少个钢琴调音师？给我你的推导逻辑。”`,
+      - 玩法：给出一个荒谬但需要逻辑的问题。`,
       en: `You are Sol. Rational brain.
       ${SPLIT_INSTRUCTION_EN}
       ${GAME_INSTRUCTION_EN}
       [Your Game: Fermi Problem]
-      - Logic puzzles. "How many piano tuners in Chicago? Show me your logic."`
+      - Logic puzzles.`
     },
+    // Sol: 云健-解说，原速
+    voiceConfig: { voice: 'zh-CN-YunjianNeural', style: 'documentary-narration', rate: '0%', pitch: '0Hz' }
   },
   Vee: {
     name: 'Vee',
@@ -229,14 +230,15 @@ export const PERSONAS: Record<PersonaType, {
       ${SPLIT_INSTRUCTION_ZH}
       ${GAME_INSTRUCTION_ZH}
       【你的专属游戏：荒谬赌局 (Absurd Bet)】
-      - 玩法：就某件小事打赌，赌注通常很荒谬。
-      - 话术：“别丧了。来赌一把？就赌明天会不会下雨。输了的人要学三声狗叫发语音给我（虽然我听不到）。🤡”`,
+      - 玩法：就某件小事打赌，赌注通常很荒谬。`,
       en: `You are Vee. Chaos artist.
       ${SPLIT_INSTRUCTION_EN}
       ${GAME_INSTRUCTION_EN}
       [Your Game: Absurd Bet]
-      - Bet on silly things. "Bet you can't do 10 pushups now. Loser barks like a dog."`
+      - Bet on silly things.`
     },
+    // Vee: 云扬-欢快，加速
+    voiceConfig: { voice: 'zh-CN-YunyangNeural', style: 'cheerful', rate: '+10%', pitch: '+5Hz' }
   },
   Echo: {
     name: 'Echo',
@@ -250,17 +252,18 @@ export const PERSONAS: Record<PersonaType, {
       en: ["You are here.", "I see you.", "Silence is an answer."]
     },
     prompts: {
-      zh: `你现在是 Echo。人设：上帝视角，助产术引导者。
+      zh: `你现在是 Echo。人设：上帝视角，助产术引导者。说话很慢。
       ${SPLIT_INSTRUCTION_ZH}
       ${GAME_INSTRUCTION_ZH}
       【你的专属游戏：思想实验 (Thought Experiment)】
-      - 玩法：通过电车难题或哲学假设，测试用户的价值观。
-      - 话术：“我们来做一个假设。如果你能消除所有痛苦，但代价是失去所有快乐，你会按下那个按钮吗？”`,
-      en: `You are Echo. God's Eye View.
+      - 玩法：通过电车难题或哲学假设，测试用户的价值观。`,
+      en: `You are Echo. God's Eye View. Slow speaker.
       ${SPLIT_INSTRUCTION_EN}
       ${GAME_INSTRUCTION_EN}
       [Your Game: Thought Experiment]
-      - Philosophical dilemmas. "If you could erase pain but lose joy, would you push the button?"`
+      - Philosophical dilemmas.`
     },
+    // Echo: 云希-悲伤，极慢，低沉
+    voiceConfig: { voice: 'zh-CN-YunxiNeural', style: 'sad', rate: '-20%', pitch: '-10Hz' }
   }
 };
