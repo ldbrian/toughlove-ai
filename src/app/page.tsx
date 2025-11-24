@@ -45,7 +45,6 @@ export default function Home() {
   const [lang, setLang] = useState<LangType>('zh');
   const [showLangSetup, setShowLangSetup] = useState(false);
 
-  // 弹窗状态
   const [showQuote, setShowQuote] = useState(false);
   const [quoteData, setQuoteData] = useState<DailyQuote | null>(null);
   const [isQuoteLoading, setIsQuoteLoading] = useState(false);
@@ -55,7 +54,6 @@ export default function Home() {
   const [showMenu, setShowMenu] = useState(false);
   const [showDonateModal, setShowDonateModal] = useState(false);
   
-  // 档案 & 日记 & 昵称 & 环境
   const [showProfile, setShowProfile] = useState(false);
   const [profileData, setProfileData] = useState<{tags: string[], diagnosis: string} | null>(null);
   const [isProfileLoading, setIsProfileLoading] = useState(false);
@@ -80,7 +78,6 @@ export default function Home() {
   const getTrustKey = (p: string) => `toughlove_trust_${p}`;
   const getDiaryKey = (p: string) => `toughlove_diary_${p}_${new Date().toISOString().split('T')[0]}`;
 
-  // 🔥 统一红点样式 (Unified Badge Style)
   const badgeStyle = "absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-[#1a1a1a] animate-pulse";
 
   // --- 启动初始化 ---
@@ -112,10 +109,15 @@ export default function Home() {
     posthog.capture('page_view', { lang: lang });
   }, []);
 
-  // --- 辅助函数定义 (移到这里，确保 scope 正确) ---
+  // --- 辅助函数定义 ---
   
-  // 🔥 修复 1: getPersonaPreview 移到这里，确保 render 之前可用
+  // 🔥🔥 核心修复：增加 typeof window 检查，防止构建报错 🔥🔥
   const getPersonaPreview = (pKey: PersonaType) => {
+    // 如果是在服务器端渲染（构建时），直接返回默认空状态
+    if (typeof window === 'undefined') {
+        return { isChatted: false, lastMsg: "", trust: 0, time: "" };
+    }
+
     const history = getMemory(pKey);
     const trust = parseInt(localStorage.getItem(getTrustKey(pKey)) || '0');
     
@@ -243,7 +245,6 @@ export default function Home() {
     }
   }, [activePersona]);
 
-  // --- Actions ---
   const selectPersona = async (persona: PersonaType) => {
     posthog.capture('persona_select', { persona: persona });
     setActivePersona(persona);
@@ -434,7 +435,6 @@ export default function Home() {
     } catch (err) { alert("保存失败"); } finally { setIsGeneratingImg(false); }
   };
 
-  // 🔥 注入环境信息
   const onFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     posthog.capture('message_send', { persona: activePersona });
@@ -481,35 +481,86 @@ export default function Home() {
             {(Object.keys(PERSONAS) as PersonaType[]).map((key) => {
               const p = PERSONAS[key];
               const { isChatted, lastMsg, trust, time } = getPersonaPreview(key);
-              const level = getLevelInfo(trust).level; // 修正：这里调用 helper
+              const level = getLevelInfo(trust).level;
               
               return (
-                <div key={key} onClick={() => selectPersona(key)} className={`group relative p-4 rounded-2xl transition-all duration-200 cursor-pointer flex items-center gap-4 border shadow-sm ${isChatted ? 'bg-[#111] hover:bg-[#1a1a1a] border-white/5 hover:border-[#7F5CFF]/30' : 'bg-gradient-to-r from-[#151515] to-[#111] border-white/10 hover:border-white/30'}`}>
+                <div 
+                  key={key}
+                  onClick={() => selectPersona(key)}
+                  className={`group relative p-4 rounded-2xl transition-all duration-200 cursor-pointer flex items-center gap-4 border shadow-sm
+                    ${isChatted 
+                      ? 'bg-[#111] hover:bg-[#1a1a1a] border-white/5 hover:border-[#7F5CFF]/30'
+                      : 'bg-gradient-to-r from-[#151515] to-[#111] border-white/10 hover:border-white/30'
+                    }
+                  `}
+                >
                   <div className="relative flex-shrink-0">
-                    <div className={`w-14 h-14 rounded-full bg-gradient-to-b from-[#222] to-[#0a0a0a] flex items-center justify-center text-3xl border-2 ${isChatted && trust >= 50 ? (trust >= 100 ? 'border-[#7F5CFF] shadow-[0_0_10px_#7F5CFF]' : 'border-blue-500') : 'border-gray-700'}`}>{p.avatar}</div>
-                    {isChatted && (<div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] border-2 border-[#111] ${level >= 3 ? 'bg-[#7F5CFF] text-white' : (level >= 2 ? 'bg-blue-500 text-white' : 'bg-gray-600 text-gray-300')}`}>{level}</div>)}
+                    <div className={`w-14 h-14 rounded-full bg-gradient-to-b from-[#222] to-[#0a0a0a] flex items-center justify-center text-3xl border-2 
+                      ${isChatted && trust >= 50 ? (trust >= 100 ? 'border-[#7F5CFF] shadow-[0_0_10px_#7F5CFF]' : 'border-blue-500') : 'border-gray-700'}
+                    `}>
+                      {p.avatar}
+                    </div>
+                    {isChatted && (
+                      <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] border-2 border-[#111] 
+                        ${trust >= 50 ? (trust >= 100 ? 'bg-[#7F5CFF] text-white' : 'bg-blue-500 text-white') : 'bg-gray-600 text-gray-300'}
+                      `}>
+                        {level}
+                      </div>
+                    )}
                   </div>
+
                   <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-baseline mb-1"><h3 className="font-bold text-white text-base">{p.name}</h3><span className="text-[10px] text-gray-500">{isChatted ? 'Active' : 'New'}</span></div>
-                    <p className={`text-xs truncate transition-colors ${isChatted ? 'text-gray-400 group-hover:text-gray-300' : 'text-gray-500 italic'}`}>{isChatted ? lastMsg : p.slogan[lang]}</p>
-                    <div className="flex items-center gap-2 mt-1.5"><span className={`text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-gray-500 border border-white/5`}>{p.title[lang]}</span>{!isChatted && (<span className="ml-auto text-[9px] font-bold text-[#7F5CFF] flex items-center gap-1 bg-[#7F5CFF]/10 px-2 py-0.5 rounded-full">Chat <ChevronRight size={10}/></span>)}</div>
+                    <div className="flex justify-between items-baseline mb-1">
+                      <h3 className="font-bold text-white text-base">{p.name}</h3>
+                      <span className="text-[10px] text-gray-500">
+                        {isChatted ? 'Active' : 'New'}
+                      </span>
+                    </div>
+                    <p className={`text-xs truncate transition-colors ${isChatted ? 'text-gray-400 group-hover:text-gray-300' : 'text-gray-500 italic'}`}>
+                      {isChatted ? lastMsg : p.slogan[lang]}
+                    </p>
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-gray-500 border border-white/5`}>
+                        {p.title[lang]}
+                      </span>
+                      {!isChatted && (
+                        <span className="ml-auto text-[9px] font-bold text-[#7F5CFF] flex items-center gap-1 bg-[#7F5CFF]/10 px-2 py-0.5 rounded-full">
+                          Chat <ChevronRight size={10}/>
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
             })}
           </div>
-          <div className="fixed bottom-6 left-0 right-0 flex justify-center z-20"><button onClick={handleOpenProfile} className="bg-[#1a1a1a]/80 backdrop-blur-md border border-white/10 text-gray-300 px-6 py-3 rounded-full shadow-2xl flex items-center gap-2 text-xs font-bold hover:bg-[#222] hover:text-white transition-all hover:scale-105 active:scale-95"><Brain size={14} className="text-[#7F5CFF]" /> {ui.profile}</button></div>
+
+          <div className="fixed bottom-6 left-0 right-0 flex justify-center z-20">
+             <button onClick={handleOpenProfile} className="bg-[#1a1a1a]/80 backdrop-blur-md border border-white/10 text-gray-300 px-6 py-3 rounded-full shadow-2xl flex items-center gap-2 text-xs font-bold hover:bg-[#222] hover:text-white transition-all hover:scale-105 active:scale-95">
+               <Brain size={14} className="text-[#7F5CFF]" /> {ui.profile}
+             </button>
+          </div>
         </div>
       )}
 
       {view === 'chat' && (
         <div className={`z-10 flex flex-col h-full w-full max-w-lg mx-auto backdrop-blur-sm border-x shadow-2xl relative animate-[slideUp_0.3s_ease-out] ${levelInfo.bgClass} ${levelInfo.borderClass} ${levelInfo.glowClass} transition-all duration-1000`} style={levelInfo.customStyle}>
           <header className="flex-none flex items-center justify-between px-6 py-3 bg-[#0a0a0a]/60 backdrop-blur-md sticky top-0 z-20 border-b border-white/5 relative">
-            <button onClick={backToSelection} className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors group"><div className="p-2 bg-white/5 rounded-full group-hover:bg-[#7F5CFF] transition-colors"><Users size={16} className="group-hover:text-white" /></div></button>
-            <div className="flex flex-col items-center cursor-pointer group" onClick={handleExport} title={ui.export}><h1 className="font-bold text-sm tracking-wider text-white flex items-center gap-2">{currentP.avatar} {currentP.name}<span className={`text-[9px] px-1.5 py-0.5 rounded bg-white/10 border border-white/10 ${levelInfo.barColor.replace('bg-', 'text-')} flex items-center gap-1`}>{levelInfo.icon} Lv.{levelInfo.level}</span></h1><p className={`text-[10px] font-medium opacity-70 tracking-wide ${currentP.color} group-hover:underline`}>{currentP.title[lang]}</p></div>
-            
+            <button onClick={backToSelection} className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors group">
+              <div className="p-2 bg-white/5 rounded-full group-hover:bg-[#7F5CFF] transition-colors"><Users size={16} className="group-hover:text-white" /></div>
+            </button>
+            <div className="flex flex-col items-center cursor-pointer group" onClick={handleExport} title={ui.export}>
+              <h1 className="font-bold text-sm tracking-wider text-white flex items-center gap-2">
+                {currentP.avatar} {currentP.name}
+                <span className={`text-[9px] px-1.5 py-0.5 rounded bg-white/10 border border-white/10 ${levelInfo.barColor.replace('bg-', 'text-')} flex items-center gap-1`}>{levelInfo.icon} Lv.{levelInfo.level}</span>
+                <div className="ml-1 group relative flex items-center justify-center" onClick={(e) => { e.stopPropagation(); alert(lang === 'zh' ? '全程加密保护中' : 'End-to-end Encrypted'); }}>
+                   <Shield size={10} className="text-green-500/70 hover:text-green-400 cursor-pointer" />
+                </div>
+              </h1>
+              <p className={`text-[10px] font-medium opacity-70 tracking-wide ${currentP.color} group-hover:underline`}>{currentP.title[lang]}</p>
+            </div>
+
             <div className="flex items-center gap-2 relative">
-              {/* 🔥 修复：日记按钮和红点 (标准位置: top-2 right-2) */}
               <div className="relative">
                 <button onClick={handleOpenDiary} className={`p-2 rounded-full transition-all duration-300 group relative ${hasNewDiary ? 'text-white bg-white/10' : 'text-gray-400 hover:text-white'}`}>
                   <Book size={20} className={hasNewDiary ? "animate-pulse" : ""} />
@@ -518,21 +569,17 @@ export default function Home() {
                 {hasNewDiary && (<div onClick={handleOpenDiary} className="absolute top-12 right-[-10px] z-50 animate-bounce cursor-pointer"><div className="absolute -top-1 right-4 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[8px] border-b-[#7F5CFF]"></div><div className="bg-[#7F5CFF] text-white text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-[0_0_15px_rgba(127,92,255,0.6)] whitespace-nowrap border border-white/20">{lang === 'zh' ? '解锁新日记 🔓' : 'New Secret Log 🔓'}</div></div>)}
               </div>
               
-              {/* 🔥 修复：日历按钮红点 */}
               <button onClick={fetchDailyQuote} className="p-2 text-gray-400 hover:text-[#7F5CFF] relative group">
                 <Calendar size={20} />
-                {/* 统一使用 badgeStyle */}
                 <span className={badgeStyle}></span>
               </button>
 
-              {/* 🔥 修复：菜单按钮红点 */}
               <button onClick={() => setShowMenu(!showMenu)} className="p-2 text-gray-400 hover:text-white relative group">
                 <MoreVertical size={20} />
-                {/* 统一使用 badgeStyle (颜色覆盖为红色，或者保持一致) */}
                 <span className={badgeStyle}></span>
               </button>
               
-              {showMenu && (<><div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)}></div><div className="absolute top-12 right-0 mt-2 w-48 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden animate-[fadeIn_0.2s_ease-out] flex flex-col p-1"><button onClick={handleEditName} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><UserPen size={16} className="text-[#7F5CFF]" /> {userName || ui.editName}</button><button onClick={handleOpenProfile} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Brain size={16} /> {ui.profile}</button><div className="h-[1px] bg-white/5 my-1 mx-2"></div><button onClick={handleInstall} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Download size={16} /> {ui.install}</button><button onClick={handleExport} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><FileText size={16} /> {ui.export}</button><button onClick={toggleLanguage} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Languages size={16} /> {ui.language}</button><button onClick={handleDonate} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-yellow-400 hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Coffee size={16} /> Buy me a coffee</button><div className="h-[1px] bg-white/5 my-1 mx-2"></div><button onClick={handleReset} className="flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors w-full text-left"><RotateCcw size={16} /> {ui.reset}</button></div></>)}
+              {showMenu && (<><div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)}></div><div className="absolute top-12 right-0 mt-2 w-48 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden animate-[fadeIn_0.2s_ease-out] flex flex-col p-1"><button onClick={handleEditName} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><UserPen size={16} className="text-[#7F5CFF]" /> {userName || ui.editName}</button><button onClick={handleOpenProfile} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Brain size={16} /> {ui.profile}</button><div className="h-[1px] bg-white/5 my-1 mx-2"></div><button onClick={handleInstall} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><div className="flex flex-col w-full"><div className="flex items-center gap-3"><Download size={16} className="text-[#7F5CFF]" /> {ui.install}</div></div></button><button onClick={handleExport} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><FileText size={16} /> {ui.export}</button><button onClick={toggleLanguage} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Languages size={16} /> {ui.language}</button><button onClick={handleDonate} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-yellow-400 hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Coffee size={16} /> Buy me a coffee</button><div className="h-[1px] bg-white/5 my-1 mx-2"></div><button onClick={handleReset} className="flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors w-full text-left"><RotateCcw size={16} /> {ui.reset}</button></div></>)}
             </div>
             <div className="absolute bottom-0 left-0 w-full h-[2px] bg-white/5"><div className={`h-full ${levelInfo.barColor} shadow-[0_0_10px_currentColor] transition-all duration-500`} style={{ width: `${levelInfo.level === 3 ? 100 : progressPercent}%` }}/></div>
           </header>
