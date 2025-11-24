@@ -11,20 +11,39 @@ export const runtime = 'edge';
 
 export async function POST(req: Request) {
   try {
-    const { messages, persona, language, interactionCount = 0, userName = "" } = await req.json();
+    // 🔥 接收 envInfo (包含时间、天气、饭点)
+    const { messages, persona, language, interactionCount = 0, userName = "", envInfo } = await req.json();
 
     const currentLang = (language as LangType) || 'zh';
     const currentPersona = PERSONAS[persona as PersonaType] || PERSONAS.Ash;
     const basePrompt = currentPersona.prompts[currentLang];
 
-    // --- 0. 昵称 ---
+    // --- 0. 基础信息注入 ---
     let namePrompt = "";
     if (userName && userName.trim() !== "") {
-      namePrompt = currentLang === 'zh' 
-        ? `\n[用户昵称]: "${userName}" (自然地称呼)。`
-        : `\n[User Name]: "${userName}" (Use naturally).`;
+      namePrompt = currentLang === 'zh' ? `\n[用户昵称]: "${userName}"` : `\n[User Name]: "${userName}"`;
     }
 
+    // --- 0.5 🔥 环境与生活感知 (Environment Awareness) ---
+    let envPrompt = "";
+    if (envInfo) {
+      const { time, weekday, phase, weather } = envInfo;
+      
+      if (currentLang === 'zh') {
+        envPrompt = `\n【当前时空】：${weekday} ${time}。`;
+        if (weather) envPrompt += `\n【位置与天气】：${weather}。`;
+        envPrompt += `\n【生活场景】：目前处于 **${phase}**。`;
+        
+        // 策略指导
+        envPrompt += `\n【反应策略】：
+        1. **饭点关怀**：如果是午餐/晚餐时间 (${phase})，且用户还没吃饭，可以问一句（Rin要骂他不吃饭，Ash要嘲讽他吃垃圾食品）。
+        2. **天气联动**：如果是雨/雪天 (${weather})，提醒带伞或注意保暖。
+        3. **深夜Emo**：如果是深夜，语气要更低沉或更具陪伴感。`;
+      } else {
+        envPrompt = `\n[Context]: ${weekday} ${time}. Phase: ${phase}. Weather: ${weather}.
+        [Strategy]: Mention meal times or bad weather if relevant. Adapt tone for late night.`;
+      }
+    }
     // --- 1. 信任度 ---
     let trustPrompt = "";
     const count = Number(interactionCount);
