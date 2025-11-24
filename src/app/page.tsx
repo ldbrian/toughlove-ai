@@ -6,6 +6,8 @@ import { PERSONAS, PersonaType, UI_TEXT, LangType } from '@/lib/constants';
 import { getDeviceId } from '@/lib/utils';
 import { getMemory, saveMemory } from '@/lib/storage';
 import { getLocalTimeInfo, getSimpleWeather } from '@/lib/env';
+// 👇 引入新写的状态工具
+import { getPersonaStatus } from '@/lib/status';
 import { Send, Calendar, X, Share2, Languages, Download, Users, Sparkles, ImageIcon, FileText, RotateCcw, MoreVertical, Trash2, Coffee, Tag, Heart, Shield, Zap, Lock, Globe, UserPen, Brain, Book, QrCode, ExternalLink, ChevronRight, MessageSquare } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import html2canvas from 'html2canvas';
@@ -19,6 +21,8 @@ const CURRENT_VERSION_KEY = 'toughlove_update_v1.6_final';
 const LANGUAGE_KEY = 'toughlove_language_confirmed';
 const USER_NAME_KEY = 'toughlove_user_name';
 const LAST_DIARY_TIME_KEY = 'toughlove_last_diary_time';
+// 👇 新增：记录上次唤醒时间，防止每次刷新都唤醒
+const LAST_GREET_TIME_KEY_PREFIX = 'toughlove_last_greet_';
 
 const Typewriter = ({ content, isThinking }: { content: string, isThinking?: boolean }) => {
   const [displayedContent, setDisplayedContent] = useState("");
@@ -69,6 +73,9 @@ export default function Home() {
   const [interactionCount, setInteractionCount] = useState(0);
   const [tick, setTick] = useState(0);
   const [currentWeather, setCurrentWeather] = useState("");
+  
+  // 👇 新增：未读红点 Map { 'Ash': true, 'Rin': false }
+  const [unreadMap, setUnreadMap] = useState<Record<string, boolean>>({});
 
   const quoteCardRef = useRef<HTMLDivElement>(null);
   const profileCardRef = useRef<HTMLDivElement>(null);
@@ -77,7 +84,6 @@ export default function Home() {
 
   const getTrustKey = (p: string) => `toughlove_trust_${p}`;
   const getDiaryKey = (p: string) => `toughlove_diary_${p}_${new Date().toISOString().split('T')[0]}`;
-
   const badgeStyle = "absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-[#1a1a1a] animate-pulse";
 
   // --- 启动初始化 ---
@@ -105,18 +111,85 @@ export default function Home() {
        setHasNewDiary(true);
     }
 
-    getSimpleWeather().then(w => setCurrentWeather(w));
+    getSimpleWeather().then(w => {
+      setCurrentWeather(w);
+      // 🔥 天气获取到后，触发一次“唤醒检查”
+      checkAndTriggerGreeting(w);
+    });
+
     posthog.capture('page_view', { lang: lang });
   }, []);
 
-  // --- 辅助函数定义 ---
-  
-  // 🔥🔥 核心修复：增加 typeof window 检查，防止构建报错 🔥🔥
+  // --- 🔥 核心逻辑：检查是否需要主动唤醒 ---
+  const checkAndTriggerGreeting = async (weather: string) => {
+    const now = Date.now();
+    const timeData = getLocalTimeInfo();
+    const envInfo = {
+       time: timeData.localTime,
+       weekday: lang === 'zh' ? timeData.weekdayZH : timeData.weekdayEN,
+       phase: timeData.lifePhase,
+       weather: weather
+    };
+
+    // 遍历所有人格
+    (Object.keys(PERSONAS) as PersonaType[]).forEach(async (persona) => {
+        // 1. 检查上次唤醒时间 (避免频繁骚扰)
+        const lastGreetKey = `${LAST_GREET_TIME_KEY_PREFIX}${persona}`;
+        const lastGreetTime = localStorage.getItem(lastGreetKey);
+        // 设定冷却时间：比如 4 小时 = 4 * 60 * 60 * 1000
+        // 为了演示，这里设为 1 分钟
+        const COOLDOWN = 60 * 1000; 
+
+        if (lastGreetTime && (now - parseInt(lastGreetTime) < COOLDOWN)) {
+            return; // 冷却中，跳过
+        }
+
+        // 2. 检查是否有聊天记录 (没聊过的，用默认开场白就行，不需要 API 唤醒)
+        const history = getMemory(persona);
+        if (history.length === 0) return;
+
+        // 3. 触发 API 生成问候
+        try {
+            const res = await fetch('/api/greet', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    messages: history, 
+                    persona, 
+                    language: lang, 
+                    userName, 
+                    envInfo 
+                })
+            });
+            const data = await res.json();
+            
+            if (data.greeting) {
+                // 4. 插入新消息到本地
+                const newMsg: Message = {
+                    id: Date.now().toString(),
+                    role: 'assistant',
+                    content: data.greeting
+                };
+                const newHistory = [...history, newMsg];
+                saveMemory(persona, newHistory);
+                
+                // 5. 标记未读 & 更新时间戳
+                setUnreadMap(prev => ({ ...prev, [persona]: true }));
+                localStorage.setItem(lastGreetKey, now.toString());
+                
+                // 强制刷新列表 UI
+                setTick(t => t + 1); 
+            }
+        } catch (e) {
+            console.error("Greet trigger failed for", persona, e);
+        }
+    });
+  };
+
+  // --- 辅助函数 ---
   const getPersonaPreview = (pKey: PersonaType) => {
-    // 如果是在服务器端渲染（构建时），直接返回默认空状态
-    if (typeof window === 'undefined') {
-        return { isChatted: false, lastMsg: "", trust: 0, time: "" };
-    }
+    // 增加 SSR 保护
+    if (typeof window === 'undefined') return { isChatted: false, lastMsg: "", trust: 0, time: "" };
 
     const history = getMemory(pKey);
     const trust = parseInt(localStorage.getItem(getTrustKey(pKey)) || '0');
@@ -162,7 +235,6 @@ export default function Home() {
     posthog.capture('username_set');
   };
 
-  // --- 核心 Chat Hook ---
   const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages, setInput } = useChat({
     api: '/api/chat',
     onError: (err) => console.error("Stream Error:", err),
@@ -176,7 +248,6 @@ export default function Home() {
     }
   });
 
-  // --- Effects ---
   useEffect(() => {
     const storedCount = localStorage.getItem(getTrustKey(activePersona));
     setInteractionCount(storedCount ? parseInt(storedCount) : 0);
@@ -249,8 +320,15 @@ export default function Home() {
     posthog.capture('persona_select', { persona: persona });
     setActivePersona(persona);
     setView('chat');
+    
+    // 🔥 点击进入时，消除红点
+    if (unreadMap[persona]) {
+        setUnreadMap(prev => ({ ...prev, [persona]: false }));
+    }
+    
     const localHistory = getMemory(persona);
     setMessages(localHistory);
+
     try {
       const res = await fetch(`/api/sync?userId=${getDeviceId()}&persona=${persona}`);
       const data = await res.json();
@@ -456,18 +534,17 @@ export default function Home() {
     <div className="relative flex flex-col h-screen bg-[#050505] text-gray-100 overflow-hidden font-sans selection:bg-[#7F5CFF] selection:text-white">
       <div className="absolute top-[-20%] left-0 right-0 h-[500px] bg-gradient-to-b from-[#7F5CFF]/10 to-transparent blur-[100px] pointer-events-none" />
 
+      {/* Language & Update Modals ... (省略，保持不变) */}
       {showLangSetup && (<div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-6 animate-[fadeIn_0.5s_ease-out]"><div className="mb-10 text-center"><div className="w-20 h-20 bg-[#1a1a1a] rounded-full flex items-center justify-center text-4xl border border-white/10 mx-auto mb-4 shadow-[0_0_30px_rgba(127,92,255,0.3)]">🧬</div><h1 className="text-2xl font-bold text-white tracking-wider mb-2">TOUGHLOVE AI</h1><p className="text-gray-500 text-sm">Choose your language / 选择语言</p></div><div className="flex flex-col gap-4 w-full max-w-xs"><button onClick={() => confirmLanguage('zh')} className={`p-6 rounded-2xl border transition-all flex items-center justify-between group ${lang === 'zh' ? 'bg-white/10 border-[#7F5CFF]' : 'bg-[#111] border-white/10 hover:border-white/30'}`}><div className="text-left"><div className="text-lg font-bold text-white">中文</div><div className="text-xs text-gray-500">Chinese</div></div>{lang === 'zh' && <div className="w-3 h-3 bg-[#7F5CFF] rounded-full shadow-[0_0_10px_#7F5CFF]"></div>}</button><button onClick={() => confirmLanguage('en')} className={`p-6 rounded-2xl border transition-all flex items-center justify-between group ${lang === 'en' ? 'bg-white/10 border-[#7F5CFF]' : 'bg-[#111] border-white/10 hover:border-white/30'}`}><div className="text-left"><div className="text-lg font-bold text-white">English</div><div className="text-xs text-gray-500">English</div></div>{lang === 'en' && <div className="w-3 h-3 bg-[#7F5CFF] rounded-full shadow-[0_0_10px_#7F5CFF]"></div>}</button></div></div>)}
-
       {showNameModal && (<div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6 animate-[fadeIn_0.2s_ease-out]"><div className="w-full max-w-xs bg-[#1a1a1a] rounded-3xl border border-white/10 shadow-2xl p-6"><div className="text-center mb-6"><div className="inline-flex p-3 bg-white/5 rounded-full mb-3 text-[#7F5CFF]"><UserPen size={24}/></div><h3 className="text-lg font-bold text-white">{ui.editName}</h3></div><input type="text" value={tempName} onChange={(e) => setTempName(e.target.value)} placeholder={ui.namePlaceholder} className="w-full bg-[#111] border border-white/10 rounded-xl px-4 py-3 text-white focus:border-[#7F5CFF] outline-none mb-6 text-center" maxLength={10} /><div className="flex gap-3"><button onClick={() => setShowNameModal(false)} className="flex-1 py-3 rounded-xl bg-white/5 text-gray-400 text-sm hover:bg-white/10 transition-colors">Cancel</button><button onClick={saveUserName} className="flex-1 py-3 rounded-xl bg-[#7F5CFF] text-white font-bold text-sm hover:bg-[#6b4bd6] transition-colors">{ui.nameSave}</button></div></div></div>)}
-
       {showDonateModal && (<div className="fixed inset-0 z-[170] flex items-center justify-center bg-black/90 backdrop-blur-sm p-6 animate-[fadeIn_0.2s_ease-out]"><div className="w-full max-w-sm bg-[#1a1a1a] rounded-3xl border border-white/10 shadow-2xl relative overflow-hidden"><button onClick={() => setShowDonateModal(false)} className="absolute top-4 right-4 p-2 text-gray-400 hover:text-white"><X size={20}/></button><div className="p-8 text-center"><div className="inline-flex p-4 bg-yellow-500/10 rounded-full mb-4 text-yellow-500 shadow-[0_0_30px_rgba(234,179,8,0.2)]"><Coffee size={32} /></div><h3 className="text-xl font-bold text-white mb-2">Buy Ash a Coffee</h3><p className="text-xs text-gray-400 mb-8">你的支持是我毒舌下去的动力。</p><div className="bg-white/5 p-4 rounded-2xl border border-white/5 mb-4"><div className="flex items-center gap-2 mb-3 text-sm text-gray-300"><QrCode size={16} className="text-green-500" /> <span>WeChat Pay / 微信支付</span></div><div className="w-40 h-40 bg-white mx-auto rounded-lg flex items-center justify-center overflow-hidden"><img src="/wechat_pay.png" alt="WeChat Pay" className="w-full h-full object-cover" /></div></div><button onClick={goBMAC} className="w-full py-3.5 rounded-xl bg-[#FFDD00] hover:bg-[#ffea00] text-black font-bold text-sm flex items-center justify-center gap-2 transition-colors"><Coffee size={16} fill="black" /><span>Buy Me a Coffee (USD)</span><ExternalLink size={14} /></button></div></div></div>)}
-
       {showProfile && (<div className="absolute inset-0 z-[160] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-[fadeIn_0.3s_ease-out]"><div className="w-full max-w-sm relative"><button onClick={() => setShowProfile(false)} className="absolute -top-12 right-0 p-2 text-gray-400 hover:text-white"><X size={24}/></button><div ref={profileCardRef} className="bg-[#050505] rounded-3xl border border-white/10 overflow-hidden shadow-2xl relative"><div className="h-32 bg-gradient-to-b from-[#7F5CFF]/20 to-transparent flex flex-col items-center justify-center"><div className="w-16 h-16 rounded-full bg-black border border-[#7F5CFF] flex items-center justify-center text-3xl shadow-[0_0_20px_rgba(127,92,255,0.4)]">🧠</div></div><div className="p-6 -mt-8 relative z-10"><h2 className="text-center text-xl font-bold text-white tracking-widest uppercase mb-1">{ui.profileTitle}</h2><p className="text-center text-xs text-gray-500 font-mono mb-6">ID: {getDeviceId().slice(0,8)}...</p>{isProfileLoading ? (<div className="py-10 text-center space-y-3"><div className="w-8 h-8 border-2 border-[#7F5CFF] border-t-transparent rounded-full animate-spin mx-auto"/><p className="text-xs text-gray-500 animate-pulse">{ui.analyzing}</p></div>) : (<div className="space-y-6"><div><div className="text-[10px] font-bold text-gray-600 uppercase mb-2 tracking-wider">{ui.tagsTitle}</div><div className="flex flex-wrap gap-2">{profileData?.tags && profileData.tags.length > 0 ? (profileData.tags.map((tag, i) => (<span key={i} className="px-3 py-1.5 rounded-md bg-[#1a1a1a] border border-white/10 text-xs text-gray-300">#{tag}</span>))) : (<span className="text-xs text-gray-600 italic">No data yet...</span>)}</div></div><div className="bg-[#111] p-4 rounded-xl border-l-2 border-[#7F5CFF] relative"><div className="absolute -top-3 left-3 bg-[#050505] px-1 text-[10px] font-bold text-[#7F5CFF]">{ui.diagnosisTitle}</div><p className="text-sm text-gray-300 leading-relaxed italic font-serif">"{profileData?.diagnosis}"</p></div><div className="text-center text-[9px] text-gray-700 pt-4 border-t border-white/5">GENERATED BY TOUGHLOVE AI</div></div>)}</div></div>{!isProfileLoading && (<button onClick={downloadProfileCard} disabled={isGeneratingImg} className="w-full mt-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-sm flex items-center justify-center gap-2 transition-colors">{isGeneratingImg ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/> : <ImageIcon size={16} />}{ui.saveCard}</button>)}</div></div>)}
-
       {showDiary && (<div className="absolute inset-0 z-[160] flex items-center justify-center bg-black/90 backdrop-blur-md p-6 animate-[fadeIn_0.3s_ease-out]"><div className="w-full max-w-sm bg-[#f5f5f0] text-[#1a1a1a] rounded-xl shadow-2xl relative overflow-hidden transform rotate-1"><div className="h-8 bg-red-800/10 border-b border-red-800/20 flex items-center px-4 gap-2"><div className="w-2 h-2 rounded-full bg-red-800/30"></div><div className="w-2 h-2 rounded-full bg-red-800/30"></div><div className="w-2 h-2 rounded-full bg-red-800/30"></div></div><button onClick={() => setShowDiary(false)} className="absolute top-2 right-2 p-1 text-gray-400 hover:text-black z-10"><X size={20}/></button><div className="p-6 pt-4 min-h-[300px] flex flex-col"><div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 border-b border-gray-300 pb-2 flex justify-between items-center"><span>{new Date().toLocaleDateString()}</span><span className="text-[#7F5CFF]">{currentP.name}'s Note</span></div><div className="flex-1 font-serif text-sm leading-7 text-gray-800 whitespace-pre-line relative"><div className="absolute inset-0 pointer-events-none opacity-10 bg-[url('https://www.transparenttextures.com/patterns/notebook.png')]"></div>{isDiaryLoading ? (<div className="flex flex-col items-center justify-center h-40 gap-3 opacity-50"><div className="w-6 h-6 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"/><span className="text-xs">Thinking...</span></div>) : (<Typewriter content={diaryContent} isThinking={false} />)}</div><div className="mt-6 pt-4 border-t border-gray-300 text-center"><p className="text-[10px] text-gray-400 italic">Confidential. Do not share.</p></div></div></div></div>)}
 
+      {/* 🔥🔥🔥 列表视图 (Selection View) 🔥🔥🔥 */}
       {view === 'selection' && (
         <div className="z-10 flex flex-col h-full w-full max-w-md mx-auto p-4 animate-[fadeIn_0.5s_ease-out]">
+          
           <div className="flex justify-between items-center mb-6 px-2">
              <h1 className="text-xl font-bold tracking-wider flex items-center gap-2">
                <MessageSquare size={20} className="text-[#7F5CFF]" /> Chats
@@ -481,30 +558,41 @@ export default function Home() {
             {(Object.keys(PERSONAS) as PersonaType[]).map((key) => {
               const p = PERSONAS[key];
               const { isChatted, lastMsg, trust, time } = getPersonaPreview(key);
-              const level = getLevelInfo(trust).level;
+              const status = getPersonaStatus(key, new Date().getHours());
               
+              // 🔥 视觉优化：已读/未读红点
+              // 从 unreadMap 检查，或者如果时间是 New 且有内容...
+              const hasUnread = unreadMap[key];
+
               return (
                 <div 
                   key={key}
                   onClick={() => selectPersona(key)}
                   className={`group relative p-4 rounded-2xl transition-all duration-200 cursor-pointer flex items-center gap-4 border shadow-sm
                     ${isChatted 
-                      ? 'bg-[#111] hover:bg-[#1a1a1a] border-white/5 hover:border-[#7F5CFF]/30'
-                      : 'bg-gradient-to-r from-[#151515] to-[#111] border-white/10 hover:border-white/30'
+                      ? 'bg-[#111] hover:bg-[#1a1a1a] border-white/5 hover:border-[#7F5CFF]/30' 
+                      : 'bg-gradient-to-r from-[#151515] to-[#111] border-white/10 hover:border-white/30' 
                     }
                   `}
                 >
                   <div className="relative flex-shrink-0">
                     <div className={`w-14 h-14 rounded-full bg-gradient-to-b from-[#222] to-[#0a0a0a] flex items-center justify-center text-3xl border-2 
-                      ${isChatted && trust >= 50 ? (trust >= 100 ? 'border-[#7F5CFF] shadow-[0_0_10px_#7F5CFF]' : 'border-blue-500') : 'border-gray-700'}
+                      ${isChatted ? (trust >= 50 ? (trust >= 100 ? 'border-[#7F5CFF] shadow-[0_0_10px_#7F5CFF]' : 'border-blue-500') : 'border-gray-700') : 'border-white/10'}
                     `}>
                       {p.avatar}
                     </div>
+                    
+                    {/* 红点 (如果有未读消息) */}
+                    {hasUnread && (
+                        <div className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-[#1a1a1a] animate-pulse"></div>
+                    )}
+
+                    {/* 等级角标 (仅聊过显示) */}
                     {isChatted && (
                       <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] border-2 border-[#111] 
-                        ${trust >= 50 ? (trust >= 100 ? 'bg-[#7F5CFF] text-white' : 'bg-blue-500 text-white') : 'bg-gray-600 text-gray-300'}
+                        ${trust >= 100 ? 'bg-[#7F5CFF] text-white' : (trust >= 50 ? 'bg-blue-500 text-white' : 'bg-gray-600 text-gray-300')}
                       `}>
-                        {level}
+                        {Math.floor(trust / 50) + 1 > 3 ? 3 : Math.floor(trust / 50) + 1}
                       </div>
                     )}
                   </div>
@@ -512,24 +600,19 @@ export default function Home() {
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-baseline mb-1">
                       <h3 className="font-bold text-white text-base">{p.name}</h3>
-                      <span className="text-[10px] text-gray-500">
-                        {isChatted ? 'Active' : 'New'}
-                      </span>
+                      <span className="text-[10px] text-gray-500">{isChatted ? time : 'New'}</span>
                     </div>
-                    <p className={`text-xs truncate transition-colors ${isChatted ? 'text-gray-400 group-hover:text-gray-300' : 'text-gray-500 italic'}`}>
+                    
+                    {/* 状态栏 (Emoji Status) */}
+                    <div className="text-[10px] text-gray-500 mb-1 flex items-center gap-1">
+                        {status}
+                    </div>
+
+                    <p className={`text-xs truncate transition-colors ${hasUnread ? 'text-white font-bold' : 'text-gray-400 group-hover:text-gray-300'}`}>
                       {isChatted ? lastMsg : p.slogan[lang]}
                     </p>
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <span className={`text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-gray-500 border border-white/5`}>
-                        {p.title[lang]}
-                      </span>
-                      {!isChatted && (
-                        <span className="ml-auto text-[9px] font-bold text-[#7F5CFF] flex items-center gap-1 bg-[#7F5CFF]/10 px-2 py-0.5 rounded-full">
-                          Chat <ChevronRight size={10}/>
-                        </span>
-                      )}
-                    </div>
                   </div>
+                  <div className="text-gray-600 group-hover:text-[#7F5CFF] transition-colors"><ChevronRight size={18} /></div>
                 </div>
               );
             })}
@@ -543,42 +626,16 @@ export default function Home() {
         </div>
       )}
 
+      {/* Chat View (略，保持不变) */}
       {view === 'chat' && (
         <div className={`z-10 flex flex-col h-full w-full max-w-lg mx-auto backdrop-blur-sm border-x shadow-2xl relative animate-[slideUp_0.3s_ease-out] ${levelInfo.bgClass} ${levelInfo.borderClass} ${levelInfo.glowClass} transition-all duration-1000`} style={levelInfo.customStyle}>
           <header className="flex-none flex items-center justify-between px-6 py-3 bg-[#0a0a0a]/60 backdrop-blur-md sticky top-0 z-20 border-b border-white/5 relative">
-            <button onClick={backToSelection} className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors group">
-              <div className="p-2 bg-white/5 rounded-full group-hover:bg-[#7F5CFF] transition-colors"><Users size={16} className="group-hover:text-white" /></div>
-            </button>
-            <div className="flex flex-col items-center cursor-pointer group" onClick={handleExport} title={ui.export}>
-              <h1 className="font-bold text-sm tracking-wider text-white flex items-center gap-2">
-                {currentP.avatar} {currentP.name}
-                <span className={`text-[9px] px-1.5 py-0.5 rounded bg-white/10 border border-white/10 ${levelInfo.barColor.replace('bg-', 'text-')} flex items-center gap-1`}>{levelInfo.icon} Lv.{levelInfo.level}</span>
-                <div className="ml-1 group relative flex items-center justify-center" onClick={(e) => { e.stopPropagation(); alert(lang === 'zh' ? '全程加密保护中' : 'End-to-end Encrypted'); }}>
-                   <Shield size={10} className="text-green-500/70 hover:text-green-400 cursor-pointer" />
-                </div>
-              </h1>
-              <p className={`text-[10px] font-medium opacity-70 tracking-wide ${currentP.color} group-hover:underline`}>{currentP.title[lang]}</p>
-            </div>
-
+            <button onClick={backToSelection} className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors group"><div className="p-2 bg-white/5 rounded-full group-hover:bg-[#7F5CFF] transition-colors"><Users size={16} className="group-hover:text-white" /></div></button>
+            <div className="flex flex-col items-center cursor-pointer group" onClick={handleExport} title={ui.export}><h1 className="font-bold text-sm tracking-wider text-white flex items-center gap-2">{currentP.avatar} {currentP.name}<span className={`text-[9px] px-1.5 py-0.5 rounded bg-white/10 border border-white/10 ${levelInfo.barColor.replace('bg-', 'text-')} flex items-center gap-1`}>{levelInfo.icon} Lv.{levelInfo.level}</span></h1><p className={`text-[10px] font-medium opacity-70 tracking-wide ${currentP.color} group-hover:underline`}>{currentP.title[lang]}</p></div>
             <div className="flex items-center gap-2 relative">
-              <div className="relative">
-                <button onClick={handleOpenDiary} className={`p-2 rounded-full transition-all duration-300 group relative ${hasNewDiary ? 'text-white bg-white/10' : 'text-gray-400 hover:text-white'}`}>
-                  <Book size={20} className={hasNewDiary ? "animate-pulse" : ""} />
-                  {hasNewDiary && (<span className={badgeStyle}></span>)}
-                </button>
-                {hasNewDiary && (<div onClick={handleOpenDiary} className="absolute top-12 right-[-10px] z-50 animate-bounce cursor-pointer"><div className="absolute -top-1 right-4 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[8px] border-b-[#7F5CFF]"></div><div className="bg-[#7F5CFF] text-white text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-[0_0_15px_rgba(127,92,255,0.6)] whitespace-nowrap border border-white/20">{lang === 'zh' ? '解锁新日记 🔓' : 'New Secret Log 🔓'}</div></div>)}
-              </div>
-              
-              <button onClick={fetchDailyQuote} className="p-2 text-gray-400 hover:text-[#7F5CFF] relative group">
-                <Calendar size={20} />
-                <span className={badgeStyle}></span>
-              </button>
-
-              <button onClick={() => setShowMenu(!showMenu)} className="p-2 text-gray-400 hover:text-white relative group">
-                <MoreVertical size={20} />
-                <span className={badgeStyle}></span>
-              </button>
-              
+              <div className="relative"><button onClick={handleOpenDiary} className={`p-2 rounded-full transition-all duration-300 group relative ${hasNewDiary ? 'text-white bg-white/10' : 'text-gray-400 hover:text-white'}`}><Book size={20} className={hasNewDiary ? "animate-pulse" : ""} />{hasNewDiary && (<span className={badgeStyle}></span>)}</button>{hasNewDiary && (<div onClick={handleOpenDiary} className="absolute top-12 right-[-10px] z-50 animate-bounce cursor-pointer"><div className="absolute -top-1 right-4 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[8px] border-b-[#7F5CFF]"></div><div className="bg-[#7F5CFF] text-white text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-[0_0_15px_rgba(127,92,255,0.6)] whitespace-nowrap border border-white/20">{lang === 'zh' ? '解锁新日记 🔓' : 'New Secret Log 🔓'}</div></div>)}</div>
+              <button onClick={fetchDailyQuote} className="p-2 text-gray-400 hover:text-[#7F5CFF] relative"><Calendar size={20} /><span className={badgeStyle}></span></button>
+              <button onClick={() => setShowMenu(!showMenu)} className="p-2 text-gray-400 hover:text-white relative"><MoreVertical size={20} /><span className={badgeStyle}></span></button>
               {showMenu && (<><div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)}></div><div className="absolute top-12 right-0 mt-2 w-48 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden animate-[fadeIn_0.2s_ease-out] flex flex-col p-1"><button onClick={handleEditName} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><UserPen size={16} className="text-[#7F5CFF]" /> {userName || ui.editName}</button><button onClick={handleOpenProfile} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Brain size={16} /> {ui.profile}</button><div className="h-[1px] bg-white/5 my-1 mx-2"></div><button onClick={handleInstall} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><div className="flex flex-col w-full"><div className="flex items-center gap-3"><Download size={16} className="text-[#7F5CFF]" /> {ui.install}</div></div></button><button onClick={handleExport} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><FileText size={16} /> {ui.export}</button><button onClick={toggleLanguage} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Languages size={16} /> {ui.language}</button><button onClick={handleDonate} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-yellow-400 hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Coffee size={16} /> Buy me a coffee</button><div className="h-[1px] bg-white/5 my-1 mx-2"></div><button onClick={handleReset} className="flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors w-full text-left"><RotateCcw size={16} /> {ui.reset}</button></div></>)}
             </div>
             <div className="absolute bottom-0 left-0 w-full h-[2px] bg-white/5"><div className={`h-full ${levelInfo.barColor} shadow-[0_0_10px_currentColor] transition-all duration-500`} style={{ width: `${levelInfo.level === 3 ? 100 : progressPercent}%` }}/></div>
