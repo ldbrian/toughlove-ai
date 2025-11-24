@@ -45,13 +45,15 @@ export const UI_TEXT = {
     diaryPlaceholder: "Ash 正在偷偷写关于你的坏话...",
     readDiary: "偷看日记",
     installGuideTitle: "安装到桌面",
-    installGuideDesc: "像原生 App 一样全屏运行，体验更佳。",
-    iosStep1: "点击浏览器底部的“分享”按钮",
-    iosStep2: "下滑找到并点击“添加到主屏幕”",
-    iosStep3: "点击右上角的“添加”即可",
-    androidStep1: "点击浏览器右上角的菜单 (···)",
-    androidStep2: "选择“安装应用”或“添加到主屏幕”",
-    androidStep3: "点击“安装”即可"
+    installGuideDesc: "获得全屏沉浸体验，且更稳定。",
+    // 巧妙的写法：同时提到“分享”和“菜单”
+    iosStep1: "1. 点击底部的“分享”或右上角“菜单”按钮",
+    iosStep2: "2. 找到并选择“添加到主屏幕”",
+    iosStep3: "3. 点击右上角的“添加”即可",
+    // 安卓字段其实用不到了，但为了代码不报错，可以让它们等于上面的，或者留空
+    androidStep1: "", 
+    androidStep2: "", 
+    androidStep3: ""
   },
   en: {
     placeholder: "Say something human...",
@@ -97,12 +99,12 @@ export const UI_TEXT = {
     readDiary: "Peek Diary",
     installGuideTitle: "Install App",
     installGuideDesc: "For full-screen immersive experience.",
-    iosStep1: "Tap the 'Share' button at the bottom",
-    iosStep2: "Scroll down & tap 'Add to Home Screen'",
-    iosStep3: "Tap 'Add' at the top right",
-    androidStep1: "Tap the menu (···) at the top right",
-    androidStep2: "Select 'Install App' or 'Add to Home Screen'",
-    androidStep3: "Tap 'Install' to finish"
+    iosStep1: "1. Tap 'Share' (Bottom) or 'Menu' (Top Right)",
+    iosStep2: "2. Select 'Add to Home Screen'",
+    iosStep3: "3. Tap 'Add' or 'Install'",
+    androidStep1: "",
+    androidStep2: "",
+    androidStep3: ""
   }
 };
 
