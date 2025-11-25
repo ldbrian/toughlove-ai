@@ -547,45 +547,91 @@ export default function Home() {
       {view === 'chat' && (
         <div className={`z-10 flex flex-col h-full w-full max-w-lg mx-auto backdrop-blur-sm border-x shadow-2xl relative animate-[slideUp_0.3s_ease-out] ${levelInfo.bgClass} ${levelInfo.borderClass} ${levelInfo.glowClass} transition-all duration-1000`} style={levelInfo.customStyle}>
           
-          <header className="flex-none flex items-center justify-between px-6 py-3 bg-[#0a0a0a]/60 backdrop-blur-md sticky top-0 z-20 border-b border-white/5 relative">
-            <button onClick={backToSelection} className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors group">
-              <div className="p-2 bg-white/5 rounded-full group-hover:bg-[#7F5CFF] transition-colors"><Users size={16} className="group-hover:text-white" /></div>
-            </button>
-            <div className="flex flex-col items-center cursor-pointer group" onClick={handleExport} title={ui.export}>
-              <h1 className="font-bold text-sm tracking-wider text-white flex items-center gap-2">
-                {currentP.avatar} {currentP.name}
-                <span className={`text-[9px] px-1.5 py-0.5 rounded bg-white/10 border border-white/10 ${levelInfo.barColor.replace('bg-', 'text-')} flex items-center gap-1`}>{levelInfo.icon} Lv.{levelInfo.level}</span>
-                
-                {/* 🔥 修复：顶部强隐私提示 (绿色胶囊) */}
-                <div 
-                  onClick={(e) => { 
-                    e.stopPropagation(); 
-                    alert(lang === 'zh' ? '🔒 安全承诺：\n您的对话记录优先存储于本地设备。\n云端同步仅用于生成画像，传输过程全程加密。' : '🔒 Security Promise:\nChats are stored locally first.\nCloud sync is encrypted and used only for profiling.'); 
-                  }}
-                  className="ml-2 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-green-500/10 border border-green-500/20 text-green-400 cursor-pointer hover:bg-green-500/20 transition-colors"
-                >
-                  <Shield size={10} />
-                  <span className="text-[9px] font-bold tracking-wide uppercase">
-                    {lang === 'zh' ? '私密保护' : 'Encrypted'}
-                  </span>
-                </div>
+          <header className="flex-none px-4 py-3 bg-[#0a0a0a]/80 backdrop-blur-md sticky top-0 z-20 border-b border-white/5">
+            <div className="flex items-center justify-between">
+    
+    {/* --- 左侧区域：返回 + 头像 + 信息 --- */}
+    <div className="flex items-center gap-3 min-w-0 flex-1">
+      
+      {/* 1. 返回按钮 (稍微调小一点) */}
+      <button onClick={backToSelection} className="text-gray-400 hover:text-white transition-colors">
+        <div className="p-1.5 bg-white/5 rounded-full hover:bg-[#7F5CFF] transition-colors">
+          <Users size={14} className="group-hover:text-white" />
+        </div>
+      </button>
 
-              </h1>
-              <p className={`text-[10px] font-medium opacity-70 tracking-wide ${currentP.color} group-hover:underline`}>{currentP.title[lang]}</p>
+      {/* 2. 头像 (带光晕) */}
+      <div className="relative cursor-pointer" onClick={handleExport} title={ui.export}>
+        <div className="w-10 h-10 rounded-full bg-[#1a1a1a] border border-white/10 flex items-center justify-center text-xl shadow-[0_0_15px_rgba(0,0,0,0.5)]">
+          {currentP.avatar}
+        </div>
+        {/* 在线状态点 (可选) */}
+        <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-[#0a0a0a]"></div>
+      </div>
+
+      {/* 3. 信息列 (名字 + 徽章 + 称号) - 核心重构点 */}
+      <div className="flex flex-col justify-center min-w-0">
+        <h1 className="font-bold text-sm text-white tracking-wide truncate flex items-center gap-2">
+          {currentP.name}
+          <span className={`text-[9px] font-normal opacity-50 ${currentP.color}`}>
+            {currentP.title[lang]}
+          </span>
+        </h1>
+        
+        {/* 第二行：放置 Level 和 安全盾牌，用 Flex 布局整齐排列 */}
+        <div className="flex items-center gap-2 mt-0.5">
+          {/* Level Badge */}
+          <div className={`text-[9px] px-1.5 py-px rounded-md border border-white/10 bg-white/5 flex items-center gap-1 ${levelInfo.barColor.replace('bg-', 'text-')}`}>
+            {levelInfo.icon} 
+            <span className="font-mono font-bold">Lv.{levelInfo.level}</span>
+          </div>
+
+          {/* 隐私盾牌 (点击触发提示) - 稍微做小一点，不换行 */}
+          <div 
+            onClick={(e) => { 
+              e.stopPropagation(); 
+              alert(lang === 'zh' ? '🔒 安全承诺：\n您的对话记录优先存储于本地设备。\n云端同步仅用于生成画像，传输过程全程加密。' : '🔒 Security Promise:\nChats are stored locally first.'); 
+            }}
+            className="flex items-center gap-1 px-1.5 py-px rounded-md bg-green-500/10 border border-green-500/20 text-green-500 cursor-pointer hover:bg-green-500/20 transition-colors whitespace-nowrap"
+          >
+            <Shield size={9} />
+            <span className="text-[9px] font-bold">E2EE</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* --- 右侧区域：功能按钮组 --- */}
+    <div className="flex items-center gap-1">
+      {/* 日记按钮 */}
+      <div className="relative">
+        <button onClick={handleOpenDiary} className={`p-2 rounded-full transition-all duration-300 group ${hasNewDiary ? 'text-white' : 'text-gray-400 hover:text-white'}`}>
+          <Book size={18} className={hasNewDiary ? "animate-pulse drop-shadow-[0_0_5px_rgba(255,255,255,0.5)]" : ""} />
+          {hasNewDiary && (<span className={badgeStyle}></span>)}
+        </button>
+      </div>
+      
+      {/* 毒签按钮 */}
+      <button onClick={fetchDailyQuote} className="p-2 text-gray-400 hover:text-[#7F5CFF] relative group">
+        <Calendar size={18} />
+        <span className={badgeStyle}></span>
+      </button>
+
+      {/* 更多菜单 */}
+      <button onClick={() => setShowMenu(!showMenu)} className="p-2 text-gray-400 hover:text-white relative group">
+        <MoreVertical size={18} />
+        <span className={badgeStyle}></span>
+      </button>
+
+      {/* 菜单下拉框 (保持不变) */}
+      {showMenu && (<><div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)}></div><div className="absolute top-12 right-0 mt-2 w-48 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden animate-[fadeIn_0.2s_ease-out] flex flex-col p-1"><button onClick={handleEditName} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><UserPen size={16} className="text-[#7F5CFF]" /> {userName || ui.editName}</button><button onClick={handleOpenProfile} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Brain size={16} /> {ui.profile}</button><div className="h-[1px] bg-white/5 my-1 mx-2"></div><button onClick={handleInstall} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Download size={16} /> {ui.install}</button><button onClick={handleExport} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><FileText size={16} /> {ui.export}</button><button onClick={toggleLanguage} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Languages size={16} /> {ui.language}</button><button onClick={handleDonate} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-yellow-400 hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Coffee size={16} /> Buy me a coffee</button><div className="h-[1px] bg-white/5 my-1 mx-2"></div><button onClick={handleReset} className="flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors w-full text-left"><RotateCcw size={16} /> {ui.reset}</button></div></>)}
+    </div>
             </div>
-            <div className="flex items-center gap-2 relative">
-              <div className="relative">
-                <button onClick={handleOpenDiary} className={`p-2 rounded-full transition-all duration-300 group relative ${hasNewDiary ? 'text-white bg-white/10' : 'text-gray-400 hover:text-white'}`}>
-                  <Book size={20} className={hasNewDiary ? "animate-pulse" : ""} />
-                  {hasNewDiary && (<span className={badgeStyle}></span>)}
-                </button>
-                {hasNewDiary && (<div onClick={handleOpenDiary} className="absolute top-12 right-[-10px] z-50 animate-bounce cursor-pointer"><div className="absolute -top-1 right-4 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[8px] border-b-[#7F5CFF]"></div><div className="bg-[#7F5CFF] text-white text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-[0_0_15px_rgba(127,92,255,0.6)] whitespace-nowrap border border-white/20">{lang === 'zh' ? '解锁新日记 🔓' : 'New Secret Log 🔓'}</div></div>)}
-              </div>
-              <button onClick={fetchDailyQuote} className="p-2 text-gray-400 hover:text-[#7F5CFF] relative group"><Calendar size={20} /><span className={badgeStyle}></span></button>
-              <button onClick={() => setShowMenu(!showMenu)} className="p-2 text-gray-400 hover:text-white relative group"><MoreVertical size={20} /><span className={badgeStyle}></span></button>
-              {showMenu && (<><div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)}></div><div className="absolute top-12 right-0 mt-2 w-48 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden animate-[fadeIn_0.2s_ease-out] flex flex-col p-1"><button onClick={handleEditName} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><UserPen size={16} className="text-[#7F5CFF]" /> {userName || ui.editName}</button><button onClick={handleOpenProfile} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Brain size={16} /> {ui.profile}</button><div className="h-[1px] bg-white/5 my-1 mx-2"></div><button onClick={handleInstall} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Download size={16} /> {ui.install}</button><button onClick={handleExport} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><FileText size={16} /> {ui.export}</button><button onClick={toggleLanguage} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Languages size={16} /> {ui.language}</button><button onClick={handleDonate} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:text-yellow-400 hover:bg-white/5 rounded-xl transition-colors w-full text-left"><Coffee size={16} /> Buy me a coffee</button><div className="h-[1px] bg-white/5 my-1 mx-2"></div><button onClick={handleReset} className="flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors w-full text-left"><RotateCcw size={16} /> {ui.reset}</button></div></>)}
+
+            {/* 底部进度条 (保持不变) */}
+            <div className="absolute bottom-0 left-0 w-full h-[1px] bg-white/5">
+              <div className={`h-full ${levelInfo.barColor} shadow-[0_0_10px_currentColor] transition-all duration-500`} style={{ width: `${levelInfo.level === 3 ? 100 : progressPercent}%` }}/>
             </div>
-            <div className="absolute bottom-0 left-0 w-full h-[2px] bg-white/5"><div className={`h-full ${levelInfo.barColor} shadow-[0_0_10px_currentColor] transition-all duration-500`} style={{ width: `${levelInfo.level === 3 ? 100 : progressPercent}%` }}/></div>
           </header>
 
           {/* 🔥 修复：解锁提示条 (Sub-Header) */}
