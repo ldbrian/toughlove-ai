@@ -274,7 +274,11 @@ export default function Home() {
       await fetch('/api/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: getDeviceId(), persona: activePersona, messages: currentMessages })
+        body: JSON.stringify({ 
+            userId: getDeviceId(), // � 确保这里传了 userId
+            persona: activePersona, 
+            messages: currentMessages 
+        })
       });
     } catch (e) { console.error("Cloud sync failed", e); }
   };
@@ -390,7 +394,30 @@ export default function Home() {
   const handleDonate = () => { posthog.capture('feature_donate_click'); setShowDonateModal(true); setShowMenu(false); }
   const goBMAC = () => { window.open('https://www.buymeacoffee.com/ldbrian', '_blank'); }
   const handleEditName = () => { setTempName(userName); setShowNameModal(true); setShowMenu(false); }
-  const handleOpenProfile = async () => { posthog.capture('feature_profile_open'); setShowMenu(false); setShowProfile(true); setIsProfileLoading(true); try { const res = await fetch('/api/profile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: getDeviceId(), language: lang }), }); const data = await res.json(); setProfileData(data); } catch (e) { console.error(e); } finally { setIsProfileLoading(false); } };
+  const handleOpenProfile = async () => {
+    posthog.capture('feature_profile_open');
+    setShowMenu(false);
+    setShowProfile(true);
+    setIsProfileLoading(true);
+    
+    try {
+      const res = await fetch('/api/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // � 重点：确保传了 userId
+        body: JSON.stringify({ 
+            userId: getDeviceId(), 
+            language: lang 
+        }),
+      });
+      const data = await res.json();
+      setProfileData(data);
+    } catch (e) { 
+        console.error(e); 
+    } finally { 
+        setIsProfileLoading(false); 
+    }
+  };
   const handleOpenDiary = async () => { setShowDiary(true); if (!diaryContent || hasNewDiary) { setIsDiaryLoading(true); try { const res = await fetch('/api/diary', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: messages, persona: activePersona, language: lang, userName: userName }), }); const data = await res.json(); if (data.diary) { setDiaryContent(data.diary); setHasNewDiary(false); localStorage.setItem(getDiaryKey(activePersona), data.diary); localStorage.setItem(LAST_DIARY_TIME_KEY, Date.now().toString()); posthog.capture('diary_read', { persona: activePersona }); } else { setDiaryContent(lang === 'zh' ? "（日记本是空的。聊少了，懒得记。）" : "(Diary is empty. Not enough chat.)"); } } catch (e) { console.error(e); setDiaryContent("Error loading diary."); } finally { setIsDiaryLoading(false); } } };
   const downloadProfileCard = async () => { if (!profileCardRef.current) return; setIsGeneratingImg(true); try { const canvas = await html2canvas(profileCardRef.current, { backgroundColor: '#000000', scale: 3, useCORS: true, } as any); const image = canvas.toDataURL("image/png"); const link = document.createElement('a'); link.href = image; link.download = `ToughLove_Profile_${new Date().toISOString().split('T')[0]}.png`; link.click(); } catch (err) { alert("保存失败"); } finally { setIsGeneratingImg(false); } };
   const fetchDailyQuote = async () => { posthog.capture('feature_quote_open'); setShowQuote(true); setIsQuoteLoading(true); try { const res = await fetch('/api/daily', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ persona: activePersona, userId: getDeviceId(), language: lang }), }); const data = await res.json(); setQuoteData(data); } catch (e) { console.error(e); } finally { setIsQuoteLoading(false); } };
