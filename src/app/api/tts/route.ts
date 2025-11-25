@@ -13,17 +13,15 @@ export async function POST(req: NextRequest) {
 
     if (!text) return NextResponse.json({ error: 'Text required' }, { status: 400 });
 
-    // 🔥 核心修改：文本清洗 (Regex Cleaning)
-    // 去除：中文括号（...）、英文括号(...)、星号*...*、方头括号[...]、以及分隔符 |||
+    // 文本清洗逻辑
     const cleanText = text
       .replace(/（.*?）/g, '') 
       .replace(/\(.*?\)/g, '')
       .replace(/\*.*?\*/g, '')
       .replace(/\[.*?\]/g, '')
-      .replace(/\|\|\|/g, '，') // 分隔符变逗号停顿
+      .replace(/\|\|\|/g, '，')
       .trim();
 
-    // 如果洗完没词了（比如只有动作），直接返回错误，不浪费 Azure 额度
     if (cleanText.length === 0) {
        return NextResponse.json({ error: 'No speakable text' }, { status: 400 });
     }
@@ -38,7 +36,6 @@ export async function POST(req: NextRequest) {
     const speechConfig = sdk.SpeechConfig.fromSubscription(speechKey, speechRegion);
     speechConfig.speechSynthesisOutputFormat = sdk.SpeechSynthesisOutputFormat.Audio16Khz32KBitRateMonoMp3;
 
-    // 构建 SSML
     const ssml = `
       <speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="zh-CN">
         <voice name="${voice}">
@@ -53,7 +50,8 @@ export async function POST(req: NextRequest) {
 
     const synthesizer = new sdk.SpeechSynthesizer(speechConfig);
 
-    return new Promise((resolve, reject) => {
+    // 🔥 修复点：显式指定 Promise 的泛型为 <NextResponse>
+    return new Promise<NextResponse>((resolve, reject) => {
       synthesizer.speakSsmlAsync(
         ssml,
         (result) => {
