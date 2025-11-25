@@ -1,27 +1,25 @@
 import { createClient } from '@supabase/supabase-js';
 import { OpenAI } from 'openai';
 
-// 服务端 Supabase 客户端
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// 1. 初始化防崩配置 (Build Safe)
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 const openai = new OpenAI({
-  apiKey: process.env.DEEPSEEK_API_KEY,
+  apiKey: process.env.DEEPSEEK_API_KEY || 'dummy',
   baseURL: 'https://api.deepseek.com',
 });
 
-// 🔥 核心函数：滚动记忆处理 (Sliding Window)
+// 🔥 核心函数：滚动记忆处理
 export async function processRollingMemory(userId: string, persona: string) {
   try {
-    // 1. 检查消息数量
-    // 注意：这里用的是你的表名 chat_histories
-    // 我们假设 user_id 存的是 deviceId
+    // 2. 这里的链式调用必须完整，不能断
     const { count } = await supabase
       .from('chat_histories')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId) // 如果你表里叫 device_id，请把这里改成 .eq('device_id', userId)
+      .select('*', { count: 'exact', head: true }) // head: true 表示只查数量，不查数据，速度快
+      .eq('user_id', userId)
       .eq('persona', persona);
 
     // 🔴 阈值：100 条
@@ -29,15 +27,13 @@ export async function processRollingMemory(userId: string, persona: string) {
 
     console.log(`[Memory] User ${userId} (${persona}) has ${count} msgs. Starting distillation...`);
 
-    // 2. 捞出需要“炼丹”的旧数据 (超出 100 条的部分)
-    // 比如有 105 条，我们把最旧的 5 条捞出来提炼并删除
-    // 为了防止一次删太少，我们可以一次性处理 20 条，留 80 条缓冲区
+    // 3. 捞出旧数据
     const retainCount = 80; 
     const limit = count - retainCount;
 
     const { data: oldLogs } = await supabase
       .from('chat_histories')
-      .select('id, role, content') // 查出 ID 方便删除
+      .select('id, role, content')
       .eq('user_id', userId)
       .eq('persona', persona)
       .order('created_at', { ascending: true }) // 最旧的在前
@@ -45,12 +41,12 @@ export async function processRollingMemory(userId: string, persona: string) {
 
     if (!oldLogs || oldLogs.length === 0) return;
 
-    // 3. 拼接对话文本
+    // 4. 拼接文本
     const conversationText = oldLogs
-      .map(log => `${log.role}: ${log.content}`)
+      .map((log: any) => `${log.role}: ${log.content}`)
       .join('\n');
 
-    // 4. 调用 DeepSeek 提炼 (Prompt)
+    // 5. DeepSeek 提炼
     const systemPrompt = `
       你是一个记忆整理员。阅读这段过期的对话记录。
       任务：
@@ -86,7 +82,7 @@ export async function processRollingMemory(userId: string, persona: string) {
         console.error("JSON Parse Error:", e);
     }
 
-    // 5. 存入 memories 表 (沿用你的表名)
+    // 6. 存入 memories
     if (result && result.memories && Array.isArray(result.memories)) {
       const memoryRows = result.memories.map((m: any) => ({
         user_id: userId,
@@ -102,9 +98,8 @@ export async function processRollingMemory(userId: string, persona: string) {
       }
     }
 
-    // 6. 🔥 销毁旧记录 (清理 chat_histories)
-    // 我们删除刚才捞出来的那些 ID
-    const idsToDelete = oldLogs.map(log => log.id);
+    // 7. 删除旧记录
+    const idsToDelete = oldLogs.map((log: any) => log.id);
     if (idsToDelete.length > 0) {
         await supabase
           .from('chat_histories')
