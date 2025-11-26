@@ -993,7 +993,7 @@ export default function Home() {
                     onClick={() => {
                       // 直接发送
                       const msg: Message = { id: Date.now().toString(), role: 'user', content: reply };
-                      setMessages(prev => [...prev, msg]);
+                      //setMessages(prev => [...prev, msg]);
                       append(msg);
                       posthog.capture('use_quick_reply', { persona: activePersona, content: reply });
                     }}
