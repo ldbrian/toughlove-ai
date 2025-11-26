@@ -80,7 +80,7 @@ export const getSimpleWeather = async (): Promise<string> => {
         // console.warn("Location denied.");
         resolve(""); 
       },
-      { timeout: 4000 } // 4秒超时，别让用户等太久
+      { timeout: 1500 } // 1.5秒超时，别让用户等太久
     );
   });
 };

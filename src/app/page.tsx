@@ -45,6 +45,45 @@ const Typewriter = ({ content, isThinking }: { content: string, isThinking?: boo
   return <ReactMarkdown>{displayedContent}</ReactMarkdown>;
 };
 
+// 🔥 新增：赛博朋克启动页
+const BootScreen = () => {
+  const [text, setText] = useState<string[]>([]);
+  const lines = [
+    "INITIALIZING CORE SYSTEMS...",
+    "LOADING PERSONALITY MODULES [Ash, Rin, Sol, Vee, Echo]...",
+    "ESTABLISHING NEURAL LINK...",
+    "BYPASSING SAFETY PROTOCOLS...",
+    "SYNCING MEMORY ARCHIVES...",
+    "SYSTEM ONLINE."
+  ];
+
+  useEffect(() => {
+    let delay = 0;
+    lines.forEach((line, index) => {
+      // 随机延迟，制造真实计算感
+      delay += Math.random() * 300 + 100;
+      setTimeout(() => {
+        setText(prev => [...prev, line]);
+      }, delay);
+    });
+  }, []);
+
+  return (
+    <div className="flex flex-col h-screen bg-black text-green-500 font-mono text-xs p-8 justify-end pb-20">
+      {text.map((t, i) => (
+        <div key={i} className="mb-2 animate-[fadeIn_0.1s_ease-out]">
+          <span className="opacity-50 mr-2">{`>`}</span>
+          {t}
+        </div>
+      ))}
+      <div className="mt-2 flex items-center gap-2 text-[#7F5CFF] animate-pulse">
+        <Loader2 size={14} className="animate-spin" />
+        <span>WAITING FOR USER INPUT...</span>
+      </div>
+    </div>
+  );
+};
+
 export default function Home() {
   // --- 状态定义 ---
   const [mounted, setMounted] = useState(false);
@@ -481,12 +520,8 @@ export default function Home() {
   const progressPercent = Math.min(100, (interactionCount / levelInfo.max) * 100);
 
   if (!mounted) {
-    return (
-      <div className="flex flex-col h-screen bg-[#050505] items-center justify-center text-gray-500 space-y-4">
-        <Loader2 size={32} className="animate-spin text-[#7F5CFF]" />
-        <p className="text-xs font-mono tracking-widest opacity-50">INITIALIZING SYSTEM...</p>
-      </div>
-    );
+    // 🔥 替换：不再显示枯燥的 Loader，而是显示启动页
+    return <BootScreen />;
   }
 
   return (
