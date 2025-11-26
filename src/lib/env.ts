@@ -1,47 +1,86 @@
-// 1. 获取时间与饭点信息
-export function getLocalTimeInfo() {
-    const now = new Date();
-    const hour = now.getHours();
-    const day = now.getDay(); // 0 = 周日
+// src/lib/env.ts
+
+// --- 1. 时间感知与生活阶段判断 ---
+export const getLocalTimeInfo = () => {
+  const now = new Date();
+  const hours = now.getHours();
   
-    const daysZH = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
-    const daysEN = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  // 星期映射
+  const daysZH = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+  const daysEN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   
-    // 定义生活场景 (Lifestyle Phases)
-    let lifePhase = "Working/Chilling"; // 默认
-    if (hour >= 6 && hour < 10) lifePhase = "Breakfast Time";
-    else if (hour >= 11 && hour < 14) lifePhase = "Lunch Time";
-    else if (hour >= 14 && hour < 17) lifePhase = "Afternoon Tea";
-    else if (hour >= 17 && hour < 21) lifePhase = "Dinner Time";
-    else if (hour >= 23 || hour < 4) lifePhase = "Late Night Emo";
-  
-    return {
-      localTime: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      weekdayZH: daysZH[day],
-      weekdayEN: daysEN[day],
-      lifePhase, // 核心：饭点/深夜状态
-      isMondayMorning: day === 1 && hour < 12,
-      isFridayNight: day === 5 && hour >= 18
-    };
+  // 格式化时间 (例如 14:05)
+  const timeStr = `${hours.toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+
+  // 🔥 核心：生活阶段 (Life Phase) - 用于触发特定的开场白
+  let phase = 'Daytime';
+  if (hours >= 0 && hours < 5) phase = 'Late Night (深夜修仙)';
+  else if (hours >= 5 && hours < 9) phase = 'Early Morning (晨间)';
+  else if (hours >= 11 && hours < 14) phase = 'Lunch Time (饭点)';
+  else if (hours >= 18 && hours < 21) phase = 'Dinner Time (晚饭)';
+  else if (hours >= 22) phase = 'Bed Time (睡前)';
+
+  return {
+    localTime: timeStr,
+    weekdayZH: daysZH[now.getDay()],
+    weekdayEN: daysEN[now.getDay()],
+    lifePhase: phase
+  };
+};
+
+// --- 2. 天气代码翻译 (WMO Code) ---
+const getWeatherDesc = (code: number, lang: 'zh' | 'en' = 'zh'): string => {
+  // 0: 晴, 1-3: 多云, 45/48: 雾, 51-67: 雨, 71-86: 雪, 95-99: 雷暴
+  if (code === 0) return lang === 'zh' ? '☀️ 晴朗' : '☀️ Clear';
+  if (code <= 3) return lang === 'zh' ? '⛅ 多云' : '⛅ Cloudy';
+  if (code <= 48) return lang === 'zh' ? '🌫️ 有雾' : '🌫️ Foggy';
+  if (code <= 67) return lang === 'zh' ? '🌧️ 下雨' : '🌧️ Rainy'; // 重点关注
+  if (code <= 77) return lang === 'zh' ? '❄️ 雨夹雪' : '❄️ Snow grains';
+  if (code <= 86) return lang === 'zh' ? '🌨️ 下雪' : '🌨️ Snow';
+  if (code <= 99) return lang === 'zh' ? '⛈️ 雷暴' : '⛈️ Thunderstorm';
+  return lang === 'zh' ? '未知天气' : 'Unknown';
+};
+
+// --- 3. 获取真实天气 (Open-Meteo) ---
+// 这是一个完全免费、无需 Key 的开源气象 API
+export const getSimpleWeather = async (): Promise<string> => {
+  if (typeof window === 'undefined' || !navigator.geolocation) {
+    return "";
   }
-  
-  // 2. 获取简易天气 (利用免费公开接口 wttr.in，基于 IP，不需要弹窗授权)
-  // 返回格式示例: "Shanghai: Rain +20°C"
-  export async function getSimpleWeather(): Promise<string> {
-    try {
-      // 使用 wttr.in 的简洁文本模式 (?format=3)
-      // 格式：City: Condition Temp
-      const res = await fetch('https://wttr.in/?format=%l:+%C+%t', { 
-        method: 'GET',
-        cache: 'no-store' // 稍微缓存一下也行，这里为了实时性
-      });
-      if (res.ok) {
-        const text = await res.text();
-        return text.trim();
-      }
-      return "";
-    } catch (e) {
-      // 失败了就默默失败，不影响主流程
-      return "";
-    }
-  }
+
+  return new Promise((resolve) => {
+    // 1. 尝试获取经纬度
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { latitude, longitude } = position.coords;
+
+          // 2. 请求天气
+          const res = await fetch(
+            `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true`
+          );
+          const data = await res.json();
+          
+          if (data && data.current_weather) {
+            const { temperature, weathercode } = data.current_weather;
+            const weatherDesc = getWeatherDesc(weathercode, 'zh');
+            
+            // 返回格式： "🌧️ 下雨, 18°C"
+            resolve(`${weatherDesc}, ${temperature}°C`);
+          } else {
+            resolve("");
+          }
+        } catch (e) {
+          console.error("Weather fetch failed:", e);
+          resolve(""); // 失败降级为空，不影响流程
+        }
+      },
+      (error) => {
+        // 用户拒绝授权或定位失败
+        // console.warn("Location denied.");
+        resolve(""); 
+      },
+      { timeout: 4000 } // 4秒超时，别让用户等太久
+    );
+  });
+};

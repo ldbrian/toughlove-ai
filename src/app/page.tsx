@@ -7,22 +7,24 @@ import { getDeviceId } from '@/lib/utils';
 import { getMemory, saveMemory } from '@/lib/storage';
 import { getLocalTimeInfo, getSimpleWeather } from '@/lib/env';
 import { getPersonaStatus } from '@/lib/status'; 
-import { Send, Calendar, X, Share2, Languages, Download, Users, Sparkles, ImageIcon, FileText, RotateCcw, MoreVertical, Trash2, Coffee, Tag, Heart, Shield, Zap, Lock, Globe, UserPen, Brain, Book, QrCode, ExternalLink, ChevronRight, MessageSquare, Volume2, Loader2, Bug, MessageCircle } from 'lucide-react';
+import { Send, Calendar, X, ChevronLeft, Download, Users, Sparkles, ImageIcon, FileText, RotateCcw, MoreVertical, Trash2, Coffee, Tag, Heart, Shield, Zap, Lock, Globe, UserPen, Brain, Book, QrCode, ExternalLink, ChevronRight, MessageSquare, Volume2, Loader2, Bug, MessageCircle, ArrowRight, Languages, ArrowUpRight } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import html2canvas from 'html2canvas';
 import { Message } from 'ai';
 import posthog from 'posthog-js';
+
 
 // --- 类型定义 ---
 type DailyQuote = { content: string; date: string; persona: string; };
 type ViewState = 'selection' | 'chat';
 
 // --- 常量 Key ---
-const CURRENT_VERSION_KEY = 'toughlove_update_v1.7_audio';
+const CURRENT_VERSION_KEY = 'toughlove_v2.0_sensory_launch'; // 版本号升级
 const LANGUAGE_KEY = 'toughlove_language_confirmed';
 const LANG_PREF_KEY = 'toughlove_lang_preference';
 const USER_NAME_KEY = 'toughlove_user_name';
 const LAST_DIARY_TIME_KEY = 'toughlove_last_diary_time';
+const VISITED_KEY = 'toughlove_has_visited'; // 🔥 新增：判断是否是新用户
 
 // --- 打字机组件 ---
 const Typewriter = ({ content, isThinking }: { content: string, isThinking?: boolean }) => {
@@ -50,6 +52,9 @@ export default function Home() {
   const [activePersona, setActivePersona] = useState<PersonaType>('Ash');
   const [lang, setLang] = useState<LangType>('zh');
   const [showLangSetup, setShowLangSetup] = useState(false);
+  
+  // 🔥 新增：急诊单 (Triage) 状态
+  const [showTriage, setShowTriage] = useState(false);
 
   // Modals
   const [showQuote, setShowQuote] = useState(false);
@@ -68,8 +73,6 @@ export default function Home() {
   const [isDiaryLoading, setIsDiaryLoading] = useState(false);
   const [hasNewDiary, setHasNewDiary] = useState(false);
   const [showNameModal, setShowNameModal] = useState(false);
-  
-  // 🔥 新增：反馈弹窗状态
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [feedbackText, setFeedbackText] = useState("");
 
@@ -88,6 +91,37 @@ export default function Home() {
   const profileCardRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const ui = UI_TEXT[lang];
+  const TRIAGE_TEXT = {
+    zh: {
+      title: "系统初始化",
+      subtitle: "请声明你当前的精神状态。",
+      opt1: "💊 我需要清醒",
+      desc1: "拒绝煽情，毒舌直击。适合矫情时刻。",
+      opt2: "⛓️ 我需要管教",
+      desc2: "强制自律，严厉导师。适合拖延症。",
+      opt3: "🩹 我需要陪伴",
+      desc3: "虽然嘴硬，但会陪你。适合孤独时刻。",
+      footer: "TOUGHLOVE AI v2.0"
+    },
+    en: {
+      title: "SYSTEM INITIALIZED",
+      subtitle: "State your current mental status.",
+      opt1: "💊 I need Reality",
+      desc1: "No drama. Brutal truth.",
+      opt2: "⛓️ I need Discipline",
+      desc2: "Strict control. No excuses.",
+      opt3: "🩹 I need Company",
+      desc3: "Tsundere comfort. Not alone.",
+      footer: "TOUGHLOVE AI v2.0"
+    }
+  };
+  // 🔥 修复：使用 #trigger- 作为协议，防止被 Markdown 组件过滤
+  const formatMentions = (text: string) => {
+    // 匹配 5 个名字
+    return text.replace(/\b(Ash|Rin|Sol|Vee|Echo)\b/g, (match) => {
+      return `[${match}](#trigger-${match})`; // 例如: [Sol](#trigger-Sol)
+    });
+  };
 
   const getTrustKey = (p: string) => `toughlove_trust_${p}`;
   const getDiaryKey = (p: string) => `toughlove_diary_${p}_${new Date().toISOString().split('T')[0]}`;
@@ -96,10 +130,14 @@ export default function Home() {
   // --- 初始化 ---
   useEffect(() => {
     setMounted(true); 
+    
+    // 1. 语言偏好
     const savedLang = localStorage.getItem(LANG_PREF_KEY);
     if (savedLang) {
       setLang(savedLang as LangType);
     }
+    
+    // 2. 语言弹窗 & 新手急诊单逻辑
     const hasLangConfirmed = localStorage.getItem(LANGUAGE_KEY);
     if (!hasLangConfirmed) {
       if (!savedLang) {
@@ -107,14 +145,21 @@ export default function Home() {
         if (!browserLang.startsWith('zh')) { setLang('en'); }
       }
       setShowLangSetup(true);
+    } else {
+        // 如果语言选过了，检查是否是新用户 (没做过急诊)
+        const hasVisited = localStorage.getItem(VISITED_KEY);
+        if (!hasVisited) {
+            setShowTriage(true); // 🔥 触发急诊单
+        } else {
+            // 老用户：检查版本更新
+            const hasSeenUpdate = localStorage.getItem(CURRENT_VERSION_KEY);
+            if (!hasSeenUpdate) {
+                const timer = setTimeout(() => setShowUpdateModal(true), 500);
+                return () => clearTimeout(timer);
+            }
+        }
     }
-    if (hasLangConfirmed) {
-      const hasSeenUpdate = localStorage.getItem(CURRENT_VERSION_KEY);
-      if (!hasSeenUpdate) {
-        const timer = setTimeout(() => setShowUpdateModal(true), 500);
-        return () => clearTimeout(timer);
-      }
-    }
+
     const storedName = localStorage.getItem(USER_NAME_KEY);
     if (storedName) setUserName(storedName);
 
@@ -160,10 +205,10 @@ export default function Home() {
     const nextLv2 = 50 - interactionCount;
     const nextLv3 = 100 - interactionCount;
     if (interactionCount < 50) {
-      return lang === 'zh' ? `🔒 距离 [Lv.2 解锁语音] 还需 ${nextLv2} 次互动` : `🔒 ${nextLv2} msgs to unlock [Voice Mode]`;
+      return lang === 'zh' ? ` 距离 [Lv.2 解锁语音] 还需 ${nextLv2} 次互动` : ` ${nextLv2} msgs to unlock [Voice Mode]`;
     }
     if (interactionCount < 100) {
-      return lang === 'zh' ? `🔒 距离 [Lv.3 解锁私照] 还需 ${nextLv3} 次互动` : `🔒 ${nextLv3} msgs to unlock [Private Photos]`;
+      return lang === 'zh' ? ` 距离 [Lv.3 解锁私照] 还需 ${nextLv3} 次互动` : ` ${nextLv3} msgs to unlock [Private Photos]`;
     }
     return lang === 'zh' ? `✨ 当前信任度已满，享受你们的共犯时刻。` : `✨ Trust Maxed. Enjoy the bond.`;
   };
@@ -173,9 +218,19 @@ export default function Home() {
     localStorage.setItem(LANG_PREF_KEY, selectedLang);
     localStorage.setItem(LANGUAGE_KEY, 'true');
     setShowLangSetup(false);
+    
+    // 语言确认后，如果是新用户，显示急诊单
+    const hasVisited = localStorage.getItem(VISITED_KEY);
+    if (!hasVisited) setShowTriage(true);
+    
     posthog.capture('language_set', { language: selectedLang });
-    const hasSeenUpdate = localStorage.getItem(CURRENT_VERSION_KEY);
-    if (!hasSeenUpdate) { setTimeout(() => setShowUpdateModal(true), 500); }
+  };
+
+  const handleTriageSelection = (target: PersonaType) => {
+      localStorage.setItem(VISITED_KEY, 'true');
+      setShowTriage(false);
+      selectPersona(target);
+      posthog.capture('triage_select', { target });
   };
 
   const saveUserName = () => {
@@ -186,12 +241,10 @@ export default function Home() {
     posthog.capture('username_set');
   };
 
-  // 🔥 反馈提交逻辑
   const handleFeedbackSubmit = () => {
     if (!feedbackText.trim()) return;
-    // MVP: 直接通过 PostHog 发送，或者后续接 API
     posthog.capture('user_feedback', { content: feedbackText, userId: getDeviceId() });
-    alert(lang === 'zh' ? '反馈已收到！CTO 正在赶来的路上。' : 'Feedback received!');
+    alert(lang === 'zh' ? '反馈已收到！' : 'Feedback received!');
     setFeedbackText("");
     setShowFeedbackModal(false);
   };
@@ -284,7 +337,7 @@ export default function Home() {
 
   const analyzeTags = async (currentMessages: any[]) => {
     try {
-      const res = await fetch('/api/tag', { body: JSON.stringify({ messages: currentMessages, userId: getDeviceId() }), });
+      await fetch('/api/tag', { body: JSON.stringify({ messages: currentMessages, userId: getDeviceId() }), });
     } catch (e) { }
   };
   useEffect(() => {
@@ -376,7 +429,7 @@ export default function Home() {
 
   const backToSelection = () => { setView('selection'); setTick(tick + 1); };
   const dismissUpdate = () => { localStorage.setItem(CURRENT_VERSION_KEY, 'true'); setShowUpdateModal(false); };
-  const handleTryNewFeature = () => { posthog.capture('update_click_try'); dismissUpdate(); selectPersona('Rin'); }; 
+  const handleTryNewFeature = () => { posthog.capture('update_click_try'); dismissUpdate(); selectPersona('Sol'); }; 
   const handleExport = () => { posthog.capture('feature_export', { persona: activePersona }); if (messages.length === 0) return; const dateStr = new Date().toLocaleString(); const header = `================================\n${ui.exportFileName}\nDate: ${dateStr}\nPersona: ${currentP.name}\nUser: ${userName || 'Anonymous'}\n================================\n\n`; const body = messages.map(m => { const role = m.role === 'user' ? (userName || 'ME') : currentP.name.toUpperCase(); return `[${role}]:\n${m.content.replace(/\|\|\|/g, '\n')}\n`; }).join('\n--------------------------------\n\n'); const blob = new Blob([header + body], { type: 'text/plain;charset=utf-8' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${ui.exportFileName}_${activePersona}_${new Date().toISOString().split('T')[0]}.txt`; a.style.display = 'none'; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); setShowMenu(false); };
   const handleInstall = () => { posthog.capture('feature_install_click'); setShowInstallModal(true); setShowMenu(false); };
   const handleDonate = () => { posthog.capture('feature_donate_click'); setShowDonateModal(true); setShowMenu(false); }
@@ -410,9 +463,64 @@ export default function Home() {
   }
 
   return (
-    // 🔥 Fix: 使用 h-[100dvh] 适配移动端地址栏
     <div className="relative flex flex-col h-[100dvh] bg-[#050505] text-gray-100 overflow-hidden font-sans selection:bg-[#7F5CFF] selection:text-white">
       <div className="absolute top-[-20%] left-0 right-0 h-[500px] bg-gradient-to-b from-[#7F5CFF]/10 to-transparent blur-[100px] pointer-events-none" />
+
+      {/* 🔥🔥🔥 新手引导：情绪急诊单 (双语适配版) 🔥🔥🔥 */}
+      {showTriage && (
+        <div className="absolute inset-0 z-[300] bg-black flex flex-col items-center justify-center p-6 animate-[fadeIn_0.5s_ease-out]">
+          <div className="w-full max-w-sm space-y-8">
+            
+            {/* 标题区 */}
+            <div className="text-center space-y-2">
+              <div className="w-16 h-16 bg-[#1a1a1a] rounded-full flex items-center justify-center text-3xl border border-white/10 mx-auto mb-4 shadow-[0_0_30px_rgba(127,92,255,0.2)] animate-pulse">⚡</div>
+              <h1 className="text-2xl font-bold text-white tracking-wider">{TRIAGE_TEXT[lang].title}</h1>
+              <p className="text-sm text-gray-500">{TRIAGE_TEXT[lang].subtitle}</p>
+            </div>
+
+            {/* 选项区 */}
+            <div className="space-y-3">
+              {/* 选项 1: Ash */}
+              <button onClick={() => handleTriageSelection('Ash')} className="w-full group relative p-5 rounded-2xl bg-[#111] border border-white/10 hover:border-blue-500/50 transition-all text-left overflow-hidden active:scale-95">
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent to-blue-500/10 opacity-0 group-hover:opacity-100 transition-opacity"/>
+                <div className="relative z-10">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-lg font-bold text-white">{TRIAGE_TEXT[lang].opt1}</span>
+                    <span className="text-2xl">🌙</span>
+                  </div>
+                  <p className="text-xs text-gray-500">{TRIAGE_TEXT[lang].desc1}</p>
+                </div>
+              </button>
+
+              {/* 选项 2: Sol */}
+              <button onClick={() => handleTriageSelection('Sol')} className="w-full group relative p-5 rounded-2xl bg-[#111] border border-white/10 hover:border-emerald-500/50 transition-all text-left overflow-hidden active:scale-95">
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent to-emerald-500/10 opacity-0 group-hover:opacity-100 transition-opacity"/>
+                <div className="relative z-10">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-lg font-bold text-white">{TRIAGE_TEXT[lang].opt2}</span>
+                    <span className="text-2xl">⛓️</span>
+                  </div>
+                  <p className="text-xs text-gray-500">{TRIAGE_TEXT[lang].desc2}</p>
+                </div>
+              </button>
+
+              {/* 选项 3: Rin */}
+              <button onClick={() => handleTriageSelection('Rin')} className="w-full group relative p-5 rounded-2xl bg-[#111] border border-white/10 hover:border-pink-500/50 transition-all text-left overflow-hidden active:scale-95">
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent to-pink-500/10 opacity-0 group-hover:opacity-100 transition-opacity"/>
+                <div className="relative z-10">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-lg font-bold text-white">{TRIAGE_TEXT[lang].opt3}</span>
+                    <span className="text-2xl">🔥</span>
+                  </div>
+                  <p className="text-xs text-gray-500">{TRIAGE_TEXT[lang].desc3}</p>
+                </div>
+              </button>
+            </div>
+            
+            <p className="text-center text-[10px] text-gray-600 pt-8">{TRIAGE_TEXT[lang].footer}</p>
+          </div>
+        </div>
+      )}
 
       {/* --- Modals --- */}
       {showLangSetup && (<div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-6 animate-[fadeIn_0.5s_ease-out]"><div className="mb-10 text-center"><div className="w-20 h-20 bg-[#1a1a1a] rounded-full flex items-center justify-center text-4xl border border-white/10 mx-auto mb-4 shadow-[0_0_30px_rgba(127,92,255,0.3)]">🧬</div><h1 className="text-2xl font-bold text-white tracking-wider mb-2">TOUGHLOVE AI</h1><p className="text-gray-500 text-sm">Choose your language / 选择语言</p></div><div className="flex flex-col gap-4 w-full max-w-xs"><button onClick={() => confirmLanguage('zh')} className={`p-6 rounded-2xl border transition-all flex items-center justify-between group ${lang === 'zh' ? 'bg-white/10 border-[#7F5CFF]' : 'bg-[#111] border-white/10 hover:border-white/30'}`}><div className="text-left"><div className="text-lg font-bold text-white">中文</div><div className="text-xs text-gray-500">Chinese</div></div>{lang === 'zh' && <div className="w-3 h-3 bg-[#7F5CFF] rounded-full shadow-[0_0_10px_#7F5CFF]"></div>}</button><button onClick={() => confirmLanguage('en')} className={`p-6 rounded-2xl border transition-all flex items-center justify-between group ${lang === 'en' ? 'bg-white/10 border-[#7F5CFF]' : 'bg-[#111] border-white/10 hover:border-white/30'}`}><div className="text-left"><div className="text-lg font-bold text-white">English</div><div className="text-xs text-gray-500">English</div></div>{lang === 'en' && <div className="w-3 h-3 bg-[#7F5CFF] rounded-full shadow-[0_0_10px_#7F5CFF]"></div>}</button></div></div>)}
@@ -423,7 +531,7 @@ export default function Home() {
       {showInstallModal && (<div className="absolute inset-0 z-50 flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-[fadeIn_0.2s_ease-out]"><div className="absolute inset-0" onClick={() => setShowInstallModal(false)} /><div className="w-full max-w-sm bg-[#1a1a1a] rounded-t-3xl sm:rounded-3xl border border-white/10 shadow-2xl overflow-hidden relative z-10 animate-[slideUp_0.3s_ease-out]"><button onClick={() => setShowInstallModal(false)} className="absolute top-4 right-4 p-2 text-gray-400 hover:text-white"><X size={20} /></button><div className="p-6 space-y-6"><div className="flex items-center gap-4"><div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#7F5CFF] to-black flex items-center justify-center text-2xl border border-white/10">🥀</div><div><h3 className="text-lg font-bold text-white">{ui.installGuideTitle}</h3><p className="text-xs text-gray-400">{ui.installGuideDesc}</p></div></div><div className="space-y-3 text-sm text-gray-300"><div className="bg-white/5 p-4 rounded-xl border border-white/5 space-y-2"><p className="text-xs opacity-80">{ui.iosStep1}</p><p className="text-xs opacity-80">{ui.iosStep2}</p><p className="text-xs opacity-80">{ui.iosStep3}</p></div></div></div></div></div>)}
       {showUpdateModal && (<div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-6 animate-[fadeIn_0.3s_ease-out]"><div className="w-full max-w-sm bg-gradient-to-br from-[#111] to-[#0a0a0a] rounded-3xl border border-indigo-500/30 shadow-[0_0_50px_rgba(99,102,241,0.15)] overflow-hidden relative animate-[scaleIn_0.3s_cubic-bezier(0.16,1,0.3,1)]"><button onClick={dismissUpdate} className="absolute top-4 right-4 p-2 text-gray-500 hover:text-white z-10 transition-colors"><X size={20} /></button><div className="p-8 flex flex-col items-center text-center relative"><div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-indigo-900/20 to-transparent pointer-events-none"></div><div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-bold uppercase tracking-wider mb-6"><Sparkles size={12} /> {ui.updateTitle}</div><div className="relative w-20 h-20 mb-6"><div className="w-full h-full rounded-full bg-[#151515] flex items-center justify-center text-5xl border border-white/10 shadow-xl relative z-10">👁️</div><div className="absolute inset-0 bg-indigo-500 blur-xl opacity-30 animate-pulse"></div></div><h3 className="text-xl font-bold text-white mb-3">{ui.updateDesc}</h3><p className="text-sm text-gray-400 leading-relaxed whitespace-pre-line">{ui.updateContent}</p></div><div className="p-6 pt-0"><button onClick={handleTryNewFeature} className="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition-all shadow-lg shadow-indigo-900/20 flex items-center justify-center gap-2 group">{ui.tryNow}<span className="group-hover:translate-x-1 transition-transform">→</span></button></div></div></div>)}
       
-      {/* 🔥 新增：反馈弹窗 (Feedback Modal) */}
+      {/* 🔥 新增：反馈弹窗 */}
       {showFeedbackModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-sm p-6 animate-[fadeIn_0.2s_ease-out]">
           <div className="w-full max-w-sm bg-[#1a1a1a] rounded-3xl border border-white/10 shadow-2xl p-6 relative">
@@ -499,24 +607,22 @@ export default function Home() {
                       </span>
                     </div>
                     
-                    <div className="text-[10px] text-gray-500 mb-1 flex items-center gap-1">
+                    {/* 🔥 新增：标签外显 (Tag Visualization) */}
+                    <div className="flex flex-wrap gap-1 mb-1">
+                        {p.tags[lang].slice(0, 2).map(tag => (
+                            <span key={tag} className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-gray-400 border border-white/5 whitespace-nowrap">
+                                {tag}
+                            </span>
+                        ))}
+                    </div>
+
+                    <div className="text-[10px] text-gray-500 mb-1 flex items-center gap-1 truncate">
                         {status}
                     </div>
 
                     <p className={`text-xs truncate transition-colors ${isChatted ? 'text-gray-400 group-hover:text-gray-300' : 'text-gray-500 italic'}`}>
                       {isChatted ? lastMsg : p.slogan[lang]}
                     </p>
-                    
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <span className={`text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-gray-500 border border-white/5`}>
-                        {p.title[lang]}
-                      </span>
-                      {!isChatted && (
-                        <span className="ml-auto text-[9px] font-bold text-[#7F5CFF] flex items-center gap-1 bg-[#7F5CFF]/10 px-2 py-0.5 rounded-full">
-                          Chat <ChevronRight size={10}/>
-                        </span>
-                      )}
-                    </div>
                   </div>
                 </div>
               );
@@ -529,10 +635,10 @@ export default function Home() {
              </button>
           </div>
 
-          {/* 🔥 反馈悬浮按钮 (仅 Selection View) */}
           <button 
             onClick={() => setShowFeedbackModal(true)}
-            className="fixed bottom-6 right-6 z-30 p-3 rounded-full bg-[#1a1a1a] border border-white/10 text-gray-400 hover:text-white shadow-xl hover:scale-110 transition-all"
+            className="fixed bottom-6 right-6 z-50 p-3 rounded-full bg-[#1a1a1a] border border-white/10 text-gray-400 hover:text-white shadow-[0_0_20px_rgba(0,0,0,0.5)] hover:scale-110 transition-all active:scale-95"
+            aria-label="Feedback"
           >
             <Bug size={20} />
           </button>
@@ -547,9 +653,10 @@ export default function Home() {
             <div className="flex items-center justify-between">
               
               <div className="flex items-center gap-3 min-w-0 flex-1">
+                {/* 🔥 修复：左上角返回图标改为 ChevronLeft */}
                 <button onClick={backToSelection} className="text-gray-400 hover:text-white transition-colors">
                   <div className="p-1.5 bg-white/5 rounded-full hover:bg-[#7F5CFF] transition-colors">
-                    <Users size={14} className="group-hover:text-white" />
+                    <ChevronLeft size={16} className="group-hover:text-white" />
                   </div>
                 </button>
 
@@ -563,8 +670,8 @@ export default function Home() {
                 <div className="flex flex-col justify-center min-w-0">
                   <h1 className="font-bold text-sm text-white tracking-wide truncate flex items-center gap-2">
                     {currentP.name}
-                    <span className={`text-[9px] font-normal opacity-50 ${currentP.color}`}>
-                      {currentP.title[lang]}
+                    <span className={`text-[9px] font-normal transition-all duration-300 ${isLoading ? 'text-[#7F5CFF] animate-pulse font-bold' : `opacity-50 ${currentP.color}`}`}>
+                      {isLoading ? ui.loading : currentP.title[lang]}
                     </span>
                   </h1>
                   
@@ -667,15 +774,84 @@ export default function Home() {
                         </div>
                       )}
 
+                      {/* 消息内容 */}
+                      {/* ... 用户消息部分保持不变 ... */}
                       {!isAI ? (
                         <ReactMarkdown>{msg.content}</ReactMarkdown>
                       ) : (
                         <div className="flex flex-col gap-1">
+                           {/* 处理 ||| 分割符 */}
                            {msg.content.split('|||').map((part, partIdx, arr) => {
                               if (!part.trim()) return null;
                               const isLastPart = partIdx === arr.length - 1;
                               const shouldType = isLastMessage && isLoading && isLastPart;
-                              return <Typewriter key={partIdx} content={part.trim()} isThinking={shouldType} />;
+                              
+                              if (shouldType) {
+                                return <Typewriter key={partIdx} content={part.trim()} isThinking={true} />;
+                              }
+
+                              // 🔥🔥🔥 核心修复：Link 渲染器 (Ver 3.0 - 锚点版) 🔥🔥🔥
+                              return (
+                                <ReactMarkdown
+                                  key={partIdx}
+                                  components={{
+                                    // 劫持 <a> 标签
+                                    a: ({ node, href, children, ...props }) => {
+                                      const linkHref = href || '';
+                                      
+                                      // 1. 判断是否是我们的锚点触发链接 (#trigger-Sol)
+                                      if (linkHref.startsWith('#trigger-')) {
+                                        const targetPersona = linkHref.replace('#trigger-', '') as PersonaType;
+                                        const pConfig = PERSONAS[targetPersona];
+                                        
+                                        // 容错
+                                        if (!pConfig) return <span>{children}</span>;
+
+                                        const colorClass = pConfig.color; 
+
+                                        // 返回 BUTTON，样式为胶囊
+                                        return (
+                                          <button 
+                                            onClick={(e) => {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              selectPersona(targetPersona); 
+                                            }}
+                                            className="inline-flex items-center gap-1 mx-1 px-2 py-0.5 rounded-full bg-white/10 border border-white/10 hover:bg-white/20 transition-all transform hover:scale-105 align-middle -mt-0.5"
+                                            title={`跳转去找 ${targetPersona}`}
+                                          >
+                                            {/* @ 符号 */}
+                                            <span className={`text-[10px] font-bold ${colorClass} opacity-70`}>@</span>
+                                            
+                                            {/* 名字 */}
+                                            <span className={`text-xs font-bold ${colorClass} underline decoration-dotted underline-offset-2`}>
+                                              {children}
+                                            </span>
+                                            
+                                            {/* 箭头图标 (确保引入了 ArrowUpRight) */}
+                                            <ArrowUpRight size={10} className={`opacity-70 ${colorClass}`} />
+                                          </button>
+                                        );
+                                      }
+                                      
+                                      // 2. 普通链接：新窗口打开
+                                      return (
+                                        <a 
+                                          href={linkHref} 
+                                          {...props} 
+                                          target="_blank" 
+                                          rel="noopener noreferrer" 
+                                          className="text-blue-400 underline hover:text-blue-300 break-all"
+                                        >
+                                          {children}
+                                        </a>
+                                      );
+                                    }
+                                  }}
+                                >
+                                  {formatMentions(part.trim())}
+                                </ReactMarkdown>
+                              );
                            })}
                         </div>
                       )}
@@ -695,7 +871,16 @@ export default function Home() {
             })}
             
             {isLoading && messages.length > 0 && messages[messages.length - 1].role === 'user' && (
-               <div className="flex justify-start w-full animate-pulse"><div className="flex items-center gap-2 bg-[#1a1a1a] px-4 py-3 rounded-2xl rounded-tl-sm border border-white/5"><span className="text-xs text-gray-500">{ui.loading}</span></div></div>
+               <div className="flex justify-start w-full animate-[slideUp_0.2s_ease-out]">
+                 <div className="flex items-center gap-2 bg-[#1a1a1a] px-4 py-3 rounded-2xl rounded-tl-sm border border-white/5">
+                   <div className="flex gap-1">
+                     <div className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                     <div className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                     <div className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                   </div>
+                   <span className="text-xs text-gray-500 ml-1">{ui.loading}</span>
+                 </div>
+               </div>
             )}
             <div ref={messagesEndRef} className="h-4" />
           </main>
