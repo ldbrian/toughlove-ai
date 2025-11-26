@@ -298,6 +298,11 @@ export default function Home() {
          setVoiceMsgIds(prev => new Set(prev).add(message.id));
          handlePlayAudio(message.content, message.id);
       }
+      // 🔥🔥🔥 核心修复：在这里触发云同步！只有当 AI 说完话才存！
+      // 此时 messages 数组通常还没包含最新的 message (React 状态更新滞后)，
+      // 所以我们需要把刚生成的 message 手动拼进去传给后端
+      const currentHistory = [...messages, message];
+      syncToCloud(currentHistory);
     }
   });
 
@@ -321,7 +326,6 @@ export default function Home() {
   useEffect(() => {
     if (messages.length > 0 && view === 'chat') {
       saveMemory(activePersona, messages);
-      syncToCloud(messages);
     }
   }, [messages, activePersona, view]);
 
