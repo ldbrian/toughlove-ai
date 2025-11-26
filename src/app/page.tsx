@@ -13,18 +13,17 @@ import html2canvas from 'html2canvas';
 import { Message } from 'ai';
 import posthog from 'posthog-js';
 
-
 // --- 类型定义 ---
 type DailyQuote = { content: string; date: string; persona: string; };
 type ViewState = 'selection' | 'chat';
 
 // --- 常量 Key ---
-const CURRENT_VERSION_KEY = 'toughlove_v2.0_sensory_launch'; // 版本号升级
+const CURRENT_VERSION_KEY = 'toughlove_v2.0_sensory_launch';
 const LANGUAGE_KEY = 'toughlove_language_confirmed';
 const LANG_PREF_KEY = 'toughlove_lang_preference';
 const USER_NAME_KEY = 'toughlove_user_name';
 const LAST_DIARY_TIME_KEY = 'toughlove_last_diary_time';
-const VISITED_KEY = 'toughlove_has_visited'; // 🔥 新增：判断是否是新用户
+const VISITED_KEY = 'toughlove_has_visited';
 
 // --- 打字机组件 ---
 const Typewriter = ({ content, isThinking }: { content: string, isThinking?: boolean }) => {
@@ -53,10 +52,8 @@ export default function Home() {
   const [lang, setLang] = useState<LangType>('zh');
   const [showLangSetup, setShowLangSetup] = useState(false);
   
-  // 🔥 新增：急诊单 (Triage) 状态
+  // Modals & States
   const [showTriage, setShowTriage] = useState(false);
-
-  // Modals
   const [showQuote, setShowQuote] = useState(false);
   const [quoteData, setQuoteData] = useState<DailyQuote | null>(null);
   const [isQuoteLoading, setIsQuoteLoading] = useState(false);
@@ -90,7 +87,9 @@ export default function Home() {
   const quoteCardRef = useRef<HTMLDivElement>(null);
   const profileCardRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
   const ui = UI_TEXT[lang];
+  
   const TRIAGE_TEXT = {
     zh: {
       title: "系统初始化",
@@ -115,11 +114,11 @@ export default function Home() {
       footer: "TOUGHLOVE AI v2.0"
     }
   };
-  // 🔥 修复：使用 #trigger- 作为协议，防止被 Markdown 组件过滤
+
+  // 🔥 核心修复：使用 #trigger- 作为锚点协议，防止 Markdown 过滤
   const formatMentions = (text: string) => {
-    // 匹配 5 个名字
     return text.replace(/\b(Ash|Rin|Sol|Vee|Echo)\b/g, (match) => {
-      return `[${match}](#trigger-${match})`; // 例如: [Sol](#trigger-Sol)
+      return `[${match}](#trigger-${match})`; 
     });
   };
 
@@ -131,13 +130,9 @@ export default function Home() {
   useEffect(() => {
     setMounted(true); 
     
-    // 1. 语言偏好
     const savedLang = localStorage.getItem(LANG_PREF_KEY);
-    if (savedLang) {
-      setLang(savedLang as LangType);
-    }
+    if (savedLang) setLang(savedLang as LangType);
     
-    // 2. 语言弹窗 & 新手急诊单逻辑
     const hasLangConfirmed = localStorage.getItem(LANGUAGE_KEY);
     if (!hasLangConfirmed) {
       if (!savedLang) {
@@ -146,12 +141,10 @@ export default function Home() {
       }
       setShowLangSetup(true);
     } else {
-        // 如果语言选过了，检查是否是新用户 (没做过急诊)
         const hasVisited = localStorage.getItem(VISITED_KEY);
         if (!hasVisited) {
-            setShowTriage(true); // 🔥 触发急诊单
+            setShowTriage(true);
         } else {
-            // 老用户：检查版本更新
             const hasSeenUpdate = localStorage.getItem(CURRENT_VERSION_KEY);
             if (!hasSeenUpdate) {
                 const timer = setTimeout(() => setShowUpdateModal(true), 500);
@@ -205,10 +198,10 @@ export default function Home() {
     const nextLv2 = 50 - interactionCount;
     const nextLv3 = 100 - interactionCount;
     if (interactionCount < 50) {
-      return lang === 'zh' ? ` 距离 [Lv.2 解锁语音] 还需 ${nextLv2} 次互动` : ` ${nextLv2} msgs to unlock [Voice Mode]`;
+      return lang === 'zh' ? `🔒 距离 [Lv.2 解锁语音] 还需 ${nextLv2} 次互动` : `🔒 ${nextLv2} msgs to unlock [Voice Mode]`;
     }
     if (interactionCount < 100) {
-      return lang === 'zh' ? ` 距离 [Lv.3 解锁私照] 还需 ${nextLv3} 次互动` : ` ${nextLv3} msgs to unlock [Private Photos]`;
+      return lang === 'zh' ? `🔒 距离 [Lv.3 解锁私照] 还需 ${nextLv3} 次互动` : `🔒 ${nextLv3} msgs to unlock [Private Photos]`;
     }
     return lang === 'zh' ? `✨ 当前信任度已满，享受你们的共犯时刻。` : `✨ Trust Maxed. Enjoy the bond.`;
   };
@@ -218,11 +211,8 @@ export default function Home() {
     localStorage.setItem(LANG_PREF_KEY, selectedLang);
     localStorage.setItem(LANGUAGE_KEY, 'true');
     setShowLangSetup(false);
-    
-    // 语言确认后，如果是新用户，显示急诊单
     const hasVisited = localStorage.getItem(VISITED_KEY);
     if (!hasVisited) setShowTriage(true);
-    
     posthog.capture('language_set', { language: selectedLang });
   };
 
@@ -585,10 +575,15 @@ export default function Home() {
                   `}
                 >
                   <div className="relative flex-shrink-0">
-                    <div className={`w-14 h-14 rounded-full bg-gradient-to-b from-[#222] to-[#0a0a0a] flex items-center justify-center text-3xl border-2 
+                  <div className={`w-14 h-14 rounded-full bg-gradient-to-b from-[#222] to-[#0a0a0a] flex items-center justify-center text-3xl border-2 overflow-hidden
                       ${isChatted ? (trust >= 50 ? (trust >= 100 ? 'border-[#7F5CFF] shadow-[0_0_10px_#7F5CFF]' : 'border-blue-500') : 'border-gray-700') : 'border-white/10'}
                     `}>
-                      {p.avatar}
+                      {/* 🔥 智能判断：是图片还是 Emoji */}
+                      {p.avatar.startsWith('/') ? (
+                        <img src={p.avatar} alt={p.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <span>{p.avatar}</span>
+                      )}
                     </div>
                     {isChatted && (
                       <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] border-2 border-[#111] 
@@ -635,6 +630,7 @@ export default function Home() {
              </button>
           </div>
 
+          {/* 🔥 修复：反馈按钮 z-index 提升 */}
           <button 
             onClick={() => setShowFeedbackModal(true)}
             className="fixed bottom-6 right-6 z-50 p-3 rounded-full bg-[#1a1a1a] border border-white/10 text-gray-400 hover:text-white shadow-[0_0_20px_rgba(0,0,0,0.5)] hover:scale-110 transition-all active:scale-95"
@@ -661,8 +657,13 @@ export default function Home() {
                 </button>
 
                 <div className="relative cursor-pointer" onClick={handleExport} title={ui.export}>
-                  <div className="w-10 h-10 rounded-full bg-[#1a1a1a] border border-white/10 flex items-center justify-center text-xl shadow-[0_0_15px_rgba(0,0,0,0.5)]">
-                    {currentP.avatar}
+                  <div className="w-10 h-10 rounded-full bg-[#1a1a1a] border border-white/10 flex items-center justify-center text-xl shadow-[0_0_15px_rgba(0,0,0,0.5)] overflow-hidden">
+                    {/* 🔥 智能判断：是图片还是 Emoji */}
+                    {currentP.avatar.startsWith('/') ? (
+                        <img src={currentP.avatar} alt={currentP.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <span>{currentP.avatar}</span>
+                      )}
                   </div>
                   <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-[#0a0a0a]"></div>
                 </div>
@@ -732,7 +733,14 @@ export default function Home() {
           <main className="flex-1 overflow-y-auto px-4 py-6 space-y-6 scroll-smooth">
             {messages.length === 0 && (
               <div className="h-full flex flex-col items-center justify-center text-center space-y-6 opacity-60">
-                <div className={`w-20 h-20 rounded-full bg-gradient-to-b from-white/5 to-transparent flex items-center justify-center text-4xl mb-2 border border-white/5 shadow-[0_0_30px_rgba(0,0,0,0.5)] animate-pulse`}>{currentP.avatar}</div>
+                <div className={`w-24 h-24 rounded-full bg-gradient-to-b from-white/5 to-transparent flex items-center justify-center text-5xl mb-2 border border-white/5 shadow-[0_0_30px_rgba(0,0,0,0.5)] animate-pulse overflow-hidden`}>
+                   {/* 🔥 智能判断 */}
+                   {currentP.avatar.startsWith('/') ? (
+                        <img src={currentP.avatar} alt={currentP.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <span>{currentP.avatar}</span>
+                      )}
+                </div>
                 <div className="space-y-2 px-8"><p className="text-white/80 text-lg font-light">{lang === 'zh' ? '我是' : 'I am'} <span className={currentP.color}>{currentP.name}</span>.</p><p className="text-sm text-gray-400 italic font-serif">{currentP.slogan[lang]}</p></div>
                 <div className="mt-8 flex flex-col gap-3 items-center">
                   <div className="flex items-center gap-2 text-green-400 bg-green-500/5 px-4 py-2 rounded-lg border border-green-500/10">
@@ -775,7 +783,6 @@ export default function Home() {
                       )}
 
                       {/* 消息内容 */}
-                      {/* ... 用户消息部分保持不变 ... */}
                       {!isAI ? (
                         <ReactMarkdown>{msg.content}</ReactMarkdown>
                       ) : (
@@ -828,7 +835,7 @@ export default function Home() {
                                               {children}
                                             </span>
                                             
-                                            {/* 箭头图标 (确保引入了 ArrowUpRight) */}
+                                            {/* 箭头图标 */}
                                             <ArrowUpRight size={10} className={`opacity-70 ${colorClass}`} />
                                           </button>
                                         );
@@ -870,6 +877,7 @@ export default function Home() {
               );
             })}
             
+            {/* Loading 气泡 */}
             {isLoading && messages.length > 0 && messages[messages.length - 1].role === 'user' && (
                <div className="flex justify-start w-full animate-[slideUp_0.2s_ease-out]">
                  <div className="flex items-center gap-2 bg-[#1a1a1a] px-4 py-3 rounded-2xl rounded-tl-sm border border-white/5">
