@@ -90,6 +90,13 @@ export default function Home() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   const ui = UI_TEXT[lang];
+  const QUICK_REPLIES: Record<PersonaType, string[]> = {
+    Ash: ["又在阴阳怪气？", "我就不睡，你咬我？", "最近压力好大..."],
+    Rin: ["谁要你管！", "笨蛋，我才没哭。", "稍微安慰我一下会死啊？"],
+    Sol: ["我错了教官...", "正在偷懒，别骂了。", "今天的任务太难了。"],
+    Vee: ["给我整点乐子。", "小丑竟是我自己。", "哈哈哈哈哈哈"],
+    Echo: ["我想听真话。", "我看不到未来。", "活着有什么意义？"]
+  };
   
   const TRIAGE_TEXT = {
     zh: {
@@ -976,6 +983,27 @@ export default function Home() {
 
           {/* 🔥 Fix: 增加 pb-[env(safe-area-inset-bottom)] 适配 iPhone 黑条 */}
           <footer className="flex-none p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+            
+            {/* 🔥🔥🔥 新增：快捷回复 Chips 🔥🔥🔥 */}
+            {messages.length <= 2 && !isLoading && (
+              <div className="flex gap-2 overflow-x-auto pb-3 scrollbar-hide">
+                {QUICK_REPLIES[activePersona].map((reply, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      // 直接发送
+                      const msg: Message = { id: Date.now().toString(), role: 'user', content: reply };
+                      setMessages(prev => [...prev, msg]);
+                      append(msg);
+                      posthog.capture('use_quick_reply', { persona: activePersona, content: reply });
+                    }}
+                    className="flex-shrink-0 px-3 py-1.5 bg-[#1a1a1a] border border-white/10 rounded-full text-xs text-gray-400 hover:text-white hover:border-[#7F5CFF] hover:bg-[#7F5CFF]/10 transition-all whitespace-nowrap"
+                  >
+                    {reply}
+                  </button>
+                ))}
+              </div>
+            )}
             <form onSubmit={onFormSubmit} className="relative flex items-center gap-2 bg-[#151515] p-2 rounded-[24px] border border-white/10 shadow-2xl focus-within:border-[#7F5CFF]/50 transition-all duration-300">
               <input type="text" value={input} onChange={handleInputChange} placeholder={ui.placeholder} className="flex-1 bg-transparent text-white text-sm px-4 py-2 focus:outline-none placeholder-gray-600" />
               <button type="submit" disabled={!input.trim() || isLoading} className="p-3 bg-[#7F5CFF] text-white rounded-full hover:bg-[#6b4bd6] disabled:opacity-30 transition-all transform active:scale-95"><Send size={18} fill="white" /></button>
