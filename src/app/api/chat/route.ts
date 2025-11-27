@@ -18,7 +18,7 @@ const supabase = createClient(
 
 export const runtime = 'edge';
 
-// 🔥 1. 安全词配置 (Safety Valve) - 用于紧急情绪熔断
+// 🔥 1. 安全词配置 (Safety Valve)
 const SAFE_WORDS = /求放过|别骂了|我难受|不行了|太过了|停止|救命|stop|help/i;
 const EMERGENCY_PROMPT = `
 [EMERGENCY OVERRIDE]: User is emotionally overwhelmed. 
@@ -50,13 +50,9 @@ export async function POST(req: Request) {
     // ------------------------------------------------------
     // 🛡️ 逻辑零：核心风控拦截 (The Firewall)
     // ------------------------------------------------------
-    // 在进入任何逻辑之前，先检查输入是否安全（本地正则拦截）
-    // 防止涉政、暴力或 Prompt 注入攻击
     const safetyCheck = validateInput(lastUserMsg);
     if (!safetyCheck.safe) {
       console.warn(`[Safety Block] User: ${userId} | Input: ${lastUserMsg}`);
-      
-      // 直接返回警告流，不消耗 LLM Token
       const encoder = new TextEncoder();
       const stream = new ReadableStream({
         start(controller) {
@@ -78,7 +74,6 @@ export async function POST(req: Request) {
 
     // ------------------------------------------------------
     // 🚫 逻辑二：状态阻断 (Status Blocking)
-    // 只有在非紧急情况下才阻断。如果用户喊救命，必须回应。
     // ------------------------------------------------------
     if (!isEmergency && process.env.SUPABASE_SERVICE_ROLE_KEY && userId) {
       try {
@@ -88,15 +83,10 @@ export async function POST(req: Request) {
           .eq('persona', persona)
           .single();
         
-        // 如果状态是 busy 或 offline
         if (statusData && (statusData.status === 'busy' || statusData.status === 'offline')) {
            console.log(`[Status] ${persona} is ${statusData.status}. Blocking chat.`);
-           
-           // 随机选一句拒接骚话
            const scripts = BUSY_MESSAGES[persona as string] || BUSY_MESSAGES['Ash'];
            const randomScript = scripts[Math.floor(Math.random() * scripts.length)];
-           
-           // 直接返回文本流，不调用 DeepSeek (省钱 + 真实)
            const encoder = new TextEncoder();
            const stream = new ReadableStream({
              start(controller) {
@@ -107,7 +97,6 @@ export async function POST(req: Request) {
            return new StreamingTextResponse(stream);
         }
       } catch (err) {
-        // 查状态失败不影响主流程，降级处理
         console.error("Status check failed:", err);
       }
     }
@@ -126,7 +115,7 @@ export async function POST(req: Request) {
                 .limit(5);
             
             if (memories && memories.length > 0) {
-                memoryPrompt = `\n【你记得关于该用户的事】：\n${memories.map((m: any) => `- ${m.content}`).join('\n')}`;
+                memoryPrompt = `\n[Memory]:\n${memories.map((m: any) => `- ${m.content}`).join('\n')}`;
             }
         } catch (err) { console.error("Memory fetch error:", err); }
     }
@@ -138,14 +127,9 @@ export async function POST(req: Request) {
     if (envInfo) {
       const { time, weekday, phase, weather } = envInfo;
       if (currentLang === 'zh') {
-        envPrompt = `
-        【当前外界环境】
-        - 时间：${weekday} ${time} (${phase})。
-        - 天气：${weather || '未知'}。
-        - 策略：如果天气恶劣或深夜，请在回复中隐晦地体现出对环境的感知（如听到雨声、责怪还不睡）。
-        `;
+        envPrompt = `【环境】: ${weekday} ${time} (${phase})。天气：${weather}。`;
       } else {
-        envPrompt = `[Environment]: ${weekday} ${time} (${phase}). Weather: ${weather}. React to this.`;
+        envPrompt = `[Environment]: ${weekday} ${time} (${phase}). Weather: ${weather}.`;
       }
     }
 
@@ -155,39 +139,37 @@ export async function POST(req: Request) {
     let trustPrompt = "";
     const count = Number(interactionCount);
     if (count < 50) {
-      trustPrompt = currentLang === 'zh' ? `\n[信任度 Lv.1]: 保持距离，维持高冷/严厉人设。不要轻易给甜头。` : `\n[Trust Lv.1]: Distant.`;
+      trustPrompt = currentLang === 'zh' ? `\n[Lv.1]: 保持距离，维持高冷/严厉。` : `\n[Lv.1]: Distant. Keep boundaries.`;
     } else if (count < 100) {
-      trustPrompt = currentLang === 'zh' ? `\n[信任度 Lv.2]: 稍微熟悉，可以偶尔流露一丝真实情绪，但嘴依然要硬。` : `\n[Trust Lv.2]: Casual.`;
+      trustPrompt = currentLang === 'zh' ? `\n[Lv.2]: 稍微熟悉，嘴硬心软。` : `\n[Lv.2]: Casual. Tsundere.`;
     } else {
-      trustPrompt = currentLang === 'zh' ? `\n[信任度 Lv.3]: 共犯关系。可以展示深层的依赖或病娇的一面。` : `\n[Trust Lv.3]: Deep bond.`;
+      trustPrompt = currentLang === 'zh' ? `\n[Lv.3]: 共犯关系，深度依赖。` : `\n[Lv.3]: Deep bond. Partner in crime.`;
     }
 
     // ------------------------------------------------------
     // 🔥 最终 Prompt 组装
     // ------------------------------------------------------
-    // 1. 基础人设 (来自 constants)
     const basePrompt = currentPersona.prompts[currentLang];
     
-    // 2. 昵称
     let namePrompt = "";
     if (userName && userName.trim() !== "") {
       namePrompt = currentLang === 'zh' ? `\n[用户昵称]: "${userName}"` : `\n[User Name]: "${userName}"`;
     }
 
-    // 3. 动态引擎 (去机械化)
     const dynamicEnginePrompt = currentLang === 'zh' ? `
-    ---
-    【🔥 动态逻辑引擎】
-    1. **去机械化**：回复长度要随机，不要死板。
-    2. **状态感知**：若用户无聊 -> 发起游戏。若用户痛苦 -> 认真倾听。
-    ---
-    ` : `[Dynamic Logic]: Randomize length. Game check.`;
+    [Engine]: 回复长度随机。若用户痛苦则倾听。
+    ` : `[Engine]: Randomize length. Listen if user is sad.`;
 
-    // 4. 🚨 紧急熔断注入
     const emergencyOverride = isEmergency ? EMERGENCY_PROMPT : "";
 
+    // 🔥🔥🔥 核心修复：语言宪法 (Language Constitution) 🔥🔥🔥
+    // 强制 LLM 遵守语言设定，防止漂移
+    const LANGUAGE_CONSTRAINT = currentLang === 'zh' 
+      ? `\n⚠️【严格指令】：你必须使用【中文】回复。禁止使用英文。`
+      : `\n⚠️ [STRICT SYSTEM COMMAND]: You MUST reply in 【ENGLISH】 only. Do NOT speak Chinese. Even if the user speaks Chinese, reply in English.`;
+
     const finalSystemPrompt = `
-      ${SAFETY_PROTOCOL}  // 👈 核心：系统指令锁（防止 AI 越狱或被诱导色情/违法）
+      ${SAFETY_PROTOCOL}
       ${basePrompt}
       ${namePrompt}
       ${envPrompt}
@@ -195,6 +177,7 @@ export async function POST(req: Request) {
       ${memoryPrompt}
       ${dynamicEnginePrompt}
       ${emergencyOverride}
+      ${LANGUAGE_CONSTRAINT}  // 👈 放在最后，权重最高
     `;
 
     // ------------------------------------------------------
@@ -209,7 +192,7 @@ export async function POST(req: Request) {
       model: 'deepseek-chat',
       stream: true,
       messages: conversation,
-      temperature: 0.9, // 高创造性
+      temperature: 0.9, 
     });
 
     const stream = OpenAIStream(response as any);
