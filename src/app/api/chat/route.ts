@@ -59,8 +59,7 @@ export async function POST(req: Request) {
     let isEmergency = false;
     if (SAFE_WORDS.test(lastUserMsg)) isEmergency = true;
 
-    // 2. 性能优化：并行获取 DB 数据 (Promise.all)
-    // 之前是串行 await，导致每个请求都慢几百毫秒。现在同时发起。
+    // 2. 并行获取 DB 数据
     let statusPromise = Promise.resolve(null);
     let memoryPromise = Promise.resolve(null);
 
@@ -72,7 +71,6 @@ export async function POST(req: Request) {
         memoryPromise = supabase.from('memories').select('content').eq('user_id', userId).order('created_at', { ascending: false }).limit(5) as any;
     }
 
-    // 等待所有数据就绪
     const [statusResult, memoryResult] = await Promise.all([statusPromise, memoryPromise]);
 
     // 3. 处理状态阻断
@@ -89,16 +87,21 @@ export async function POST(req: Request) {
         }
     }
 
-    // 4. 处理记忆
+    // 4. 处理记忆 (🔥 核心修复：防止中文记忆污染英文对话)
     let memoryPrompt = "";
     if (memoryResult && (memoryResult as any).data) {
         const memories = (memoryResult as any).data;
         if (memories.length > 0) {
-            memoryPrompt = `\n[Memory]:\n${memories.map((m: any) => `- ${m.content}`).join('\n')}`;
+            // 如果是英文模式，强制忽略记忆中的语言
+            const memoryIntro = currentLang === 'en' 
+              ? "The following memories may be in Chinese. IGNORE their language. Use the FACTS but reply in ENGLISH." 
+              : "【你记得关于该用户的事】";
+            
+            memoryPrompt = `\n[Memory]:\n${memoryIntro}:\n${memories.map((m: any) => `- ${m.content}`).join('\n')}`;
         }
     }
 
-    // 5. 环境与信任度 Prompt
+    // 5. 环境与信任度
     let envPrompt = "";
     if (envInfo) {
       const { time, weekday, phase, weather } = envInfo;
@@ -113,16 +116,18 @@ export async function POST(req: Request) {
     else if (count < 100) trustPrompt = currentLang === 'zh' ? `\n[Lv.2]: 稍微熟悉，嘴硬心软。` : `\n[Lv.2]: Casual. Tsundere.`;
     else trustPrompt = currentLang === 'zh' ? `\n[Lv.3]: 共犯关系，深度依赖。` : `\n[Lv.3]: Deep bond. Partner in crime.`;
 
-    // 6. Prompt 组装
     const basePrompt = currentPersona.prompts[currentLang];
     let namePrompt = userName && userName.trim() !== "" ? (currentLang === 'zh' ? `\n[用户昵称]: "${userName}"` : `\n[User Name]: "${userName}"`) : "";
     const dynamicEnginePrompt = currentLang === 'zh' ? `[Engine]: 回复长度随机。若用户痛苦则倾听。` : `[Engine]: Randomize length. Listen if user is sad.`;
     const emergencyOverride = isEmergency ? EMERGENCY_PROMPT : "";
 
-    // 系统级语言锁 (第一道防线)
+    // 系统级语言锁
     const SYSTEM_LANG_CONSTRAINT = currentLang === 'zh' 
       ? `\n⚠️【严格指令】：你必须使用【中文】回复。禁止使用英文。`
-      : `\n⚠️ [STRICT COMMAND]: You MUST reply in 【ENGLISH】 only. Do NOT use Chinese characters. Even parentheses actions must be English (e.g. "(sighs)").`;
+      : `\n⚠️ [CRITICAL COMMAND]: 
+         1. You MUST reply in 【ENGLISH】 only. 
+         2. **ABSOLUTELY NO CHINESE CHARACTERS.**
+         3. Actions in parentheses must be in English. E.g., "(sighs)" NOT "(叹气)".`;
 
     const finalSystemPrompt = `
       ${SAFETY_PROTOCOL}
@@ -136,32 +141,26 @@ export async function POST(req: Request) {
       ${SYSTEM_LANG_CONSTRAINT}
     `;
 
-    // 7. 构造消息队列 (Sandwich Injection Strategy)
+    // 6. 构造消息队列 (User Level Injection)
     const conversation = [
       { role: 'system', content: finalSystemPrompt },
       ...messages
     ];
 
-    // 🔥🔥🔥 核心修复：三明治夹击战术 🔥🔥🔥
+    // 🔥 隐形注射：在用户消息末尾再次强调
     if (currentLang === 'en') {
-       // 1. 中部挟持：修改用户的最后一条消息，强制加上 OOC 指令
        const lastMsgIndex = conversation.length - 1;
        const lastMsg = conversation[lastMsgIndex];
        if (lastMsg.role === 'user') {
          conversation[lastMsgIndex] = {
            ...lastMsg,
-           content: `${lastMsg.content}\n\n(OOC: Reply in English ONLY. No Chinese allowed.)`
+           content: `${lastMsg.content}\n\n[SYSTEM: REPLY IN ENGLISH ONLY. TRANSLATE ANY CHINESE ACTIONS TO ENGLISH.]`
          };
        }
-
-       // 2. 尾部压制：追加一条 System 消息，这是 LLM 看到的最后指令，权重最高
-       conversation.push({
-           role: 'system',
-           content: "[SYSTEM]: CRITICAL LANGUAGE CHECK. OUTPUT ENGLISH ONLY."
-       });
+       // 🔥 尾部压制
+       conversation.push({ role: 'system', content: "OUTPUT ENGLISH ONLY." });
     }
 
-    // 8. 发射
     const response = await openai.chat.completions.create({
       model: 'deepseek-chat',
       stream: true,
