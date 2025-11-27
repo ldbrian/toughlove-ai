@@ -123,7 +123,7 @@ export default function Home() {
   const [voiceMsgIds, setVoiceMsgIds] = useState<Set<string>>(new Set()); 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   
-  // 🔥 新增：语音强制模式与试用逻辑
+  // 语音强制模式与试用逻辑
   const [forceVoice, setForceVoice] = useState(false);
   const [voiceTrial, setVoiceTrial] = useState(3);
 
@@ -205,7 +205,6 @@ export default function Home() {
     const storedName = localStorage.getItem(USER_NAME_KEY);
     if (storedName) setUserName(storedName);
     
-    // 🔥 读取试用次数
     const savedTrial = localStorage.getItem('toughlove_voice_trial');
     if (savedTrial) {
       setVoiceTrial(parseInt(savedTrial));
@@ -312,6 +311,8 @@ export default function Home() {
           text: text, 
           voice: p.voiceConfig.voice,
           style: p.voiceConfig.style,
+          styledegree: p.voiceConfig.styledegree, 
+          role: p.voiceConfig.role,
           rate: p.voiceConfig.rate,
           pitch: p.voiceConfig.pitch
         }),
@@ -347,35 +348,40 @@ export default function Home() {
       const isAI = message.role === 'assistant';
       const isLevel2 = newCount >= 50; 
       
-      // 🔥🔥🔥 核心：语音触发逻辑优化 (Force Mode & Trial) 🔥🔥🔥
       let shouldPlay = false;
 
       if (forceVoice) {
-        // 1. 强制模式下，默认播放
-        shouldPlay = true;
-        
-        // 2. 如果未解锁 Lv.2，则扣除试用次数
-        if (!isLevel2 && voiceTrial > 0) {
+        if (isLevel2) {
+          shouldPlay = true;
+        } 
+        else if (voiceTrial > 0) {
            const left = voiceTrial - 1;
            setVoiceTrial(left);
            localStorage.setItem('toughlove_voice_trial', left.toString());
+           shouldPlay = true;
            
-           // 次数用完，自动关闭并提示
-           if (left <= 0) {
+           if (left === 0) {
              setForceVoice(false); 
-             alert(lang === 'zh' ? "试用结束。请继续互动解锁 Lv.2。" : "Trial ended. Reach Lv.2 to unlock.");
+             // 🔥 优化 1：去掉 alert，不再打断用户，只是静默关闭开关
            }
+        } 
+        else {
+           shouldPlay = false;
+           setForceVoice(false);
         }
       } else {
-        // 3. 没开强制模式，按 Lv.2 概率触发
         const isLucky = Math.random() < 0.3; 
         const isShort = message.content.length < 120; 
         if (isLevel2 && isLucky && isShort) shouldPlay = true;
       }
 
       if (isAI && shouldPlay) {
+         // 🔥 优化 2：延迟 100ms 播放，等待 React 渲染和 Browser Event Loop 稳定
+         // 这能解决“第一条不自动播放”的玄学 Bug
          setVoiceMsgIds(prev => new Set(prev).add(message.id));
-         handlePlayAudio(message.content, message.id);
+         setTimeout(() => {
+           handlePlayAudio(message.content, message.id);
+         }, 100);
       }
     }
   });
@@ -384,7 +390,6 @@ export default function Home() {
   useEffect(() => {
     const wasLoading = prevLoadingRef.current;
     if (wasLoading && !isLoading && messages.length > 0) {
-      console.log("✅ 对话结束，触发云同步，消息数:", messages.length);
       syncToCloud(messages);
     }
     prevLoadingRef.current = isLoading;
@@ -442,6 +447,7 @@ export default function Home() {
 
   const selectPersona = async (persona: PersonaType) => {
     posthog.capture('persona_select', { persona: persona });
+    setForceVoice(false); 
     setActivePersona(persona);
     setView('chat');
     const localHistory = getMemory(persona);
@@ -762,7 +768,6 @@ export default function Home() {
               </div>
             )}
             <form onSubmit={onFormSubmit} className="relative flex items-center gap-2 bg-[#151515] p-2 rounded-[24px] border border-white/10 shadow-2xl focus-within:border-[#7F5CFF]/50 transition-all duration-300">
-              {/* 🔥 语音开关按钮 */}
               <div className="relative flex items-center justify-center mr-2">
                 {!forceVoice && voiceTrial > 0 && interactionCount < 50 && (
                    <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 px-2 py-1 bg-[#7F5CFF] text-white text-[10px] rounded-lg font-bold whitespace-nowrap animate-bounce shadow-[0_0_10px_#7F5CFF] z-20 pointer-events-none after:content-[''] after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-t-[#7F5CFF]">{lang === 'zh' ? '开启语音' : 'Voice Mode'}</div>
