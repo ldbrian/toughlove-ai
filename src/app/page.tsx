@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useChat } from 'ai/react';
 import { PERSONAS, PersonaType, UI_TEXT, LangType } from '@/lib/constants';
 import { getDeviceId } from '@/lib/utils';
-// 🔥 引入新的一对存储函数
+// 🔥 引入新的存储函数
 import { getMemory, saveMemory, getVoiceIds, saveVoiceIds } from '@/lib/storage';
 import { getLocalTimeInfo, getSimpleWeather } from '@/lib/env';
 import { getPersonaStatus } from '@/lib/status'; 
@@ -14,12 +14,9 @@ import html2canvas from 'html2canvas';
 import { Message } from 'ai';
 import posthog from 'posthog-js';
 
-
-// --- 类型定义 ---
 type DailyQuote = { content: string; date: string; persona: string; };
 type ViewState = 'selection' | 'chat';
 
-// --- 常量 Key ---
 const CURRENT_VERSION_KEY = 'toughlove_v2.0_sensory_launch';
 const LANGUAGE_KEY = 'toughlove_language_confirmed';
 const LANG_PREF_KEY = 'toughlove_lang_preference';
@@ -27,20 +24,16 @@ const USER_NAME_KEY = 'toughlove_user_name';
 const LAST_DIARY_TIME_KEY = 'toughlove_last_diary_time';
 const VISITED_KEY = 'toughlove_has_visited';
 
+// 静音解锁音频
 const SILENT_AUDIO = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
 
 const Typewriter = ({ content, isThinking }: { content: string, isThinking?: boolean }) => {
   const [displayedContent, setDisplayedContent] = useState("");
   useEffect(() => {
-    if (!isThinking) {
-      setDisplayedContent(content);
-      return;
-    }
+    if (!isThinking) { setDisplayedContent(content); return; }
     if (displayedContent.length < content.length) {
       const delay = Math.random() * 30 + 20;
-      const timer = setTimeout(() => {
-        setDisplayedContent(content.slice(0, displayedContent.length + 1));
-      }, delay);
+      const timer = setTimeout(() => { setDisplayedContent(content.slice(0, displayedContent.length + 1)); }, delay);
       return () => clearTimeout(timer);
     }
   }, [content, displayedContent, isThinking]);
@@ -49,37 +42,15 @@ const Typewriter = ({ content, isThinking }: { content: string, isThinking?: boo
 
 const BootScreen = () => {
   const [text, setText] = useState<string[]>([]);
-  const lines = [
-    "INITIALIZING CORE SYSTEMS...",
-    "LOADING PERSONALITY MODULES [Ash, Rin, Sol, Vee, Echo]...",
-    "ESTABLISHING NEURAL LINK...",
-    "BYPASSING SAFETY PROTOCOLS...",
-    "SYNCING MEMORY ARCHIVES...",
-    "SYSTEM ONLINE."
-  ];
-
+  const lines = ["INITIALIZING CORE SYSTEMS...", "LOADING PERSONALITY MODULES...", "ESTABLISHING NEURAL LINK...", "BYPASSING SAFETY PROTOCOLS...", "SYSTEM ONLINE."];
   useEffect(() => {
     let delay = 0;
-    lines.forEach((line, index) => {
-      delay += Math.random() * 300 + 100;
-      setTimeout(() => {
-        setText(prev => [...prev, line]);
-      }, delay);
-    });
+    lines.forEach((line) => { delay += Math.random() * 300 + 100; setTimeout(() => setText(prev => [...prev, line]), delay); });
   }, []);
-
   return (
     <div className="flex flex-col h-screen bg-black text-green-500 font-mono text-xs p-8 justify-end pb-20">
-      {text.map((t, i) => (
-        <div key={i} className="mb-2 animate-[fadeIn_0.1s_ease-out]">
-          <span className="opacity-50 mr-2">{`>`}</span>
-          {t}
-        </div>
-      ))}
-      <div className="mt-2 flex items-center gap-2 text-[#7F5CFF] animate-pulse">
-        <Loader2 size={14} className="animate-spin" />
-        <span>WAITING FOR USER INPUT...</span>
-      </div>
+      {text.map((t, i) => <div key={i} className="mb-2 animate-[fadeIn_0.1s_ease-out]"><span className="opacity-50 mr-2">{`>`}</span>{t}</div>)}
+      <div className="mt-2 flex items-center gap-2 text-[#7F5CFF] animate-pulse"><Loader2 size={14} className="animate-spin" /><span>WAITING FOR USER INPUT...</span></div>
     </div>
   );
 };
@@ -90,7 +61,6 @@ export default function Home() {
   const [activePersona, setActivePersona] = useState<PersonaType>('Ash');
   const [lang, setLang] = useState<LangType>('zh');
   const [showLangSetup, setShowLangSetup] = useState(false);
-  
   const [showTriage, setShowTriage] = useState(false);
   const [showQuote, setShowQuote] = useState(false);
   const [quoteData, setQuoteData] = useState<DailyQuote | null>(null);
@@ -110,7 +80,6 @@ export default function Home() {
   const [showNameModal, setShowNameModal] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [feedbackText, setFeedbackText] = useState("");
-
   const [userName, setUserName] = useState("");
   const [tempName, setTempName] = useState("");
   const [interactionCount, setInteractionCount] = useState(0);
@@ -120,7 +89,6 @@ export default function Home() {
   const [playingMsgId, setPlayingMsgId] = useState<string | null>(null);
   const [voiceMsgIds, setVoiceMsgIds] = useState<Set<string>>(new Set()); 
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  
   const [forceVoice, setForceVoice] = useState(false);
   const [voiceTrial, setVoiceTrial] = useState(3);
 
@@ -130,7 +98,8 @@ export default function Home() {
   
   const ui = UI_TEXT[lang];
 
-  const QUICK_REPLIES: Record<PersonaType, { zh: string[]; en: string[] }> = {
+  // 🔥 修复：完全重新定义的快捷回复数据结构
+  const QUICK_REPLIES_DATA: Record<PersonaType, { zh: string[]; en: string[] }> = {
     Ash: { zh: ["又在阴阳怪气？", "我就不睡，你咬我？", "最近压力好大..."], en: ["Sarcastic again?", "I won't sleep. Bite me.", "So much pressure..."] },
     Rin: { zh: ["谁要你管！", "笨蛋，我才没哭。", "稍微安慰我一下会死啊？"], en: ["None of your business!", "Idiot, I'm not crying.", "Comfort me a little?"] },
     Sol: { zh: ["我错了教官...", "正在偷懒，别骂了。", "今天的任务太难了。"], en: ["Sorry sir...", "Slacking off, don't yell.", "Task is too hard."] },
@@ -139,7 +108,7 @@ export default function Home() {
   };
   
   const TRIAGE_TEXT = {
-    zh: { title: "系统初始化", subtitle: "请声明你当前的精神状态。", opt1: "💊 我需要清醒", desc1: "拒绝煽情，毒舌直击。适合矫情时刻。", opt2: "⛓️ 我需要管教", desc2: "强制自律，严厉导师。适合拖延症。", opt3: "🩹 我需要陪伴", desc3: "虽然嘴硬，但会陪你。适合孤独时刻。", footer: "TOUGHLOVE AI v2.0" },
+    zh: { title: "系统初始化", subtitle: "请声明你当前的精神状态。", opt1: "💊 我需要清醒", desc1: "拒绝煽情，毒舌直击。", opt2: "⛓️ 我需要管教", desc2: "强制自律，严厉导师。", opt3: "🩹 我需要陪伴", desc3: "虽然嘴硬，但会陪你。", footer: "TOUGHLOVE AI v2.0" },
     en: { title: "SYSTEM INITIALIZED", subtitle: "State your current mental status.", opt1: "💊 I need Reality", desc1: "No drama. Brutal truth.", opt2: "⛓️ I need Discipline", desc2: "Strict control. No excuses.", opt3: "🩹 I need Company", desc3: "Tsundere comfort. Not alone.", footer: "TOUGHLOVE AI v2.0" }
   };
 
@@ -155,35 +124,26 @@ export default function Home() {
     
     const hasLangConfirmed = localStorage.getItem(LANGUAGE_KEY);
     if (!hasLangConfirmed) {
-      if (!savedLang) {
-        const browserLang = navigator.language.toLowerCase();
-        if (!browserLang.startsWith('zh')) { setLang('en'); }
-      }
+      if (!savedLang) { const browserLang = navigator.language.toLowerCase(); if (!browserLang.startsWith('zh')) { setLang('en'); } }
       setShowLangSetup(true);
     } else {
         const hasVisited = localStorage.getItem(VISITED_KEY);
         if (!hasVisited) setShowTriage(true);
-        else {
-            const hasSeenUpdate = localStorage.getItem(CURRENT_VERSION_KEY);
-            if (!hasSeenUpdate) { setTimeout(() => setShowUpdateModal(true), 500); }
-        }
+        else { const hasSeenUpdate = localStorage.getItem(CURRENT_VERSION_KEY); if (!hasSeenUpdate) setTimeout(() => setShowUpdateModal(true), 500); }
     }
 
     const storedName = localStorage.getItem(USER_NAME_KEY);
     if (storedName) setUserName(storedName);
-    
     const savedTrial = localStorage.getItem('toughlove_voice_trial');
     if (savedTrial) setVoiceTrial(parseInt(savedTrial));
-
     const lastDiaryTime = localStorage.getItem(LAST_DIARY_TIME_KEY);
     const now = Date.now();
     if (!lastDiaryTime || (now - parseInt(lastDiaryTime) > 60 * 1000)) setHasNewDiary(true);
-
     getSimpleWeather().then(w => setCurrentWeather(w));
     posthog.capture('page_view', { lang: savedLang || lang });
   }, []);
 
-  // 🔥 页面初始化时，加载当前人格的 VoiceIDs
+  // 🔥 页面加载时，恢复 VoiceID 列表
   useEffect(() => {
     if (mounted) {
       const ids = getVoiceIds(activePersona);
@@ -195,26 +155,20 @@ export default function Home() {
     if (!mounted || typeof window === 'undefined') return { isChatted: false, lastMsg: "", trust: 0, time: "" };
     const history = getMemory(pKey);
     const trust = parseInt(localStorage.getItem(getTrustKey(pKey)) || '0');
-    let lastMsg = "";
-    let time = "";
-    let isChatted = false;
+    let lastMsg = ""; let time = ""; let isChatted = false;
     if (history.length > 0) {
       isChatted = true;
       const last = history[history.length - 1];
       const prefix = last.role === 'user' ? 'You: ' : '';
       lastMsg = prefix + last.content.split('|||')[0]; 
       time = "Active"; 
-    } else {
-      const p = PERSONAS[pKey];
-      lastMsg = p.greetings[lang][0];
-      time = "New";
-    }
+    } else { const p = PERSONAS[pKey]; lastMsg = p.greetings[lang][0]; time = "New"; }
     return { isChatted, lastMsg, trust, time };
   };
 
   const getLevelInfo = (count: number) => {
-    if (count < 50) { return { level: 1, label: lang === 'zh' ? '陌生人' : 'Stranger', max: 50, icon: <Shield size={12} />, bgClass: 'bg-[#0a0a0a]', borderClass: 'border-white/5', barColor: 'bg-gray-500', glowClass: '' }; }
-    if (count < 100) { return { level: 2, label: lang === 'zh' ? '熟人' : 'Acquaintance', max: 100, icon: <Zap size={12} />, bgClass: 'bg-gradient-to-b from-[#0f172a] to-[#0a0a0a]', borderClass: 'border-blue-500/30', barColor: 'bg-blue-500', glowClass: 'shadow-[0_0_30px_rgba(59,130,246,0.1)]' }; }
+    if (count < 50) return { level: 1, label: lang === 'zh' ? '陌生人' : 'Stranger', max: 50, icon: <Shield size={12} />, bgClass: 'bg-[#0a0a0a]', borderClass: 'border-white/5', barColor: 'bg-gray-500', glowClass: '' };
+    if (count < 100) return { level: 2, label: lang === 'zh' ? '熟人' : 'Acquaintance', max: 100, icon: <Zap size={12} />, bgClass: 'bg-gradient-to-b from-[#0f172a] to-[#0a0a0a]', borderClass: 'border-blue-500/30', barColor: 'bg-blue-500', glowClass: 'shadow-[0_0_30px_rgba(59,130,246,0.1)]' };
     return { level: 3, label: lang === 'zh' ? '共犯' : 'Partner', max: 100, icon: <Heart size={12} />, bgClass: 'bg-[url("/grid.svg")] bg-fixed bg-[length:50px_50px] bg-[#0a0a0a]', customStyle: { background: 'radial-gradient(circle at 50% -20%, #1e1b4b 0%, #0a0a0a 60%)' }, borderClass: 'border-[#7F5CFF]/40', barColor: 'bg-[#7F5CFF]', glowClass: 'shadow-[0_0_40px_rgba(127,92,255,0.15)]' };
   };
 
@@ -226,53 +180,19 @@ export default function Home() {
     return lang === 'zh' ? `✨ 当前信任度已满，享受你们的共犯时刻。` : `✨ Trust Maxed. Enjoy the bond.`;
   };
 
-  const confirmLanguage = (selectedLang: LangType) => {
-    setLang(selectedLang);
-    localStorage.setItem(LANG_PREF_KEY, selectedLang);
-    localStorage.setItem(LANGUAGE_KEY, 'true');
-    setShowLangSetup(false);
-    const hasVisited = localStorage.getItem(VISITED_KEY);
-    if (!hasVisited) setShowTriage(true);
-    posthog.capture('language_set', { language: selectedLang });
-  };
-
-  const handleTriageSelection = (target: PersonaType) => {
-      localStorage.setItem(VISITED_KEY, 'true');
-      setShowTriage(false);
-      selectPersona(target);
-      posthog.capture('triage_select', { target });
-  };
-
-  const saveUserName = () => {
-    const nameToSave = tempName.trim();
-    setUserName(nameToSave);
-    localStorage.setItem(USER_NAME_KEY, nameToSave);
-    setShowNameModal(false);
-    posthog.capture('username_set');
-  };
-
-  const handleFeedbackSubmit = () => {
-    if (!feedbackText.trim()) return;
-    posthog.capture('user_feedback', { content: feedbackText, userId: getDeviceId() });
-    alert(lang === 'zh' ? '反馈已收到！' : 'Feedback received!');
-    setFeedbackText("");
-    setShowFeedbackModal(false);
-  };
+  const confirmLanguage = (selectedLang: LangType) => { setLang(selectedLang); localStorage.setItem(LANG_PREF_KEY, selectedLang); localStorage.setItem(LANGUAGE_KEY, 'true'); setShowLangSetup(false); const hasVisited = localStorage.getItem(VISITED_KEY); if (!hasVisited) setShowTriage(true); posthog.capture('language_set', { language: selectedLang }); };
+  const handleTriageSelection = (target: PersonaType) => { localStorage.setItem(VISITED_KEY, 'true'); setShowTriage(false); selectPersona(target); posthog.capture('triage_select', { target }); };
+  const saveUserName = () => { const nameToSave = tempName.trim(); setUserName(nameToSave); localStorage.setItem(USER_NAME_KEY, nameToSave); setShowNameModal(false); posthog.capture('username_set'); };
+  const handleFeedbackSubmit = () => { if (!feedbackText.trim()) return; posthog.capture('user_feedback', { content: feedbackText, userId: getDeviceId() }); alert(lang === 'zh' ? '反馈已收到！' : 'Feedback received!'); setFeedbackText(""); setShowFeedbackModal(false); };
 
   const handlePlayAudio = async (text: string, msgId: string) => {
-    if (playingMsgId === msgId) {
-      if (audioRef.current) audioRef.current.pause();
-      setPlayingMsgId(null);
-      return;
-    }
+    if (playingMsgId === msgId) { if (audioRef.current) audioRef.current.pause(); setPlayingMsgId(null); return; }
     if (audioRef.current) audioRef.current.pause();
-
     setPlayingMsgId(msgId);
     try {
       const p = PERSONAS[activePersona];
       const currentLang = (lang === 'en' || lang === 'zh') ? lang : 'zh';
       const vConfig = p.voiceConfig[currentLang];
-
       if (!vConfig) { console.warn("Voice config missing"); setPlayingMsgId(null); return; }
 
       const res = await fetch('/api/tts', {
@@ -289,21 +209,15 @@ export default function Home() {
           lang: currentLang === 'zh' ? 'zh-CN' : 'en-US'
         }),
       });
-      
       const data = await res.json();
       if (!res.ok || !data.audio) throw new Error(data.error || 'TTS Failed');
-
       const audioSrc = `data:audio/mp3;base64,${data.audio}`;
-      
       if (audioRef.current) {
          audioRef.current.src = audioSrc;
          audioRef.current.onended = () => setPlayingMsgId(null);
          audioRef.current.play().catch(e => { console.error("AutoPlay blocked:", e); setPlayingMsgId(null); });
       }
-    } catch (e) {
-      console.error("Audio Play Error:", e);
-      setPlayingMsgId(null);
-    }
+    } catch (e) { console.error("Audio Play Error:", e); setPlayingMsgId(null); }
   };
 
   const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages, setInput, append } = useChat({
@@ -313,13 +227,10 @@ export default function Home() {
       const newCount = interactionCount + 1;
       setInteractionCount(newCount);
       localStorage.setItem(getTrustKey(activePersona), newCount.toString());
-      if (newCount === 1 || newCount === 50 || newCount === 100) {
-        posthog.capture('trust_milestone', { persona: activePersona, level: newCount });
-      }
+      if (newCount === 1 || newCount === 50 || newCount === 100) posthog.capture('trust_milestone', { persona: activePersona, level: newCount });
 
       const isAI = message.role === 'assistant';
       const isLevel2 = newCount >= 50; 
-      
       let shouldPlay = false;
 
       if (forceVoice) {
@@ -329,11 +240,8 @@ export default function Home() {
            setVoiceTrial(left);
            localStorage.setItem('toughlove_voice_trial', left.toString());
            shouldPlay = true;
-           if (left === 0) { setForceVoice(false); console.log("Voice trial ended. Switched off."); }
-        } else {
-           shouldPlay = false;
-           setForceVoice(false);
-        }
+           if (left === 0) { setForceVoice(false); console.log("Voice trial ended."); }
+        } else { shouldPlay = false; setForceVoice(false); }
       } else {
         const isLucky = Math.random() < 0.3; 
         const isShort = message.content.length < 120; 
@@ -341,10 +249,9 @@ export default function Home() {
       }
 
       if (isAI && shouldPlay) {
-         // 🔥 核心修改：保存 Voice ID 到本地存储，防止刷新丢失
+         // 🔥 保存 VoiceID，防止刷新丢失
          setVoiceMsgIds(prev => {
              const newSet = new Set(prev).add(message.id);
-             // 异步保存，不阻塞渲染
              saveVoiceIds(activePersona, Array.from(newSet));
              return newSet;
          });
@@ -356,56 +263,30 @@ export default function Home() {
   const prevLoadingRef = useRef(false);
   useEffect(() => {
     const wasLoading = prevLoadingRef.current;
-    if (wasLoading && !isLoading && messages.length > 0) {
-      syncToCloud(messages);
-    }
+    if (wasLoading && !isLoading && messages.length > 0) { syncToCloud(messages); }
     prevLoadingRef.current = isLoading;
   }, [isLoading, messages]);
 
   useEffect(() => {
-    if (mounted) {
-        const storedCount = localStorage.getItem(getTrustKey(activePersona));
-        setInteractionCount(storedCount ? parseInt(storedCount) : 0);
-    }
+    if (mounted) { const storedCount = localStorage.getItem(getTrustKey(activePersona)); setInteractionCount(storedCount ? parseInt(storedCount) : 0); }
   }, [activePersona, mounted]);
 
   const syncToCloud = async (currentMessages: any[]) => {
     try {
-      await fetch('/api/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: getDeviceId(), persona: activePersona, messages: currentMessages })
-      });
+      await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: getDeviceId(), persona: activePersona, messages: currentMessages }) });
     } catch (e) { console.error("Cloud sync failed", e); }
   };
 
-  useEffect(() => {
-    if (messages.length > 0 && view === 'chat') {
-      saveMemory(activePersona, messages);
-    }
-  }, [messages, activePersona, view]);
-
+  useEffect(() => { if (messages.length > 0 && view === 'chat') { saveMemory(activePersona, messages); } }, [messages, activePersona, view]);
   const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); };
   useEffect(() => { scrollToBottom(); }, [messages, isLoading, view]);
-
-  const toggleLanguage = () => {
-    const newLang = lang === 'zh' ? 'en' : 'zh';
-    setLang(newLang);
-    localStorage.setItem(LANG_PREF_KEY, newLang);
-    setShowMenu(false);
-  };
+  const toggleLanguage = () => { const newLang = lang === 'zh' ? 'en' : 'zh'; setLang(newLang); localStorage.setItem(LANG_PREF_KEY, newLang); setShowMenu(false); };
 
   useEffect(() => {
     if(!mounted) return;
-    setDiaryContent("");
-    setHasNewDiary(false);
+    setDiaryContent(""); setHasNewDiary(false);
     const savedDiary = localStorage.getItem(getDiaryKey(activePersona));
-    if (savedDiary) {
-      setDiaryContent(savedDiary);
-    } else {
-        const history = getMemory(activePersona);
-        if (history.length > 5) setHasNewDiary(true);
-    }
+    if (savedDiary) { setDiaryContent(savedDiary); } else { const history = getMemory(activePersona); if (history.length > 5) setHasNewDiary(true); }
   }, [activePersona, mounted]);
 
   const selectPersona = async (persona: PersonaType) => {
@@ -413,8 +294,7 @@ export default function Home() {
     setForceVoice(false); 
     setActivePersona(persona);
     setView('chat');
-    
-    // 🔥 同步读取聊天记录和 VoiceIDs
+    // 🔥 同步读取数据
     const localHistory = getMemory(persona);
     const localVoiceIds = getVoiceIds(persona);
     setMessages(localHistory);
@@ -424,17 +304,13 @@ export default function Home() {
       const res = await fetch(`/api/sync?userId=${getDeviceId()}&persona=${persona}`);
       const data = await res.json();
       if (data.messages && data.messages.length > 0) {
-        if (data.messages.length >= localHistory.length) {
-          setMessages(data.messages);
-          saveMemory(persona, data.messages);
-        }
+        if (data.messages.length >= localHistory.length) { setMessages(data.messages); saveMemory(persona, data.messages); }
       } else if (localHistory.length === 0) {
         const p = PERSONAS[persona];
         const greetings = p.greetings[lang];
         const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
         const welcomeMsg: Message = { id: Date.now().toString(), role: 'assistant', content: randomGreeting };
-        setMessages([welcomeMsg]);
-        saveMemory(persona, [welcomeMsg]);
+        setMessages([welcomeMsg]); saveMemory(persona, [welcomeMsg]);
       }
     } catch (e) {
       if (localHistory.length === 0) {
@@ -442,8 +318,7 @@ export default function Home() {
          const greetings = p.greetings[lang];
          const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
          const welcomeMsg: Message = { id: Date.now().toString(), role: 'assistant', content: randomGreeting };
-         setMessages([welcomeMsg]);
-         saveMemory(persona, [welcomeMsg]);
+         setMessages([welcomeMsg]); saveMemory(persona, [welcomeMsg]);
       }
     }
   };
@@ -453,10 +328,9 @@ export default function Home() {
       posthog.capture('chat_reset', { persona: activePersona });
       setMessages([]);
       saveMemory(activePersona, []);
-      // 🔥 重置时也清除本地存储的 voice IDs
+      // 🔥 重置语音记录
       localStorage.removeItem(`toughlove_voice_ids_${activePersona}`);
       setVoiceMsgIds(new Set());
-      
       syncToCloud([]); 
       setShowMenu(false);
       setInteractionCount(0);
@@ -468,9 +342,7 @@ export default function Home() {
       const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
       setTimeout(() => {
         const welcomeMsg: Message = { id: Date.now().toString(), role: 'assistant', content: randomGreeting };
-        setMessages([welcomeMsg]);
-        saveMemory(activePersona, [welcomeMsg]);
-        syncToCloud([welcomeMsg]);
+        setMessages([welcomeMsg]); saveMemory(activePersona, [welcomeMsg]); syncToCloud([welcomeMsg]);
       }, 100);
     }
   };
@@ -478,7 +350,6 @@ export default function Home() {
   const backToSelection = () => { setView('selection'); setTick(tick + 1); };
   const dismissUpdate = () => { localStorage.setItem(CURRENT_VERSION_KEY, 'true'); setShowUpdateModal(false); };
   const handleTryNewFeature = () => { posthog.capture('update_click_try'); dismissUpdate(); selectPersona('Sol'); }; 
-  
   const handleExport = () => { posthog.capture('feature_export', { persona: activePersona }); if (messages.length === 0) return; const dateStr = new Date().toLocaleString(); const header = `================================\n${ui.exportFileName}\nDate: ${dateStr}\nPersona: ${currentP.name}\nUser: ${userName || 'Anonymous'}\n================================\n\n`; const body = messages.map(m => { const role = m.role === 'user' ? (userName || 'ME') : currentP.name.toUpperCase(); return `[${role}]:\n${m.content.replace(/\|\|\|/g, '\n')}\n`; }).join('\n--------------------------------\n\n'); const blob = new Blob([header + body], { type: 'text/plain;charset=utf-8' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${ui.exportFileName}_${activePersona}_${new Date().toISOString().split('T')[0]}.txt`; a.style.display = 'none'; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); setShowMenu(false); };
   const handleInstall = () => { posthog.capture('feature_install_click'); setShowInstallModal(true); setShowMenu(false); };
   const handleDonate = () => { posthog.capture('feature_donate_click'); setShowDonateModal(true); setShowMenu(false); }
@@ -494,6 +365,7 @@ export default function Home() {
   const onFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     posthog.capture('message_send', { persona: activePersona });
+    // 🔥 核心：发送时静默解锁，确保 iOS 自动播放
     if (audioRef.current) { audioRef.current.src = SILENT_AUDIO; audioRef.current.play().catch(err => {}); }
     const timeData = getLocalTimeInfo();
     const envInfo = { time: timeData.localTime, weekday: lang === 'zh' ? timeData.weekdayZH : timeData.weekdayEN, phase: timeData.lifePhase, weather: currentWeather };
@@ -504,7 +376,7 @@ export default function Home() {
   const levelInfo = getLevelInfo(interactionCount);
   const progressPercent = Math.min(100, (interactionCount / levelInfo.max) * 100);
 
-  if (!mounted) { return <BootScreen />; }
+  if (!mounted) return <BootScreen />;
 
   return (
     <div className="relative flex flex-col h-[100dvh] bg-[#050505] text-gray-100 overflow-hidden font-sans selection:bg-[#7F5CFF] selection:text-white">
@@ -634,7 +506,8 @@ export default function Home() {
           <footer className="flex-none p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
             {messages.length <= 2 && !isLoading && (
               <div className="flex gap-2 overflow-x-auto pb-3 scrollbar-hide">
-                {QUICK_REPLIES[activePersona][lang].map((reply, idx) => (
+                {/* 🔥 修复：动态渲染快捷回复，确保传给后端的是当前语言 */}
+                {QUICK_REPLIES_DATA[activePersona][lang].map((reply, idx) => (
                   <button key={idx} onClick={() => { const msg: Message = { id: Date.now().toString(), role: 'user', content: reply }; append(msg); posthog.capture('use_quick_reply', { persona: activePersona, content: reply }); }} className="flex-shrink-0 px-3 py-1.5 bg-[#1a1a1a] border border-white/10 rounded-full text-xs text-gray-400 hover:text-white hover:border-[#7F5CFF] hover:bg-[#7F5CFF]/10 transition-all whitespace-nowrap">{reply}</button>
                 ))}
               </div>

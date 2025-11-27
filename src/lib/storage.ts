@@ -2,9 +2,8 @@ import { Message } from 'ai';
 import { PersonaType } from './constants';
 
 const STORAGE_PREFIX = 'toughlove_memory_';
-const VOICE_IDS_PREFIX = 'toughlove_voice_ids_'; // 🔥 新增 Key 前缀
+const VOICE_IDS_PREFIX = 'toughlove_voice_ids_'; // 🔥 新增 Key
 
-// 获取某个人格的聊天记录
 export function getMemory(persona: PersonaType): Message[] {
   if (typeof window === 'undefined') return [];
   try {
@@ -16,7 +15,6 @@ export function getMemory(persona: PersonaType): Message[] {
   }
 }
 
-// 保存某个人格的聊天记录
 export function saveMemory(persona: PersonaType, messages: Message[]) {
   if (typeof window === 'undefined') return;
   try {
@@ -26,7 +24,7 @@ export function saveMemory(persona: PersonaType, messages: Message[]) {
   }
 }
 
-// 🔥 新增：获取已生成的语音消息 ID 列表
+// 🔥 新增：语音ID持久化
 export function getVoiceIds(persona: PersonaType): string[] {
   if (typeof window === 'undefined') return [];
   try {
@@ -37,7 +35,6 @@ export function getVoiceIds(persona: PersonaType): string[] {
   }
 }
 
-// 🔥 新增：保存语音消息 ID 列表
 export function saveVoiceIds(persona: PersonaType, ids: string[]) {
   if (typeof window === 'undefined') return;
   try {
@@ -47,8 +44,7 @@ export function saveVoiceIds(persona: PersonaType, ids: string[]) {
   }
 }
 
-// 清除记忆 (可选，用于调试或重置)
 export function clearMemory(persona: PersonaType) {
   localStorage.removeItem(`${STORAGE_PREFIX}${persona}`);
-  localStorage.removeItem(`${VOICE_IDS_PREFIX}${persona}`); // 🔥 清除时同步清除语音记录
+  localStorage.removeItem(`${VOICE_IDS_PREFIX}${persona}`);
 }

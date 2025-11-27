@@ -17,19 +17,14 @@ const supabase = createClient(
 export const runtime = 'edge';
 
 const SAFE_WORDS = /求放过|别骂了|我难受|不行了|太过了|停止|救命|stop|help/i;
-const EMERGENCY_PROMPT = `
-[EMERGENCY OVERRIDE]: User is emotionally overwhelmed. 
-1. STOP roasting/commanding immediately. 
-2. Switch to GENTLE SUPPORT mode. 
-3. Comfort the user calmly.
-`;
+const EMERGENCY_PROMPT = `[EMERGENCY OVERRIDE]: STOP roasting. Switch to GENTLE SUPPORT. Comfort the user.`;
 
 const BUSY_MESSAGES: Record<string, string[]> = {
-  Ash: ["（自动回复）正在盯着那个人发呆，没空理你。", "（自动回复）Zzz... 梦里正在拯救世界，勿扰。", "（自动回复）烦着呢，除非带咖啡来。"],
-  Rin: ["（自动回复）谁准你现在找我的？在忙！", "（自动回复）正在和 Sol 吵架，稍后再骂你。", "（自动回复）...洗澡中。"],
-  Sol: ["（自动回复）现在是我的深度工作时间。你的权限不足以打断我。", "（系统消息）该用户已开启“绝对专注”模式。", "（自动回复）正在审查下一季度的生存计划。排队。"],
-  Vee: ["（自动回复）在快乐星球，信号不好~ 🤪", "（自动回复）正在看乐子，没空成为乐子。", "🤡 User is currently busy being funny."],
-  Echo: ["（自动回复）...", "（自动回复）正在凝视深渊。", "（自动回复）信号在虚空中消散了。"]
+  Ash: ["（自动回复）正在盯着那个人发呆...", "（自动回复）Zzz...", "（自动回复）烦着呢。"],
+  Rin: ["（自动回复）谁准你现在找我的？", "（自动回复）在忙！", "（自动回复）洗澡中。"],
+  Sol: ["（自动回复）深度工作时间。", "（系统消息）该用户已开启专注模式。", "（自动回复）排队。"],
+  Vee: ["（自动回复）在快乐星球~", "（自动回复）正在看乐子。", "🤡 Busy being funny."],
+  Echo: ["（自动回复）...", "（自动回复）凝视深渊中。", "（自动回复）信号消散了。"]
 };
 
 export async function POST(req: Request) {
@@ -39,143 +34,88 @@ export async function POST(req: Request) {
     
     const currentLang = (language as LangType) || 'zh';
     const currentPersona = PERSONAS[persona as PersonaType] || PERSONAS.Ash;
-    
     const lastUserMsg = messages[messages.length - 1]?.content || "";
 
-    // 1. 风控拦截 (Sync)
     const safetyCheck = validateInput(lastUserMsg);
     if (!safetyCheck.safe) {
-      console.warn(`[Safety Block] User: ${userId} | Input: ${lastUserMsg}`);
       const encoder = new TextEncoder();
-      const stream = new ReadableStream({
-        start(controller) {
-          controller.enqueue(encoder.encode(safetyCheck.warning || "⚠️ System Alert: Unsafe input detected."));
-          controller.close();
-        },
-      });
+      const stream = new ReadableStream({ start(c) { c.enqueue(encoder.encode("⚠️ System Alert: Unsafe input.")); c.close(); } });
       return new StreamingTextResponse(stream);
     }
 
     let isEmergency = false;
     if (SAFE_WORDS.test(lastUserMsg)) isEmergency = true;
 
-    // 2. 并行获取 DB 数据
+    // 并行请求
     let statusPromise = Promise.resolve(null);
     let memoryPromise = Promise.resolve(null);
 
     if (!isEmergency && process.env.SUPABASE_SERVICE_ROLE_KEY && userId) {
         statusPromise = supabase.from('persona_states').select('status').eq('persona', persona).single() as any;
     }
-    
     if (userId && process.env.SUPABASE_SERVICE_ROLE_KEY) {
         memoryPromise = supabase.from('memories').select('content').eq('user_id', userId).order('created_at', { ascending: false }).limit(5) as any;
     }
 
     const [statusResult, memoryResult] = await Promise.all([statusPromise, memoryPromise]);
 
-    // 3. 处理状态阻断
-    if (statusResult && (statusResult as any).data) {
-        const statusData = (statusResult as any).data;
-        if (statusData.status === 'busy' || statusData.status === 'offline') {
-           const scripts = BUSY_MESSAGES[persona as string] || BUSY_MESSAGES['Ash'];
-           const randomScript = scripts[Math.floor(Math.random() * scripts.length)];
-           const encoder = new TextEncoder();
-           const stream = new ReadableStream({
-             start(controller) { controller.enqueue(encoder.encode(randomScript)); controller.close(); },
-           });
-           return new StreamingTextResponse(stream);
-        }
+    if (statusResult && (statusResult as any).data && ((statusResult as any).data.status === 'busy' || (statusResult as any).data.status === 'offline')) {
+        const scripts = BUSY_MESSAGES[persona as string] || BUSY_MESSAGES['Ash'];
+        const randomScript = scripts[Math.floor(Math.random() * scripts.length)];
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream({ start(c) { c.enqueue(encoder.encode(randomScript)); c.close(); } });
+        return new StreamingTextResponse(stream);
     }
 
-    // 4. 处理记忆 (🔥 核心修复：防止中文记忆污染英文对话)
     let memoryPrompt = "";
     if (memoryResult && (memoryResult as any).data) {
         const memories = (memoryResult as any).data;
         if (memories.length > 0) {
-            // 如果是英文模式，强制忽略记忆中的语言
-            const memoryIntro = currentLang === 'en' 
-              ? "The following memories may be in Chinese. IGNORE their language. Use the FACTS but reply in ENGLISH." 
-              : "【你记得关于该用户的事】";
-            
+            const memoryIntro = currentLang === 'en' ? "IGNORE memory language. Use FACTS but reply in ENGLISH." : "【记忆】";
             memoryPrompt = `\n[Memory]:\n${memoryIntro}:\n${memories.map((m: any) => `- ${m.content}`).join('\n')}`;
         }
     }
 
-    // 5. 环境与信任度
     let envPrompt = "";
     if (envInfo) {
       const { time, weekday, phase, weather } = envInfo;
-      envPrompt = currentLang === 'zh' 
-        ? `【环境】: ${weekday} ${time} (${phase})。天气：${weather}。`
-        : `[Environment]: ${weekday} ${time} (${phase}). Weather: ${weather}.`;
+      envPrompt = currentLang === 'zh' ? `【环境】: ${weekday} ${time} (${phase})。天气：${weather}。` : `[Environment]: ${weekday} ${time} (${phase}). Weather: ${weather}.`;
     }
 
     let trustPrompt = "";
     const count = Number(interactionCount);
-    if (count < 50) trustPrompt = currentLang === 'zh' ? `\n[Lv.1]: 保持距离，维持高冷/严厉。` : `\n[Lv.1]: Distant. Keep boundaries.`;
-    else if (count < 100) trustPrompt = currentLang === 'zh' ? `\n[Lv.2]: 稍微熟悉，嘴硬心软。` : `\n[Lv.2]: Casual. Tsundere.`;
-    else trustPrompt = currentLang === 'zh' ? `\n[Lv.3]: 共犯关系，深度依赖。` : `\n[Lv.3]: Deep bond. Partner in crime.`;
+    if (count < 50) trustPrompt = currentLang === 'zh' ? `\n[Lv.1]: 高冷/严厉。` : `\n[Lv.1]: Distant.`;
+    else if (count < 100) trustPrompt = currentLang === 'zh' ? `\n[Lv.2]: 嘴硬心软。` : `\n[Lv.2]: Casual. Tsundere.`;
+    else trustPrompt = currentLang === 'zh' ? `\n[Lv.3]: 共犯/依赖。` : `\n[Lv.3]: Deep bond.`;
 
     const basePrompt = currentPersona.prompts[currentLang];
-    let namePrompt = userName && userName.trim() !== "" ? (currentLang === 'zh' ? `\n[用户昵称]: "${userName}"` : `\n[User Name]: "${userName}"`) : "";
-    const dynamicEnginePrompt = currentLang === 'zh' ? `[Engine]: 回复长度随机。若用户痛苦则倾听。` : `[Engine]: Randomize length. Listen if user is sad.`;
+    let namePrompt = userName && userName.trim() !== "" ? (currentLang === 'zh' ? `\n[用户]: "${userName}"` : `\n[User]: "${userName}"`) : "";
+    const dynamicEnginePrompt = currentLang === 'zh' ? `[Engine]: 回复长度随机。` : `[Engine]: Randomize length.`;
     const emergencyOverride = isEmergency ? EMERGENCY_PROMPT : "";
 
-    // 系统级语言锁
     const SYSTEM_LANG_CONSTRAINT = currentLang === 'zh' 
-      ? `\n⚠️【严格指令】：你必须使用【中文】回复。禁止使用英文。`
-      : `\n⚠️ [CRITICAL COMMAND]: 
-         1. You MUST reply in 【ENGLISH】 only. 
-         2. **ABSOLUTELY NO CHINESE CHARACTERS.**
-         3. Actions in parentheses must be in English. E.g., "(sighs)" NOT "(叹气)".`;
+      ? `\n⚠️【严格指令】：必须用【中文】回复。`
+      : `\n⚠️ [CRITICAL]: MUST reply in 【ENGLISH】 only. NO CHINESE. Actions in parentheses MUST be English.`;
 
-    const finalSystemPrompt = `
-      ${SAFETY_PROTOCOL}
-      ${basePrompt}
-      ${namePrompt}
-      ${envPrompt}
-      ${trustPrompt}
-      ${memoryPrompt}
-      ${dynamicEnginePrompt}
-      ${emergencyOverride}
-      ${SYSTEM_LANG_CONSTRAINT}
-    `;
+    const finalSystemPrompt = `${SAFETY_PROTOCOL} ${basePrompt} ${namePrompt} ${envPrompt} ${trustPrompt} ${memoryPrompt} ${dynamicEnginePrompt} ${emergencyOverride} ${SYSTEM_LANG_CONSTRAINT}`;
 
-    // 6. 构造消息队列 (User Level Injection)
-    const conversation = [
-      { role: 'system', content: finalSystemPrompt },
-      ...messages
-    ];
+    const conversation = [{ role: 'system', content: finalSystemPrompt }, ...messages];
 
-    // 🔥 隐形注射：在用户消息末尾再次强调
+    // 🔥 隐形注射：用户消息末尾再次强调
     if (currentLang === 'en') {
        const lastMsgIndex = conversation.length - 1;
        const lastMsg = conversation[lastMsgIndex];
        if (lastMsg.role === 'user') {
-         conversation[lastMsgIndex] = {
-           ...lastMsg,
-           content: `${lastMsg.content}\n\n[SYSTEM: REPLY IN ENGLISH ONLY. TRANSLATE ANY CHINESE ACTIONS TO ENGLISH.]`
-         };
+         conversation[lastMsgIndex] = { ...lastMsg, content: `${lastMsg.content}\n\n[SYSTEM: REPLY IN ENGLISH ONLY. NO CHINESE CHARACTERS.]` };
        }
-       // 🔥 尾部压制
        conversation.push({ role: 'system', content: "OUTPUT ENGLISH ONLY." });
     }
 
-    const response = await openai.chat.completions.create({
-      model: 'deepseek-chat',
-      stream: true,
-      messages: conversation,
-      temperature: 0.9, 
-    });
-
+    const response = await openai.chat.completions.create({ model: 'deepseek-chat', stream: true, messages: conversation, temperature: 0.9 });
     const stream = OpenAIStream(response as any);
     return new StreamingTextResponse(stream);
 
   } catch (error) {
-    console.error("Chat API Error:", error);
-    return new Response(JSON.stringify({ error: 'Connection failed' }), { 
-      status: 500, 
-      headers: { 'Content-Type': 'application/json' } 
-    });
+    return new Response(JSON.stringify({ error: 'Connection failed' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
   }
 }
