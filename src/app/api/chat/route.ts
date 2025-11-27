@@ -42,7 +42,7 @@ export async function POST(req: Request) {
     
     const lastUserMsg = messages[messages.length - 1]?.content || "";
 
-    // 1. 风控拦截
+    // 1. 风控拦截 (Sync)
     const safetyCheck = validateInput(lastUserMsg);
     if (!safetyCheck.safe) {
       console.warn(`[Safety Block] User: ${userId} | Input: ${lastUserMsg}`);
@@ -56,96 +56,66 @@ export async function POST(req: Request) {
       return new StreamingTextResponse(stream);
     }
 
-    // 2. 安全词检测
     let isEmergency = false;
-    if (SAFE_WORDS.test(lastUserMsg)) {
-      console.log(`[Safety] Triggered by user: ${userId}`);
-      isEmergency = true;
+    if (SAFE_WORDS.test(lastUserMsg)) isEmergency = true;
+
+    // 2. 并行获取 DB 数据 (Optimization)
+    // 之前是串行，现在改为并行，减少等待时间
+    let statusPromise = Promise.resolve(null);
+    let memoryPromise = Promise.resolve(null);
+
+    if (!isEmergency && process.env.SUPABASE_SERVICE_ROLE_KEY && userId) {
+        statusPromise = supabase.from('persona_states').select('status').eq('persona', persona).single() as any;
+    }
+    
+    if (userId && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        memoryPromise = supabase.from('memories').select('content').eq('user_id', userId).order('created_at', { ascending: false }).limit(5) as any;
     }
 
-    // 3. 状态阻断
-    if (!isEmergency && process.env.SUPABASE_SERVICE_ROLE_KEY && userId) {
-      try {
-        const { data: statusData } = await supabase
-          .from('persona_states')
-          .select('status')
-          .eq('persona', persona)
-          .single();
-        
-        if (statusData && (statusData.status === 'busy' || statusData.status === 'offline')) {
+    const [statusResult, memoryResult] = await Promise.all([statusPromise, memoryPromise]);
+
+    // 3. 处理状态阻断
+    if (statusResult && (statusResult as any).data) {
+        const statusData = (statusResult as any).data;
+        if (statusData.status === 'busy' || statusData.status === 'offline') {
            const scripts = BUSY_MESSAGES[persona as string] || BUSY_MESSAGES['Ash'];
            const randomScript = scripts[Math.floor(Math.random() * scripts.length)];
            const encoder = new TextEncoder();
            const stream = new ReadableStream({
-             start(controller) {
-               controller.enqueue(encoder.encode(randomScript));
-               controller.close();
-             },
+             start(controller) { controller.enqueue(encoder.encode(randomScript)); controller.close(); },
            });
            return new StreamingTextResponse(stream);
         }
-      } catch (err) {
-        console.error("Status check failed:", err);
-      }
     }
 
-    // 4. 记忆读取
+    // 4. 处理记忆
     let memoryPrompt = "";
-    if (userId && process.env.SUPABASE_SERVICE_ROLE_KEY) {
-        try {
-            const { data: memories } = await supabase
-                .from('memories')
-                .select('content')
-                .eq('user_id', userId)
-                .order('created_at', { ascending: false })
-                .limit(5);
-            
-            if (memories && memories.length > 0) {
-                memoryPrompt = `\n[Memory]:\n${memories.map((m: any) => `- ${m.content}`).join('\n')}`;
-            }
-        } catch (err) { console.error("Memory fetch error:", err); }
+    if (memoryResult && (memoryResult as any).data) {
+        const memories = (memoryResult as any).data;
+        if (memories.length > 0) {
+            memoryPrompt = `\n[Memory]:\n${memories.map((m: any) => `- ${m.content}`).join('\n')}`;
+        }
     }
 
-    // 5. 环境感知
+    // 5. 环境与信任度
     let envPrompt = "";
     if (envInfo) {
       const { time, weekday, phase, weather } = envInfo;
-      if (currentLang === 'zh') {
-        envPrompt = `【环境】: ${weekday} ${time} (${phase})。天气：${weather}。`;
-      } else {
-        envPrompt = `[Environment]: ${weekday} ${time} (${phase}). Weather: ${weather}.`;
-      }
+      envPrompt = currentLang === 'zh' 
+        ? `【环境】: ${weekday} ${time} (${phase})。天气：${weather}。`
+        : `[Environment]: ${weekday} ${time} (${phase}). Weather: ${weather}.`;
     }
 
-    // 6. 信任度
     let trustPrompt = "";
     const count = Number(interactionCount);
-    if (count < 50) {
-      trustPrompt = currentLang === 'zh' ? `\n[Lv.1]: 保持距离，维持高冷/严厉。` : `\n[Lv.1]: Distant. Keep boundaries.`;
-    } else if (count < 100) {
-      trustPrompt = currentLang === 'zh' ? `\n[Lv.2]: 稍微熟悉，嘴硬心软。` : `\n[Lv.2]: Casual. Tsundere.`;
-    } else {
-      trustPrompt = currentLang === 'zh' ? `\n[Lv.3]: 共犯关系，深度依赖。` : `\n[Lv.3]: Deep bond. Partner in crime.`;
-    }
+    if (count < 50) trustPrompt = currentLang === 'zh' ? `\n[Lv.1]: 保持距离，维持高冷/严厉。` : `\n[Lv.1]: Distant. Keep boundaries.`;
+    else if (count < 100) trustPrompt = currentLang === 'zh' ? `\n[Lv.2]: 稍微熟悉，嘴硬心软。` : `\n[Lv.2]: Casual. Tsundere.`;
+    else trustPrompt = currentLang === 'zh' ? `\n[Lv.3]: 共犯关系，深度依赖。` : `\n[Lv.3]: Deep bond. Partner in crime.`;
 
-    // 7. Prompt 组装
     const basePrompt = currentPersona.prompts[currentLang];
-    
-    let namePrompt = "";
-    if (userName && userName.trim() !== "") {
-      namePrompt = currentLang === 'zh' ? `\n[用户昵称]: "${userName}"` : `\n[User Name]: "${userName}"`;
-    }
-
-    const dynamicEnginePrompt = currentLang === 'zh' ? `
-    [Engine]: 回复长度随机。若用户痛苦则倾听。
-    ` : `[Engine]: Randomize length. Listen if user is sad.`;
-
+    let namePrompt = userName && userName.trim() !== "" ? (currentLang === 'zh' ? `\n[用户昵称]: "${userName}"` : `\n[User Name]: "${userName}"`) : "";
+    const dynamicEnginePrompt = currentLang === 'zh' ? `[Engine]: 回复长度随机。若用户痛苦则倾听。` : `[Engine]: Randomize length. Listen if user is sad.`;
     const emergencyOverride = isEmergency ? EMERGENCY_PROMPT : "";
-
-    // 🔥🔥🔥 FIX: 语言强制指令 (System Level) 🔥🔥🔥
-    const SYSTEM_LANG_CONSTRAINT = currentLang === 'zh' 
-      ? `\n⚠️【严格指令】：你必须使用【中文】回复。禁止使用英文。`
-      : `\n⚠️ [STRICT SYSTEM COMMAND]: You MUST reply in 【ENGLISH】 only. Do NOT speak Chinese. Even if the user speaks Chinese, reply in English.`;
 
     const finalSystemPrompt = `
       ${SAFETY_PROTOCOL}
@@ -156,38 +126,24 @@ export async function POST(req: Request) {
       ${memoryPrompt}
       ${dynamicEnginePrompt}
       ${emergencyOverride}
-      ${SYSTEM_LANG_CONSTRAINT}
     `;
 
-    // ------------------------------------------------------
-    // 🔥🔥🔥 FIX: 提示词注射 (User Level Injection) 🔥🔥🔥
-    // ------------------------------------------------------
-    // 即使 System Prompt 失效，我们直接修改用户发送的最后一条消息，
-    // 强制加上语言要求。这对 LLM 来说是“最近的指令”，权重极大。
-    
-    // 1. 复制消息列表，避免污染
+    // 6. 构造消息队列 (Language Injection)
     const conversation = [
       { role: 'system', content: finalSystemPrompt },
       ...messages
     ];
 
-    // 2. 如果是英文模式，在最后一条用户消息里“下毒”
+    // 🔥🔥🔥 核心修复：如果是英文模式，强制追加一条系统指令
+    // 这比修改用户消息更有效，直接从系统层面压制 LLM 的中文倾向
     if (currentLang === 'en') {
-       const lastMsgIndex = conversation.length - 1;
-       const lastMsg = conversation[lastMsgIndex];
-       
-       if (lastMsg.role === 'user') {
-         // 这里的指令对用户不可见，但对 AI 可见
-         conversation[lastMsgIndex] = {
-           ...lastMsg,
-           content: `${lastMsg.content}\n\n(SYSTEM NOTE: You MUST reply in English. Chinese is FORBIDDEN.)`
-         };
-       }
+       conversation.push({
+           role: 'system',
+           content: "CRITICAL: YOU MUST REPLY IN ENGLISH ONLY. NO CHINESE CHARACTERS ALLOWED."
+       });
     }
 
-    // ------------------------------------------------------
-    // 🚀 发射！
-    // ------------------------------------------------------
+    // 7. 发射
     const response = await openai.chat.completions.create({
       model: 'deepseek-chat',
       stream: true,
