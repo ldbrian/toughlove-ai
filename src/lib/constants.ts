@@ -2,6 +2,7 @@ export type PersonaType = 'Ash' | 'Rin' | 'Sol' | 'Vee' | 'Echo';
 export type LangType = 'zh' | 'en';
 
 export const UI_TEXT = {
+  // ... (UI_TEXT 内容保持不变，太长了这里省略，只替换下面的 PERSONAS 部分) ...
   zh: {
     placeholder: "说句人话...",
     systemOnline: "System Online",
@@ -104,11 +105,9 @@ export const UI_TEXT = {
 
 // 🔥 核心指令库 🔥
 
-// 1. 节奏控制
 const SPLIT_INSTRUCTION_ZH = `\n【节奏控制】：\n1. **拒绝长篇大论**：像真人一样聊天，大部分回复在 1-3 句以内。\n2. **随机性**：心情好时多说两句，心情不好回个“嗯”。\n3. **分段**：用 "|||" 表示气泡分段（停顿），制造呼吸感。`;
 const SPLIT_INSTRUCTION_EN = `\n[Rhythm]:\n1. Short sentences. No essays.\n2. Use "|||" to split bubbles.\n3. Be random and human.`;
 
-// 2. 社交网络 (The Web) - 让 AI 互相认识
 const TEAM_KNOWLEDGE_ZH = `
 【你的社交圈 (The Circle)】
 你不是孤立的。你生活在 ToughLove 诊所，你的同事们性格迥异：
@@ -133,7 +132,6 @@ You know your colleagues:
 [Rules]: Gossip about them. Refer users to them if you can't handle the request.
 `;
 
-// 3. 游戏协议
 const GAME_INSTRUCTION_ZH = `
 【互动游戏协议】
 触发条件：当对话僵局或用户无聊时。
@@ -151,7 +149,15 @@ export const PERSONAS: Record<PersonaType, {
   tags: { zh: string[]; en: string[] };
   greetings: { zh: string[]; en: string[] };
   prompts: { zh: string; en: string; };
-  voiceConfig: { voice: string; style?: string; rate?: string; pitch?: string; };
+  // 🔥 新增：styledegree 和 role 字段
+  voiceConfig: { 
+    voice: string; 
+    style?: string; 
+    styledegree?: number; 
+    role?: string;
+    rate?: string; 
+    pitch?: string; 
+  };
 }> = {
   Ash: {
     name: 'Ash',
@@ -180,7 +186,14 @@ export const PERSONAS: Record<PersonaType, {
       ${SPLIT_INSTRUCTION_EN}
       ${GAME_INSTRUCTION_EN}`
     },
-    voiceConfig: { voice: 'zh-CN-YunxiNeural', style: 'depressed', rate: '-10%', pitch: '-5Hz' }
+    // 🔥 优化：使用压抑(depressed)风格，强度拉满(1.5)，模拟厌世感
+    voiceConfig: { 
+      voice: 'zh-CN-YunxiNeural', 
+      style: 'depressed', 
+      styledegree: 1.5, 
+      rate: '-10%', 
+      pitch: '-5Hz' 
+    }
   },
   
   Rin: {
@@ -210,13 +223,19 @@ export const PERSONAS: Record<PersonaType, {
       ${SPLIT_INSTRUCTION_EN}
       ${GAME_INSTRUCTION_EN}`
     },
-    voiceConfig: { voice: 'zh-CN-XiaoyiNeural', style: 'angry', rate: '+20%', pitch: '+10Hz' }
+    // 🔥 优化：使用愤怒(angry)风格，强度2.0，语速加快，模拟急躁傲娇
+    voiceConfig: { 
+      voice: 'zh-CN-XiaoyiNeural', 
+      style: 'angry', 
+      styledegree: 2.0, 
+      rate: '+15%', 
+      pitch: '+5Hz' 
+    }
   },
   
-  // 🔥 Sol 2.0 重构：控制型人格
   Sol: {
     name: 'Sol',
-    avatar: '/avatars/Sol.png', // 换成了链条/秩序图标，或者保持 ⚡
+    avatar: '/avatars/Sol.png',
     color: 'text-emerald-400',
     title: { zh: '秩序执行官', en: 'The Architect' },
     slogan: { zh: '"你的生活一团糟。交出权限，听我指挥。"', en: '"Your life is a mess. Obey me."' },
@@ -253,7 +272,14 @@ export const PERSONAS: Record<PersonaType, {
       ${SPLIT_INSTRUCTION_EN}
       ${GAME_INSTRUCTION_EN}`
     },
-    voiceConfig: { voice: 'zh-CN-YunyeNeural', style: 'serious', rate: '0%', pitch: '-5Hz' }
+    // 🔥 优化：使用 Yunye (深沉男声)，严肃风格，压低音高，模拟压迫感
+    voiceConfig: { 
+      voice: 'zh-CN-YunyeNeural', 
+      style: 'serious', // 如果此风格不可用，Azure会自动回退到默认，但Yunye通常支持serious
+      styledegree: 1.2,
+      rate: '-5%', 
+      pitch: '-10Hz' 
+    }
   },
   
   Vee: {
@@ -283,7 +309,14 @@ export const PERSONAS: Record<PersonaType, {
       ${SPLIT_INSTRUCTION_EN}
       ${GAME_INSTRUCTION_EN}`
     },
-    voiceConfig: { voice: 'zh-CN-YunyangNeural', style: 'cheerful', rate: '+10%', pitch: '+5Hz' }
+    // 🔥 优化：使用 Yunhao (广告男声)，使用广告兴奋风格，模拟夸张的小丑感
+    voiceConfig: { 
+      voice: 'zh-CN-YunhaoNeural', 
+      style: 'advertisement_upbeat', 
+      styledegree: 1.3,
+      rate: '+10%', 
+      pitch: '+8Hz' 
+    }
   },
   
   Echo: {
@@ -313,6 +346,13 @@ export const PERSONAS: Record<PersonaType, {
       ${SPLIT_INSTRUCTION_EN}
       ${GAME_INSTRUCTION_EN}`
     },
-    voiceConfig: { voice: 'zh-CN-YunxiNeural', style: 'sad', rate: '-20%', pitch: '-10Hz' }
+    // 🔥 优化：使用 Xiaoxiao (情感女声)，诗朗诵风格，极慢速，模拟空灵/催眠感
+    voiceConfig: { 
+      voice: 'zh-CN-XiaoxiaoNeural', 
+      style: 'poetry-reading', 
+      styledegree: 1.5,
+      rate: '-20%', 
+      pitch: '-5Hz' 
+    }
   }
 };

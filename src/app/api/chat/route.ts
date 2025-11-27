@@ -2,6 +2,8 @@ import { OpenAI } from 'openai';
 import { OpenAIStream, StreamingTextResponse } from 'ai';
 import { createClient } from '@supabase/supabase-js'; 
 import { PERSONAS, PersonaType, LangType } from '@/lib/constants';
+// 👇 引入风控模块
+import { validateInput, SAFETY_PROTOCOL } from '@/lib/safety';
 
 // --- 初始化 (带防崩兜底) ---
 const openai = new OpenAI({
@@ -16,7 +18,7 @@ const supabase = createClient(
 
 export const runtime = 'edge';
 
-// 🔥 1. 安全词配置 (Safety Valve)
+// 🔥 1. 安全词配置 (Safety Valve) - 用于紧急情绪熔断
 const SAFE_WORDS = /求放过|别骂了|我难受|不行了|太过了|停止|救命|stop|help/i;
 const EMERGENCY_PROMPT = `
 [EMERGENCY OVERRIDE]: User is emotionally overwhelmed. 
@@ -44,6 +46,26 @@ export async function POST(req: Request) {
     
     // 获取用户最新一条消息内容
     const lastUserMsg = messages[messages.length - 1]?.content || "";
+
+    // ------------------------------------------------------
+    // 🛡️ 逻辑零：核心风控拦截 (The Firewall)
+    // ------------------------------------------------------
+    // 在进入任何逻辑之前，先检查输入是否安全（本地正则拦截）
+    // 防止涉政、暴力或 Prompt 注入攻击
+    const safetyCheck = validateInput(lastUserMsg);
+    if (!safetyCheck.safe) {
+      console.warn(`[Safety Block] User: ${userId} | Input: ${lastUserMsg}`);
+      
+      // 直接返回警告流，不消耗 LLM Token
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(safetyCheck.warning || "⚠️ System Alert: Unsafe input detected."));
+          controller.close();
+        },
+      });
+      return new StreamingTextResponse(stream);
+    }
 
     // ------------------------------------------------------
     // 🚨 逻辑一：安全阀检测 (Safety Valve)
@@ -75,7 +97,6 @@ export async function POST(req: Request) {
            const randomScript = scripts[Math.floor(Math.random() * scripts.length)];
            
            // 直接返回文本流，不调用 DeepSeek (省钱 + 真实)
-           // 我们模拟一个流式响应，让前端体验一致
            const encoder = new TextEncoder();
            const stream = new ReadableStream({
              start(controller) {
@@ -166,6 +187,7 @@ export async function POST(req: Request) {
     const emergencyOverride = isEmergency ? EMERGENCY_PROMPT : "";
 
     const finalSystemPrompt = `
+      ${SAFETY_PROTOCOL}  // 👈 核心：系统指令锁（防止 AI 越狱或被诱导色情/违法）
       ${basePrompt}
       ${namePrompt}
       ${envPrompt}
