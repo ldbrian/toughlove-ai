@@ -7,10 +7,11 @@ export async function POST(req: NextRequest) {
       text, 
       voice = 'zh-CN-YunxiNeural', 
       style = 'chat',
-      styledegree = 1.0, // 🔥 新增：情感强度 (0.01 - 2.0)
-      role = '',         // 🔥 新增：角色扮演 (Girl, Boy, etc.)
+      styledegree = 1.0, 
+      role = '',
       rate = '0%',                
-      pitch = '0Hz'                 
+      pitch = '0Hz',
+      lang = 'zh-CN' // 🔥 新增：接收前端传来的语言代码 (zh-CN 或 en-US)
     } = await req.json();
 
     if (!text) return NextResponse.json({ error: 'Text required' }, { status: 400 });
@@ -21,7 +22,7 @@ export async function POST(req: NextRequest) {
       .replace(/\(.*?\)/g, '')
       .replace(/\*.*?\*/g, '')
       .replace(/\[.*?\]/g, '')
-      .replace(/\|\|\|/g, '，') // 将气泡分隔符转为逗号，增加停顿
+      .replace(/\|\|\|/g, '，') // 将气泡分隔符转为逗号
       .trim();
 
     if (cleanText.length === 0) {
@@ -38,12 +39,11 @@ export async function POST(req: NextRequest) {
     const speechConfig = sdk.SpeechConfig.fromSubscription(speechKey, speechRegion);
     speechConfig.speechSynthesisOutputFormat = sdk.SpeechSynthesisOutputFormat.Audio16Khz32KBitRateMonoMp3;
 
-    // 🔥 核心优化：构建支持 styledegree 和 role 的 SSML
-    // 注意：role 属性只有部分声音支持，如果不传则不加该属性
     const roleAttr = role ? `role="${role}"` : '';
     
+    // 🔥 关键修改：xml:lang 动态化
     const ssml = `
-      <speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="zh-CN">
+      <speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="${lang}">
         <voice name="${voice}">
           <mstts:express-as style="${style}" styledegree="${styledegree}" ${roleAttr}>
             <prosody rate="${rate}" pitch="${pitch}">
