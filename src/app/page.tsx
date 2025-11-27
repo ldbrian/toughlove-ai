@@ -26,6 +26,10 @@ const USER_NAME_KEY = 'toughlove_user_name';
 const LAST_DIARY_TIME_KEY = 'toughlove_last_diary_time';
 const VISITED_KEY = 'toughlove_has_visited';
 
+// 🔥 核心黑科技：静音解锁音频 (0.1s 空白 WAV)
+// 用于在用户点击发送时“骗”过浏览器的 Autoplay 策略
+const SILENT_AUDIO = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+
 // --- 打字机组件 ---
 const Typewriter = ({ content, isThinking }: { content: string, isThinking?: boolean }) => {
   const [displayedContent, setDisplayedContent] = useState("");
@@ -121,6 +125,7 @@ export default function Home() {
   // 语音相关
   const [playingMsgId, setPlayingMsgId] = useState<string | null>(null);
   const [voiceMsgIds, setVoiceMsgIds] = useState<Set<string>>(new Set()); 
+  // 🔥 改用 Ref 绑定 DOM 元素，而不是 new Audio()
   const audioRef = useRef<HTMLAudioElement | null>(null);
   
   // 语音强制模式与试用逻辑
@@ -294,8 +299,9 @@ export default function Home() {
   };
 
   const handlePlayAudio = async (text: string, msgId: string) => {
+    // 停止正在播放的
     if (playingMsgId === msgId) {
-      audioRef.current?.pause();
+      if (audioRef.current) audioRef.current.pause();
       setPlayingMsgId(null);
       return;
     }
@@ -321,13 +327,16 @@ export default function Home() {
       if (!res.ok || !data.audio) throw new Error(data.error || 'TTS Failed');
 
       const audioSrc = `data:audio/mp3;base64,${data.audio}`;
-      const audio = new Audio(audioSrc);
-      audio.onended = () => setPlayingMsgId(null);
-      const playPromise = audio.play();
-      if (playPromise !== undefined) {
-        playPromise.catch(error => { console.error("Playback blocked:", error); setPlayingMsgId(null); });
+      
+      // 🔥 复用 DOM 元素，提高播放成功率
+      if (audioRef.current) {
+         audioRef.current.src = audioSrc;
+         audioRef.current.onended = () => setPlayingMsgId(null);
+         audioRef.current.play().catch(e => {
+             console.error("AutoPlay blocked:", e);
+             setPlayingMsgId(null);
+         });
       }
-      audioRef.current = audio;
     } catch (e) {
       console.error("Audio Play Error:", e);
       setPlayingMsgId(null);
@@ -362,7 +371,8 @@ export default function Home() {
            
            if (left === 0) {
              setForceVoice(false); 
-             // 🔥 优化 1：去掉 alert，不再打断用户，只是静默关闭开关
+             // 🔥 优化：去除 alert 弹窗，改为静默关闭，不打断体验
+             console.log("Voice trial ended.");
            }
         } 
         else {
@@ -376,9 +386,8 @@ export default function Home() {
       }
 
       if (isAI && shouldPlay) {
-         // 🔥 优化 2：延迟 100ms 播放，等待 React 渲染和 Browser Event Loop 稳定
-         // 这能解决“第一条不自动播放”的玄学 Bug
          setVoiceMsgIds(prev => new Set(prev).add(message.id));
+         // 🔥 优化：延迟 100ms 播放，等待 DOM 更新，解决首条不播放的玄学问题
          setTimeout(() => {
            handlePlayAudio(message.content, message.id);
          }, 100);
@@ -532,6 +541,17 @@ export default function Home() {
   const onFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     posthog.capture('message_send', { persona: activePersona });
+    
+    // 🔥 核心黑科技：在用户点击发送的瞬间，静默解锁 Audio Context
+    // 这能让后续的 AI 语音在 iOS Safari / Chrome 上自动播放
+    if (audioRef.current) {
+        audioRef.current.src = SILENT_AUDIO;
+        audioRef.current.play().catch(err => {
+            // 这里报错没关系，主要是为了触发一次“用户交互”
+            // console.log("Unlock failed (expected if silent)", err);
+        });
+    }
+
     const timeData = getLocalTimeInfo();
     const envInfo = { time: timeData.localTime, weekday: lang === 'zh' ? timeData.weekdayZH : timeData.weekdayEN, phase: timeData.lifePhase, weather: currentWeather };
     handleSubmit(e, { options: { body: { persona: activePersona, language: lang, interactionCount, userName, envInfo, userId: getDeviceId() } } });
@@ -548,10 +568,14 @@ export default function Home() {
   return (
     <div className="relative flex flex-col h-[100dvh] bg-[#050505] text-gray-100 overflow-hidden font-sans selection:bg-[#7F5CFF] selection:text-white">
       <div className="absolute top-[-20%] left-0 right-0 h-[500px] bg-gradient-to-b from-[#7F5CFF]/10 to-transparent blur-[100px] pointer-events-none" />
+      
+      {/* 🔥 隐藏的 Audio 元素，用于持久化播放器 */}
+      <audio ref={audioRef} className="hidden" />
 
       {/* 新手引导：情绪急诊单 */}
       {showTriage && (
         <div className="absolute inset-0 z-[300] bg-black flex flex-col items-center justify-center p-6 animate-[fadeIn_0.5s_ease-out]">
+          {/* ... (Triage UI 保持不变) ... */}
           <div className="w-full max-w-sm space-y-8">
             <div className="text-center space-y-2">
               <div className="w-16 h-16 bg-[#1a1a1a] rounded-full flex items-center justify-center text-3xl border border-white/10 mx-auto mb-4 shadow-[0_0_30px_rgba(127,92,255,0.2)] animate-pulse">⚡</div>
@@ -561,33 +585,15 @@ export default function Home() {
             <div className="space-y-3">
               <button onClick={() => handleTriageSelection('Ash')} className="w-full group relative p-5 rounded-2xl bg-[#111] border border-white/10 hover:border-blue-500/50 transition-all text-left overflow-hidden active:scale-95">
                 <div className="absolute inset-0 bg-gradient-to-r from-transparent to-blue-500/10 opacity-0 group-hover:opacity-100 transition-opacity"/>
-                <div className="relative z-10">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="text-lg font-bold text-white">{TRIAGE_TEXT[lang].opt1}</span>
-                    <span className="text-2xl">🌙</span>
-                  </div>
-                  <p className="text-xs text-gray-500">{TRIAGE_TEXT[lang].desc1}</p>
-                </div>
+                <div className="relative z-10"><div className="flex justify-between items-center mb-1"><span className="text-lg font-bold text-white">{TRIAGE_TEXT[lang].opt1}</span><span className="text-2xl">🌙</span></div><p className="text-xs text-gray-500">{TRIAGE_TEXT[lang].desc1}</p></div>
               </button>
               <button onClick={() => handleTriageSelection('Sol')} className="w-full group relative p-5 rounded-2xl bg-[#111] border border-white/10 hover:border-emerald-500/50 transition-all text-left overflow-hidden active:scale-95">
                 <div className="absolute inset-0 bg-gradient-to-r from-transparent to-emerald-500/10 opacity-0 group-hover:opacity-100 transition-opacity"/>
-                <div className="relative z-10">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="text-lg font-bold text-white">{TRIAGE_TEXT[lang].opt2}</span>
-                    <span className="text-2xl">⛓️</span>
-                  </div>
-                  <p className="text-xs text-gray-500">{TRIAGE_TEXT[lang].desc2}</p>
-                </div>
+                <div className="relative z-10"><div className="flex justify-between items-center mb-1"><span className="text-lg font-bold text-white">{TRIAGE_TEXT[lang].opt2}</span><span className="text-2xl">⛓️</span></div><p className="text-xs text-gray-500">{TRIAGE_TEXT[lang].desc2}</p></div>
               </button>
               <button onClick={() => handleTriageSelection('Rin')} className="w-full group relative p-5 rounded-2xl bg-[#111] border border-white/10 hover:border-pink-500/50 transition-all text-left overflow-hidden active:scale-95">
                 <div className="absolute inset-0 bg-gradient-to-r from-transparent to-pink-500/10 opacity-0 group-hover:opacity-100 transition-opacity"/>
-                <div className="relative z-10">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="text-lg font-bold text-white">{TRIAGE_TEXT[lang].opt3}</span>
-                    <span className="text-2xl">🔥</span>
-                  </div>
-                  <p className="text-xs text-gray-500">{TRIAGE_TEXT[lang].desc3}</p>
-                </div>
+                <div className="relative z-10"><div className="flex justify-between items-center mb-1"><span className="text-lg font-bold text-white">{TRIAGE_TEXT[lang].opt3}</span><span className="text-2xl">🔥</span></div><p className="text-xs text-gray-500">{TRIAGE_TEXT[lang].desc3}</p></div>
               </button>
             </div>
             <p className="text-center text-[10px] text-gray-600 pt-8">{TRIAGE_TEXT[lang].footer}</p>
@@ -595,7 +601,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* Modals */}
+      {/* Modals (保持不变) */}
       {showLangSetup && (<div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-6 animate-[fadeIn_0.5s_ease-out]"><div className="mb-10 text-center"><div className="w-20 h-20 bg-[#1a1a1a] rounded-full flex items-center justify-center text-4xl border border-white/10 mx-auto mb-4 shadow-[0_0_30px_rgba(127,92,255,0.3)]">🧬</div><h1 className="text-2xl font-bold text-white tracking-wider mb-2">TOUGHLOVE AI</h1><p className="text-gray-500 text-sm">Choose your language / 选择语言</p></div><div className="flex flex-col gap-4 w-full max-w-xs"><button onClick={() => confirmLanguage('zh')} className={`p-6 rounded-2xl border transition-all flex items-center justify-between group ${lang === 'zh' ? 'bg-white/10 border-[#7F5CFF]' : 'bg-[#111] border-white/10 hover:border-white/30'}`}><div className="text-left"><div className="text-lg font-bold text-white">中文</div><div className="text-xs text-gray-500">Chinese</div></div>{lang === 'zh' && <div className="w-3 h-3 bg-[#7F5CFF] rounded-full shadow-[0_0_10px_#7F5CFF]"></div>}</button><button onClick={() => confirmLanguage('en')} className={`p-6 rounded-2xl border transition-all flex items-center justify-between group ${lang === 'en' ? 'bg-white/10 border-[#7F5CFF]' : 'bg-[#111] border-white/10 hover:border-white/30'}`}><div className="text-left"><div className="text-lg font-bold text-white">English</div><div className="text-xs text-gray-500">English</div></div>{lang === 'en' && <div className="w-3 h-3 bg-[#7F5CFF] rounded-full shadow-[0_0_10px_#7F5CFF]"></div>}</button></div></div>)}
       {showNameModal && (<div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6 animate-[fadeIn_0.2s_ease-out]"><div className="w-full max-w-xs bg-[#1a1a1a] rounded-3xl border border-white/10 shadow-2xl p-6"><div className="text-center mb-6"><div className="inline-flex p-3 bg-white/5 rounded-full mb-3 text-[#7F5CFF]"><UserPen size={24}/></div><h3 className="text-lg font-bold text-white">{ui.editName}</h3></div><input type="text" value={tempName} onChange={(e) => setTempName(e.target.value)} placeholder={ui.namePlaceholder} className="w-full bg-[#111] border border-white/10 rounded-xl px-4 py-3 text-white focus:border-[#7F5CFF] outline-none mb-6 text-center" maxLength={10} /><div className="flex gap-3"><button onClick={() => setShowNameModal(false)} className="flex-1 py-3 rounded-xl bg-white/5 text-gray-400 text-sm hover:bg-white/10 transition-colors">Cancel</button><button onClick={saveUserName} className="flex-1 py-3 rounded-xl bg-[#7F5CFF] text-white font-bold text-sm hover:bg-[#6b4bd6] transition-colors">{ui.nameSave}</button></div></div></div>)}
       {showDonateModal && (
@@ -624,32 +630,18 @@ export default function Home() {
       {/* 列表视图 */}
       {view === 'selection' && (
         <div className="z-10 flex flex-col h-full w-full max-w-md mx-auto p-4 animate-[fadeIn_0.5s_ease-out]">
-          <div className="flex justify-between items-center mb-6 px-2">
-             <h1 className="text-xl font-bold tracking-wider flex items-center gap-2"><MessageSquare size={20} className="text-[#7F5CFF]" /> Chats</h1>
-             <div className="flex gap-3"><button onClick={toggleLanguage} className="text-xs font-bold text-gray-400 hover:text-white uppercase border border-white/10 px-2 py-1 rounded-lg">{lang}</button></div>
-          </div>
-
+          {/* ... (Selection View UI 保持不变) ... */}
+          <div className="flex justify-between items-center mb-6 px-2"><h1 className="text-xl font-bold tracking-wider flex items-center gap-2"><MessageSquare size={20} className="text-[#7F5CFF]" /> Chats</h1><div className="flex gap-3"><button onClick={toggleLanguage} className="text-xs font-bold text-gray-400 hover:text-white uppercase border border-white/10 px-2 py-1 rounded-lg">{lang}</button></div></div>
           <div className="flex flex-col gap-3 overflow-y-auto pb-20">
             {(Object.keys(PERSONAS) as PersonaType[]).map((key) => {
               const p = PERSONAS[key];
               const { isChatted, lastMsg, trust, time } = getPersonaPreview(key);
               const level = getLevelInfo(trust).level;
               const status = getPersonaStatus(key, new Date().getHours()); 
-
               return (
                 <div key={key} onClick={() => selectPersona(key)} className={`group relative p-4 rounded-2xl transition-all duration-200 cursor-pointer flex items-center gap-4 border shadow-sm ${isChatted ? 'bg-[#111] hover:bg-[#1a1a1a] border-white/5 hover:border-[#7F5CFF]/30' : 'bg-gradient-to-r from-[#151515] to-[#111] border-white/10 hover:border-white/30'}`}>
-                  <div className="relative flex-shrink-0">
-                  <div className={`w-14 h-14 rounded-full bg-gradient-to-b from-[#222] to-[#0a0a0a] flex items-center justify-center text-3xl border-2 overflow-hidden ${isChatted ? (trust >= 50 ? (trust >= 100 ? 'border-[#7F5CFF] shadow-[0_0_10px_#7F5CFF]' : 'border-blue-500') : 'border-gray-700') : 'border-white/10'}`}>
-                      {p.avatar.startsWith('/') ? (<img src={p.avatar} alt={p.name} className="w-full h-full object-cover" />) : (<span>{p.avatar}</span>)}
-                    </div>
-                    {isChatted && (<div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] border-2 border-[#111] ${trust >= 100 ? 'bg-[#7F5CFF] text-white' : (trust >= 50 ? 'bg-blue-500 text-white' : 'bg-gray-600 text-gray-300')}`}>{level}</div>)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-baseline mb-1"><h3 className="font-bold text-white text-base">{p.name}</h3><span className="text-[10px] text-gray-500">{isChatted ? time : 'New'}</span></div>
-                    <div className="flex flex-wrap gap-1 mb-1">{p.tags[lang].slice(0, 2).map(tag => (<span key={tag} className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-gray-400 border border-white/5 whitespace-nowrap">{tag}</span>))}</div>
-                    <div className="text-[10px] text-gray-500 mb-1 flex items-center gap-1 truncate">{status}</div>
-                    <p className={`text-xs truncate transition-colors ${isChatted ? 'text-gray-400 group-hover:text-gray-300' : 'text-gray-500 italic'}`}>{isChatted ? lastMsg : p.slogan[lang]}</p>
-                  </div>
+                  <div className="relative flex-shrink-0"><div className={`w-14 h-14 rounded-full bg-gradient-to-b from-[#222] to-[#0a0a0a] flex items-center justify-center text-3xl border-2 overflow-hidden ${isChatted ? (trust >= 50 ? (trust >= 100 ? 'border-[#7F5CFF] shadow-[0_0_10px_#7F5CFF]' : 'border-blue-500') : 'border-gray-700') : 'border-white/10'}`}>{p.avatar.startsWith('/') ? (<img src={p.avatar} alt={p.name} className="w-full h-full object-cover" />) : (<span>{p.avatar}</span>)}</div>{isChatted && (<div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] border-2 border-[#111] ${trust >= 100 ? 'bg-[#7F5CFF] text-white' : (trust >= 50 ? 'bg-blue-500 text-white' : 'bg-gray-600 text-gray-300')}`}>{level}</div>)}</div>
+                  <div className="flex-1 min-w-0"><div className="flex justify-between items-baseline mb-1"><h3 className="font-bold text-white text-base">{p.name}</h3><span className="text-[10px] text-gray-500">{isChatted ? time : 'New'}</span></div><div className="flex flex-wrap gap-1 mb-1">{p.tags[lang].slice(0, 2).map(tag => (<span key={tag} className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-gray-400 border border-white/5 whitespace-nowrap">{tag}</span>))}</div><div className="text-[10px] text-gray-500 mb-1 flex items-center gap-1 truncate">{status}</div><p className={`text-xs truncate transition-colors ${isChatted ? 'text-gray-400 group-hover:text-gray-300' : 'text-gray-500 italic'}`}>{isChatted ? lastMsg : p.slogan[lang]}</p></div>
                 </div>
               );
             })}
@@ -662,7 +654,7 @@ export default function Home() {
       {/* Chat View */}
       {view === 'chat' && (
         <div className={`z-10 flex flex-col h-full w-full max-w-lg mx-auto backdrop-blur-sm border-x shadow-2xl relative animate-[slideUp_0.3s_ease-out] ${levelInfo.bgClass} ${levelInfo.borderClass} ${levelInfo.glowClass} transition-all duration-1000`} style={levelInfo.customStyle}>
-          
+          {/* ... (Chat Header & Messages 保持不变) ... */}
           <header className="flex-none px-4 py-3 bg-[#0a0a0a]/80 backdrop-blur-md sticky top-0 z-20 border-b border-white/5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -708,7 +700,6 @@ export default function Home() {
               const isLastMessage = msgIdx === messages.length - 1;
               const isAI = msg.role !== 'user';
               const isVoice = voiceMsgIds.has(msg.id); 
-
               return (
                 <div key={msg.id} className={`flex w-full ${!isAI ? 'justify-end' : 'justify-start'} mb-4 animate-[slideUp_0.1s_ease-out]`}>
                   <div className={`max-w-[85%] flex flex-col items-start gap-1`}>
