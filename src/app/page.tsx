@@ -4,7 +4,6 @@ import { useState, useRef, useEffect } from 'react';
 import { useChat } from 'ai/react';
 import { PERSONAS, PersonaType, UI_TEXT, LangType } from '@/lib/constants';
 import { getDeviceId } from '@/lib/utils';
-// 🔥 引入新的存储函数
 import { getMemory, saveMemory, getVoiceIds, saveVoiceIds } from '@/lib/storage';
 import { getLocalTimeInfo, getSimpleWeather } from '@/lib/env';
 import { getPersonaStatus } from '@/lib/status'; 
@@ -24,7 +23,6 @@ const USER_NAME_KEY = 'toughlove_user_name';
 const LAST_DIARY_TIME_KEY = 'toughlove_last_diary_time';
 const VISITED_KEY = 'toughlove_has_visited';
 
-// 静音解锁音频
 const SILENT_AUDIO = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
 
 const Typewriter = ({ content, isThinking }: { content: string, isThinking?: boolean }) => {
@@ -98,7 +96,6 @@ export default function Home() {
   
   const ui = UI_TEXT[lang];
 
-  // 🔥 修复：完全重新定义的快捷回复数据结构
   const QUICK_REPLIES_DATA: Record<PersonaType, { zh: string[]; en: string[] }> = {
     Ash: { zh: ["又在阴阳怪气？", "我就不睡，你咬我？", "最近压力好大..."], en: ["Sarcastic again?", "I won't sleep. Bite me.", "So much pressure..."] },
     Rin: { zh: ["谁要你管！", "笨蛋，我才没哭。", "稍微安慰我一下会死啊？"], en: ["None of your business!", "Idiot, I'm not crying.", "Comfort me a little?"] },
@@ -143,7 +140,6 @@ export default function Home() {
     posthog.capture('page_view', { lang: savedLang || lang });
   }, []);
 
-  // 🔥 页面加载时，恢复 VoiceID 列表
   useEffect(() => {
     if (mounted) {
       const ids = getVoiceIds(activePersona);
@@ -249,7 +245,6 @@ export default function Home() {
       }
 
       if (isAI && shouldPlay) {
-         // 🔥 保存 VoiceID，防止刷新丢失
          setVoiceMsgIds(prev => {
              const newSet = new Set(prev).add(message.id);
              saveVoiceIds(activePersona, Array.from(newSet));
@@ -294,7 +289,6 @@ export default function Home() {
     setForceVoice(false); 
     setActivePersona(persona);
     setView('chat');
-    // 🔥 同步读取数据
     const localHistory = getMemory(persona);
     const localVoiceIds = getVoiceIds(persona);
     setMessages(localHistory);
@@ -328,7 +322,6 @@ export default function Home() {
       posthog.capture('chat_reset', { persona: activePersona });
       setMessages([]);
       saveMemory(activePersona, []);
-      // 🔥 重置语音记录
       localStorage.removeItem(`toughlove_voice_ids_${activePersona}`);
       setVoiceMsgIds(new Set());
       syncToCloud([]); 
@@ -365,7 +358,6 @@ export default function Home() {
   const onFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     posthog.capture('message_send', { persona: activePersona });
-    // 🔥 核心：发送时静默解锁，确保 iOS 自动播放
     if (audioRef.current) { audioRef.current.src = SILENT_AUDIO; audioRef.current.play().catch(err => {}); }
     const timeData = getLocalTimeInfo();
     const envInfo = { time: timeData.localTime, weekday: lang === 'zh' ? timeData.weekdayZH : timeData.weekdayEN, phase: timeData.lifePhase, weather: currentWeather };
@@ -506,9 +498,16 @@ export default function Home() {
           <footer className="flex-none p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
             {messages.length <= 2 && !isLoading && (
               <div className="flex gap-2 overflow-x-auto pb-3 scrollbar-hide">
-                {/* 🔥 修复：动态渲染快捷回复，确保传给后端的是当前语言 */}
+                {/* 🔥 修复：在 append 中正确传入请求体，防止 Quick Reply 触发中文 Bug */}
                 {QUICK_REPLIES_DATA[activePersona][lang].map((reply, idx) => (
-                  <button key={idx} onClick={() => { const msg: Message = { id: Date.now().toString(), role: 'user', content: reply }; append(msg); posthog.capture('use_quick_reply', { persona: activePersona, content: reply }); }} className="flex-shrink-0 px-3 py-1.5 bg-[#1a1a1a] border border-white/10 rounded-full text-xs text-gray-400 hover:text-white hover:border-[#7F5CFF] hover:bg-[#7F5CFF]/10 transition-all whitespace-nowrap">{reply}</button>
+                  <button key={idx} onClick={() => { 
+                      const msg: Message = { id: Date.now().toString(), role: 'user', content: reply }; 
+                      // 关键修复：补全 options.body
+                      append(msg, { body: { persona: activePersona, language: lang, interactionCount, userName, envInfo: getLocalTimeInfo(), userId: getDeviceId() } }); 
+                      posthog.capture('use_quick_reply', { persona: activePersona, content: reply }); 
+                      // 静默解锁音频
+                      if (audioRef.current) { audioRef.current.src = SILENT_AUDIO; audioRef.current.play().catch(() => {}); }
+                  }} className="flex-shrink-0 px-3 py-1.5 bg-[#1a1a1a] border border-white/10 rounded-full text-xs text-gray-400 hover:text-white hover:border-[#7F5CFF] hover:bg-[#7F5CFF]/10 transition-all whitespace-nowrap">{reply}</button>
                 ))}
               </div>
             )}
