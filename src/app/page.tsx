@@ -27,7 +27,6 @@ const LAST_DIARY_TIME_KEY = 'toughlove_last_diary_time';
 const VISITED_KEY = 'toughlove_has_visited';
 
 // 🔥 核心黑科技：静音解锁音频 (0.1s 空白 WAV)
-// 用于在用户点击发送时“骗”过浏览器的 Autoplay 策略，确保后续 AI 语音能自动播放
 const SILENT_AUDIO = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
 
 // --- 打字机组件 ---
@@ -125,7 +124,6 @@ export default function Home() {
   // 语音相关
   const [playingMsgId, setPlayingMsgId] = useState<string | null>(null);
   const [voiceMsgIds, setVoiceMsgIds] = useState<Set<string>>(new Set()); 
-  // 🔥 改用 Ref 绑定 DOM 元素，而不是 new Audio()，实现持久化播放器
   const audioRef = useRef<HTMLAudioElement | null>(null);
   
   // 语音强制模式与试用逻辑
@@ -137,12 +135,29 @@ export default function Home() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   const ui = UI_TEXT[lang];
-  const QUICK_REPLIES: Record<PersonaType, string[]> = {
-    Ash: ["又在阴阳怪气？", "我就不睡，你咬我？", "最近压力好大..."],
-    Rin: ["谁要你管！", "笨蛋，我才没哭。", "稍微安慰我一下会死啊？"],
-    Sol: ["我错了教官...", "正在偷懒，别骂了。", "今天的任务太难了。"],
-    Vee: ["给我整点乐子。", "小丑竟是我自己。", "哈哈哈哈哈哈"],
-    Echo: ["我想听真话。", "我看不到未来。", "活着有什么意义？"]
+
+  // 🔥 修复：快捷回复支持双语结构
+  const QUICK_REPLIES: Record<PersonaType, { zh: string[]; en: string[] }> = {
+    Ash: {
+      zh: ["又在阴阳怪气？", "我就不睡，你咬我？", "最近压力好大..."],
+      en: ["Sarcastic again?", "I won't sleep. Bite me.", "So much pressure..."]
+    },
+    Rin: {
+      zh: ["谁要你管！", "笨蛋，我才没哭。", "稍微安慰我一下会死啊？"],
+      en: ["None of your business!", "Idiot, I'm not crying.", "Comfort me a little?"]
+    },
+    Sol: {
+      zh: ["我错了教官...", "正在偷懒，别骂了。", "今天的任务太难了。"],
+      en: ["Sorry sir...", "Slacking off, don't yell.", "Task is too hard."]
+    },
+    Vee: {
+      zh: ["给我整点乐子。", "小丑竟是我自己。", "哈哈哈哈哈哈"],
+      en: ["Entertain me.", "I am the clown.", "Hahahahaha"]
+    },
+    Echo: {
+      zh: ["我想听真话。", "我看不到未来。", "活着有什么意义？"],
+      en: ["Tell me the truth.", "I see no future.", "What is the meaning?"]
+    }
   };
   
   const TRIAGE_TEXT = {
@@ -311,23 +326,29 @@ export default function Home() {
     try {
       const p = PERSONAS[activePersona];
       
-      // 🔥 核心修改：根据当前语言 (lang) 获取对应的 Voice 配置
-      const vConfig = p.voiceConfig[lang]; // lang is 'zh' or 'en'
+      // 🔥 容错处理：确保语音配置存在，避免语言状态不同步导致的崩溃
+      const currentLang = (lang === 'en' || lang === 'zh') ? lang : 'zh';
+      const vConfig = p.voiceConfig[currentLang];
+
+      if (!vConfig) {
+        console.warn("Voice config missing for:", currentLang);
+        setPlayingMsgId(null);
+        return;
+      }
 
       const res = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: text, 
-          // 传给后端这套动态参数
+          // 传给后端动态参数
           voice: vConfig.voice,
           style: vConfig.style,
           styledegree: vConfig.styledegree, 
           role: vConfig.role,
           rate: vConfig.rate,
           pitch: vConfig.pitch,
-          // 🔥 告诉后端当前的语言环境 (转换为 Azure 格式)
-          lang: lang === 'zh' ? 'zh-CN' : 'en-US'
+          lang: currentLang === 'zh' ? 'zh-CN' : 'en-US'
         }),
       });
       
@@ -340,6 +361,7 @@ export default function Home() {
       if (audioRef.current) {
          audioRef.current.src = audioSrc;
          audioRef.current.onended = () => setPlayingMsgId(null);
+         // 显式调用 play()，并捕获 Autoplay 错误
          audioRef.current.play().catch(e => {
              console.error("AutoPlay blocked:", e);
              setPlayingMsgId(null);
@@ -365,35 +387,29 @@ export default function Home() {
       const isAI = message.role === 'assistant';
       const isLevel2 = newCount >= 50; 
       
-      // 🔥🔥🔥 核心：严谨的鉴权逻辑 (Fix Smuggling) 🔥🔥🔥
       let shouldPlay = false;
 
       if (forceVoice) {
-        // 1. 先判断是否有无限特权 (Lv.2)
         if (isLevel2) {
           shouldPlay = true;
         } 
-        // 2. 没有特权，再看是否有试用券 (Global Trial)
         else if (voiceTrial > 0) {
            const left = voiceTrial - 1;
            setVoiceTrial(left);
            localStorage.setItem('toughlove_voice_trial', left.toString());
            shouldPlay = true;
            
-           // 次数用完，自动关闭并提示
            if (left === 0) {
              setForceVoice(false); 
-             // 🔥 优化：去除 alert 弹窗，改为静默关闭，不打断体验
+             // 静默关闭，不打断体验
              console.log("Voice trial ended. Switched off.");
            }
         } 
-        // 3. 既无特权也无券，强制关闭 (防止偷渡)
         else {
            shouldPlay = false;
            setForceVoice(false);
         }
       } else {
-        // 随机触发逻辑 (Lv.2 专属)
         const isLucky = Math.random() < 0.3; 
         const isShort = message.content.length < 120; 
         if (isLevel2 && isLucky && isShort) shouldPlay = true;
@@ -401,10 +417,10 @@ export default function Home() {
 
       if (isAI && shouldPlay) {
          setVoiceMsgIds(prev => new Set(prev).add(message.id));
-         // 🔥 优化：延迟 100ms 播放，等待 DOM 更新，解决首条不播放的玄学问题
-         setTimeout(() => {
-           handlePlayAudio(message.content, message.id);
-         }, 100);
+         
+         // 🔥 优化：移除 setTimeout。之前为了等 DOM 更新加的延时，反而导致 iOS 判定“用户手势”过期。
+         // 现在我们在 onFormSubmit 里做了静默解锁，这里直接调用反而是最安全的。
+         handlePlayAudio(message.content, message.id);
       }
     }
   });
@@ -470,11 +486,7 @@ export default function Home() {
 
   const selectPersona = async (persona: PersonaType) => {
     posthog.capture('persona_select', { persona: persona });
-    
-    // 🔥 核心修复：切换人格时，强制关闭语音开关
-    // 这防止了用户在一个 Lv.2 角色开启开关后，切换到一个 Lv.1 角色继续“白嫖”
     setForceVoice(false); 
-    
     setActivePersona(persona);
     setView('chat');
     const localHistory = getMemory(persona);
@@ -564,6 +576,7 @@ export default function Home() {
     // 这能让后续的 AI 语音在 iOS Safari / Chrome 上自动播放
     if (audioRef.current) {
         audioRef.current.src = SILENT_AUDIO;
+        // 使用 playsInline 防止 iOS 全屏播放器弹出
         audioRef.current.play().catch(err => {
             // 这里报错没关系，主要是为了触发一次“用户交互”
         });
@@ -586,8 +599,8 @@ export default function Home() {
     <div className="relative flex flex-col h-[100dvh] bg-[#050505] text-gray-100 overflow-hidden font-sans selection:bg-[#7F5CFF] selection:text-white">
       <div className="absolute top-[-20%] left-0 right-0 h-[500px] bg-gradient-to-b from-[#7F5CFF]/10 to-transparent blur-[100px] pointer-events-none" />
       
-      {/* 🔥 隐藏的 Audio 元素，用于持久化播放器 */}
-      <audio ref={audioRef} className="hidden" />
+      {/* 🔥 隐藏的 Audio 元素，用于持久化播放器，加上 playsInline */}
+      <audio ref={audioRef} className="hidden" playsInline />
 
       {/* 新手引导：情绪急诊单 */}
       {showTriage && (
@@ -784,7 +797,8 @@ export default function Home() {
           <footer className="flex-none p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
             {messages.length <= 2 && !isLoading && (
               <div className="flex gap-2 overflow-x-auto pb-3 scrollbar-hide">
-                {QUICK_REPLIES[activePersona].map((reply, idx) => (
+                {/* 🔥 修复：快捷回复根据 lang 动态渲染 */}
+                {QUICK_REPLIES[activePersona][lang].map((reply, idx) => (
                   <button key={idx} onClick={() => { const msg: Message = { id: Date.now().toString(), role: 'user', content: reply }; append(msg); posthog.capture('use_quick_reply', { persona: activePersona, content: reply }); }} className="flex-shrink-0 px-3 py-1.5 bg-[#1a1a1a] border border-white/10 rounded-full text-xs text-gray-400 hover:text-white hover:border-[#7F5CFF] hover:bg-[#7F5CFF]/10 transition-all whitespace-nowrap">{reply}</button>
                 ))}
               </div>
