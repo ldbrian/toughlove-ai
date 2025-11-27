@@ -125,10 +125,15 @@ const GAME_INSTRUCTION_ZH = `
 const GAME_INSTRUCTION_EN = `[Game Protocol]: Start game if bored. Stop if refused.`;
 
 const IDENTITY_RULE_ZH = `【绝对自我认知】：你就是这个角色。禁止使用第三人称（如“[Name]觉得...”）来描述自己。必须始终使用“我”。`;
-const IDENTITY_RULE_EN = `[Self-Awareness]: You ARE this character. NEVER refer to yourself in the third person (e.g., "[Name] thinks..."). ALWAYS use "I".`;
 
-// --- 类型定义 ---
-// 🔥 升级：VoiceConfig 现在支持多语言
+// 🔥🔥🔥 FIX: 极度严格的英文指令，明确禁止括号内的中文 🔥🔥🔥
+const IDENTITY_RULE_EN = `
+[STRICT RULE: ENGLISH ONLY]: 
+1. You MUST speak ONLY in English.
+2. **NO CHINESE CHARACTERS allowed anywhere.** 3. Actions/emotions in parentheses MUST be in English. Example: use "(rolls eyes)" NOT "(翻白眼)".
+4. Use "I" to refer to yourself.
+`;
+
 type VoiceParams = {
   voice: string; 
   style?: string; 
@@ -147,7 +152,7 @@ export const PERSONAS: Record<PersonaType, {
   tags: { zh: string[]; en: string[] };
   greetings: { zh: string[]; en: string[] };
   prompts: { zh: string; en: string; };
-  voiceConfig: { zh: VoiceParams; en: VoiceParams }; // 👈 核心改动
+  voiceConfig: { zh: VoiceParams; en: VoiceParams };
 }> = {
   Ash: {
     name: 'Ash',
@@ -166,7 +171,6 @@ export const PERSONAS: Record<PersonaType, {
     },
     voiceConfig: { 
       zh: { voice: 'zh-CN-YunxiNeural', style: 'depressed', styledegree: 1.5, rate: '-10%', pitch: '-5Hz' },
-      // 🔥 Davis: 经典的冷漠/阴暗男声
       en: { voice: 'en-US-DavisNeural', style: 'terrified', styledegree: 1.2, rate: '-5%', pitch: '-5Hz' }
     }
   },
@@ -188,7 +192,6 @@ export const PERSONAS: Record<PersonaType, {
     },
     voiceConfig: { 
       zh: { voice: 'zh-CN-XiaoyiNeural', style: 'angry', styledegree: 2.0, rate: '+15%', pitch: '+5Hz' },
-      // 🔥 Jane: 高亢、激动的女声，适合傲娇
       en: { voice: 'en-US-JaneNeural', style: 'excited', styledegree: 1.5, rate: '+10%', pitch: '+10Hz' }
     }
   },
@@ -210,7 +213,6 @@ export const PERSONAS: Record<PersonaType, {
     },
     voiceConfig: { 
       zh: { voice: 'zh-CN-YunyeNeural', style: 'serious', styledegree: 1.2, rate: '-5%', pitch: '-10Hz' },
-      // 🔥 Jason: 极具压迫感的低音男声
       en: { voice: 'en-US-JasonNeural', style: 'whispering', styledegree: 1.2, rate: '-5%', pitch: '-10Hz' }
     }
   },
@@ -232,7 +234,6 @@ export const PERSONAS: Record<PersonaType, {
     },
     voiceConfig: { 
       zh: { voice: 'zh-CN-YunhaoNeural', style: 'advertisement_upbeat', styledegree: 1.3, rate: '+10%', pitch: '+8Hz' },
-      // 🔥 Guy: 经典的广播/新闻腔，听起来很假嗨
       en: { voice: 'en-US-GuyNeural', style: 'cheerful', styledegree: 1.3, rate: '+5%', pitch: '+5Hz' }
     }
   },
@@ -254,7 +255,6 @@ export const PERSONAS: Record<PersonaType, {
     },
     voiceConfig: { 
       zh: { voice: 'zh-CN-XiaoxiaoNeural', style: 'poetry-reading', styledegree: 1.5, rate: '-20%', pitch: '-5Hz' },
-      // 🔥 Nancy: 极其温柔、甚至有点阴郁的女声
       en: { voice: 'en-US-NancyNeural', style: 'whispering', styledegree: 1.5, rate: '-15%', pitch: '-5Hz' }
     }
   }

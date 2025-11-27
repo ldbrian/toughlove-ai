@@ -24,10 +24,13 @@ export async function POST(req: Request) {
 
     const { time, weekday, phase, weather } = envInfo || {};
 
-    // 🔥🔥🔥 核心修复：语言强制指令 🔥🔥🔥
+    // 🔥🔥🔥 FIX: 开场白也要严防中文括号 🔥🔥🔥
     const LANGUAGE_CONSTRAINT = currentLang === 'zh'
       ? "⚠️ 必须使用【中文】回复。"
-      : "⚠️ MUST reply in 【ENGLISH】 only.";
+      : `⚠️ [CRITICAL]: 
+         1. MUST reply in 【ENGLISH】. 
+         2. NO CHINESE CHARACTERS. 
+         3. Parentheses actions MUST be English (e.g. "(smirks)").`;
 
     const systemPrompt = currentLang === 'zh'
       ? `你现在是 ${persona}。你需要主动给用户发一条微信。
