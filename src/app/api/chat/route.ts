@@ -2,10 +2,8 @@ import { OpenAI } from 'openai';
 import { OpenAIStream, StreamingTextResponse } from 'ai';
 import { createClient } from '@supabase/supabase-js'; 
 import { PERSONAS, PersonaType, LangType } from '@/lib/constants';
-// 👇 引入风控模块
 import { validateInput, SAFETY_PROTOCOL } from '@/lib/safety';
 
-// --- 初始化 (带防崩兜底) ---
 const openai = new OpenAI({
   apiKey: process.env.DEEPSEEK_API_KEY || 'dummy-key',
   baseURL: 'https://api.deepseek.com',
@@ -18,7 +16,6 @@ const supabase = createClient(
 
 export const runtime = 'edge';
 
-// 🔥 1. 安全词配置 (Safety Valve)
 const SAFE_WORDS = /求放过|别骂了|我难受|不行了|太过了|停止|救命|stop|help/i;
 const EMERGENCY_PROMPT = `
 [EMERGENCY OVERRIDE]: User is emotionally overwhelmed. 
@@ -27,7 +24,6 @@ const EMERGENCY_PROMPT = `
 3. Comfort the user calmly.
 `;
 
-// 🔥 2. 忙碌拒接文案 (Status Blocking Scripts)
 const BUSY_MESSAGES: Record<string, string[]> = {
   Ash: ["（自动回复）正在盯着那个人发呆，没空理你。", "（自动回复）Zzz... 梦里正在拯救世界，勿扰。", "（自动回复）烦着呢，除非带咖啡来。"],
   Rin: ["（自动回复）谁准你现在找我的？在忙！", "（自动回复）正在和 Sol 吵架，稍后再骂你。", "（自动回复）...洗澡中。"],
@@ -44,12 +40,9 @@ export async function POST(req: Request) {
     const currentLang = (language as LangType) || 'zh';
     const currentPersona = PERSONAS[persona as PersonaType] || PERSONAS.Ash;
     
-    // 获取用户最新一条消息内容
     const lastUserMsg = messages[messages.length - 1]?.content || "";
 
-    // ------------------------------------------------------
-    // 🛡️ 逻辑零：核心风控拦截 (The Firewall)
-    // ------------------------------------------------------
+    // 1. 风控拦截
     const safetyCheck = validateInput(lastUserMsg);
     if (!safetyCheck.safe) {
       console.warn(`[Safety Block] User: ${userId} | Input: ${lastUserMsg}`);
@@ -63,18 +56,14 @@ export async function POST(req: Request) {
       return new StreamingTextResponse(stream);
     }
 
-    // ------------------------------------------------------
-    // 🚨 逻辑一：安全阀检测 (Safety Valve)
-    // ------------------------------------------------------
+    // 2. 安全词检测
     let isEmergency = false;
     if (SAFE_WORDS.test(lastUserMsg)) {
       console.log(`[Safety] Triggered by user: ${userId}`);
       isEmergency = true;
     }
 
-    // ------------------------------------------------------
-    // 🚫 逻辑二：状态阻断 (Status Blocking)
-    // ------------------------------------------------------
+    // 3. 状态阻断
     if (!isEmergency && process.env.SUPABASE_SERVICE_ROLE_KEY && userId) {
       try {
         const { data: statusData } = await supabase
@@ -84,7 +73,6 @@ export async function POST(req: Request) {
           .single();
         
         if (statusData && (statusData.status === 'busy' || statusData.status === 'offline')) {
-           console.log(`[Status] ${persona} is ${statusData.status}. Blocking chat.`);
            const scripts = BUSY_MESSAGES[persona as string] || BUSY_MESSAGES['Ash'];
            const randomScript = scripts[Math.floor(Math.random() * scripts.length)];
            const encoder = new TextEncoder();
@@ -101,9 +89,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // ------------------------------------------------------
-    // 🧠 逻辑三：记忆读取 (Memory Recall)
-    // ------------------------------------------------------
+    // 4. 记忆读取
     let memoryPrompt = "";
     if (userId && process.env.SUPABASE_SERVICE_ROLE_KEY) {
         try {
@@ -120,9 +106,7 @@ export async function POST(req: Request) {
         } catch (err) { console.error("Memory fetch error:", err); }
     }
 
-    // ------------------------------------------------------
-    // 🌍 逻辑四：环境感知注入 (Env Perception)
-    // ------------------------------------------------------
+    // 5. 环境感知
     let envPrompt = "";
     if (envInfo) {
       const { time, weekday, phase, weather } = envInfo;
@@ -133,9 +117,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // ------------------------------------------------------
-    // 🤝 逻辑五：信任度 (Trust)
-    // ------------------------------------------------------
+    // 6. 信任度
     let trustPrompt = "";
     const count = Number(interactionCount);
     if (count < 50) {
@@ -146,9 +128,7 @@ export async function POST(req: Request) {
       trustPrompt = currentLang === 'zh' ? `\n[Lv.3]: 共犯关系，深度依赖。` : `\n[Lv.3]: Deep bond. Partner in crime.`;
     }
 
-    // ------------------------------------------------------
-    // 🔥 最终 Prompt 组装
-    // ------------------------------------------------------
+    // 7. Prompt 组装
     const basePrompt = currentPersona.prompts[currentLang];
     
     let namePrompt = "";
@@ -162,9 +142,8 @@ export async function POST(req: Request) {
 
     const emergencyOverride = isEmergency ? EMERGENCY_PROMPT : "";
 
-    // 🔥🔥🔥 核心修复：语言宪法 (Language Constitution) 🔥🔥🔥
-    // 强制 LLM 遵守语言设定，防止漂移
-    const LANGUAGE_CONSTRAINT = currentLang === 'zh' 
+    // 🔥🔥🔥 FIX: 语言强制指令 (System Level) 🔥🔥🔥
+    const SYSTEM_LANG_CONSTRAINT = currentLang === 'zh' 
       ? `\n⚠️【严格指令】：你必须使用【中文】回复。禁止使用英文。`
       : `\n⚠️ [STRICT SYSTEM COMMAND]: You MUST reply in 【ENGLISH】 only. Do NOT speak Chinese. Even if the user speaks Chinese, reply in English.`;
 
@@ -177,17 +156,38 @@ export async function POST(req: Request) {
       ${memoryPrompt}
       ${dynamicEnginePrompt}
       ${emergencyOverride}
-      ${LANGUAGE_CONSTRAINT}  // 👈 放在最后，权重最高
+      ${SYSTEM_LANG_CONSTRAINT}
     `;
 
     // ------------------------------------------------------
-    // 🚀 发射！(Call LLM)
+    // 🔥🔥🔥 FIX: 提示词注射 (User Level Injection) 🔥🔥🔥
     // ------------------------------------------------------
+    // 即使 System Prompt 失效，我们直接修改用户发送的最后一条消息，
+    // 强制加上语言要求。这对 LLM 来说是“最近的指令”，权重极大。
+    
+    // 1. 复制消息列表，避免污染
     const conversation = [
       { role: 'system', content: finalSystemPrompt },
       ...messages
     ];
 
+    // 2. 如果是英文模式，在最后一条用户消息里“下毒”
+    if (currentLang === 'en') {
+       const lastMsgIndex = conversation.length - 1;
+       const lastMsg = conversation[lastMsgIndex];
+       
+       if (lastMsg.role === 'user') {
+         // 这里的指令对用户不可见，但对 AI 可见
+         conversation[lastMsgIndex] = {
+           ...lastMsg,
+           content: `${lastMsg.content}\n\n(SYSTEM NOTE: You MUST reply in English. Chinese is FORBIDDEN.)`
+         };
+       }
+    }
+
+    // ------------------------------------------------------
+    // 🚀 发射！
+    // ------------------------------------------------------
     const response = await openai.chat.completions.create({
       model: 'deepseek-chat',
       stream: true,
