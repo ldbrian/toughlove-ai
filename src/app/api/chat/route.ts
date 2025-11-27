@@ -42,7 +42,7 @@ export async function POST(req: Request) {
     
     const lastUserMsg = messages[messages.length - 1]?.content || "";
 
-    // 1. 风控拦截
+    // 1. 风控拦截 (Sync)
     const safetyCheck = validateInput(lastUserMsg);
     if (!safetyCheck.safe) {
       console.warn(`[Safety Block] User: ${userId} | Input: ${lastUserMsg}`);
@@ -59,7 +59,8 @@ export async function POST(req: Request) {
     let isEmergency = false;
     if (SAFE_WORDS.test(lastUserMsg)) isEmergency = true;
 
-    // 2. 并行获取 DB 数据
+    // 2. 性能优化：并行获取 DB 数据 (Promise.all)
+    // 之前是串行 await，导致每个请求都慢几百毫秒。现在同时发起。
     let statusPromise = Promise.resolve(null);
     let memoryPromise = Promise.resolve(null);
 
@@ -71,6 +72,7 @@ export async function POST(req: Request) {
         memoryPromise = supabase.from('memories').select('content').eq('user_id', userId).order('created_at', { ascending: false }).limit(5) as any;
     }
 
+    // 等待所有数据就绪
     const [statusResult, memoryResult] = await Promise.all([statusPromise, memoryPromise]);
 
     // 3. 处理状态阻断
@@ -96,7 +98,7 @@ export async function POST(req: Request) {
         }
     }
 
-    // 5. 环境与信任度
+    // 5. 环境与信任度 Prompt
     let envPrompt = "";
     if (envInfo) {
       const { time, weekday, phase, weather } = envInfo;
@@ -111,18 +113,16 @@ export async function POST(req: Request) {
     else if (count < 100) trustPrompt = currentLang === 'zh' ? `\n[Lv.2]: 稍微熟悉，嘴硬心软。` : `\n[Lv.2]: Casual. Tsundere.`;
     else trustPrompt = currentLang === 'zh' ? `\n[Lv.3]: 共犯关系，深度依赖。` : `\n[Lv.3]: Deep bond. Partner in crime.`;
 
+    // 6. Prompt 组装
     const basePrompt = currentPersona.prompts[currentLang];
     let namePrompt = userName && userName.trim() !== "" ? (currentLang === 'zh' ? `\n[用户昵称]: "${userName}"` : `\n[User Name]: "${userName}"`) : "";
     const dynamicEnginePrompt = currentLang === 'zh' ? `[Engine]: 回复长度随机。若用户痛苦则倾听。` : `[Engine]: Randomize length. Listen if user is sad.`;
     const emergencyOverride = isEmergency ? EMERGENCY_PROMPT : "";
 
-    // 🔥🔥🔥 FIX: 强制语言指令（包含括号规则） 🔥🔥🔥
+    // 系统级语言锁 (第一道防线)
     const SYSTEM_LANG_CONSTRAINT = currentLang === 'zh' 
       ? `\n⚠️【严格指令】：你必须使用【中文】回复。禁止使用英文。`
-      : `\n⚠️ [CRITICAL COMMAND]: 
-         1. You MUST reply in 【ENGLISH】 only. 
-         2. **ABSOLUTELY NO CHINESE CHARACTERS.**
-         3. Actions in parentheses must be in English. E.g., "(sighs)" NOT "(叹气)".`;
+      : `\n⚠️ [STRICT COMMAND]: You MUST reply in 【ENGLISH】 only. Do NOT use Chinese characters. Even parentheses actions must be English (e.g. "(sighs)").`;
 
     const finalSystemPrompt = `
       ${SAFETY_PROTOCOL}
@@ -136,24 +136,32 @@ export async function POST(req: Request) {
       ${SYSTEM_LANG_CONSTRAINT}
     `;
 
-    // 6. 构造消息队列 (User Level Injection)
+    // 7. 构造消息队列 (Sandwich Injection Strategy)
     const conversation = [
       { role: 'system', content: finalSystemPrompt },
       ...messages
     ];
 
-    // 🔥 隐形注射：在用户消息末尾再次强调
+    // 🔥🔥🔥 核心修复：三明治夹击战术 🔥🔥🔥
     if (currentLang === 'en') {
+       // 1. 中部挟持：修改用户的最后一条消息，强制加上 OOC 指令
        const lastMsgIndex = conversation.length - 1;
        const lastMsg = conversation[lastMsgIndex];
        if (lastMsg.role === 'user') {
          conversation[lastMsgIndex] = {
            ...lastMsg,
-           content: `${lastMsg.content}\n\n[SYSTEM: REPLY IN ENGLISH ONLY. TRANSLATE ANY CHINESE ACTIONS TO ENGLISH.]`
+           content: `${lastMsg.content}\n\n(OOC: Reply in English ONLY. No Chinese allowed.)`
          };
        }
+
+       // 2. 尾部压制：追加一条 System 消息，这是 LLM 看到的最后指令，权重最高
+       conversation.push({
+           role: 'system',
+           content: "[SYSTEM]: CRITICAL LANGUAGE CHECK. OUTPUT ENGLISH ONLY."
+       });
     }
 
+    // 8. 发射
     const response = await openai.chat.completions.create({
       model: 'deepseek-chat',
       stream: true,
