@@ -126,15 +126,15 @@ const GAME_INSTRUCTION_EN = `[Game Protocol]: Start game if bored. Stop if refus
 
 const IDENTITY_RULE_ZH = `【绝对自我认知】：你就是这个角色。禁止使用第三人称（如“[Name]觉得...”）来描述自己。必须始终使用“我”。`;
 
-// 🔥 1. 严格英文指令
+// 🔥 英文指令优化：明确禁止括号中文
 const IDENTITY_RULE_EN = `
 [STRICT RULE]: 
 1. Speak ONLY English. NO Chinese.
 2. Actions in parentheses MUST be English. Ex: "(sighs)" NOT "(叹气)".
-3. Use "I".
+3. Use "I" to refer to yourself.
 `;
 
-// 🔥 2. Few-Shot 样本：这是解决“第一条变中文”的最强补丁
+// 🔥 Few-Shot 样本 (防止首条变中文)
 const FEW_SHOTS_ASH = `
 [Examples]:
 User: I'm sad.
@@ -212,7 +212,8 @@ export const PERSONAS: Record<PersonaType, {
     },
     voiceConfig: { 
       zh: { voice: 'zh-CN-YunxiNeural', style: 'depressed', styledegree: 1.5, rate: '-10%', pitch: '-5Hz' },
-      en: { voice: 'en-US-DavisNeural', style: 'terrified', styledegree: 1.2, rate: '-5%', pitch: '-5Hz' }
+      // 🔥 优化：Ash 换人，Christopher, Whispering 风格
+      en: { voice: 'en-US-ChristopherNeural', style: 'whispering', styledegree: 1.0, rate: '-10%', pitch: '-2Hz' }
     }
   },
   
@@ -299,4 +300,25 @@ export const PERSONAS: Record<PersonaType, {
       en: { voice: 'en-US-NancyNeural', style: 'whispering', styledegree: 1.5, rate: '-15%', pitch: '-5Hz' }
     }
   }
+};
+
+// ... (保留原有 PERSONAS, UI_TEXT 等代码) ...
+
+// 🔥 新增：移入常量的配置数据
+export const QUICK_REPLIES_DATA: Record<PersonaType, { zh: string[]; en: string[] }> = {
+  Ash: { zh: ["又在阴阳怪气？", "我就不睡，你咬我？", "最近压力好大..."], en: ["Sarcastic again?", "I won't sleep. Bite me.", "So much pressure..."] },
+  Rin: { zh: ["谁要你管！", "笨蛋，我才没哭。", "稍微安慰我一下会死啊？"], en: ["None of your business!", "Idiot, I'm not crying.", "Comfort me a little?"] },
+  Sol: { zh: ["我错了教官...", "正在偷懒，别骂了。", "今天的任务太难了。"], en: ["Sorry sir...", "Slacking off, don't yell.", "Task is too hard."] },
+  Vee: { zh: ["给我整点乐子。", "小丑竟是我自己。", "哈哈哈哈哈哈"], en: ["Entertain me.", "I am the clown.", "Hahahahaha"] },
+  Echo: { zh: ["我想听真话。", "我看不到未来。", "活着有什么意义？"], en: ["Tell me the truth.", "I see no future.", "What is the meaning?"] }
+};
+
+export const TRIAGE_TEXT = {
+  zh: { title: "系统初始化", subtitle: "请声明你当前的精神状态。", opt1: "💊 我需要清醒", desc1: "拒绝煽情，毒舌直击。", opt2: "⛓️ 我需要管教", desc2: "强制自律，严厉导师。", opt3: "🩹 我需要陪伴", desc3: "虽然嘴硬，但会陪你。", footer: "TOUGHLOVE AI v2.0" },
+  en: { title: "SYSTEM INITIALIZED", subtitle: "State your current mental status.", opt1: "💊 I need Reality", desc1: "No drama. Brutal truth.", opt2: "⛓️ I need Discipline", desc2: "Strict control. No excuses.", opt3: "🩹 I need Company", desc3: "Tsundere comfort. Not alone.", footer: "TOUGHLOVE AI v2.0" }
+};
+
+export const SOL_TAUNTS = {
+  zh: ["别发呆，盯着你的书。", "你的对手在看书。", "手机比未来好看吗？", "呼吸可以，玩手机不行。", "我在看着你。", "这就是你的定力？", "再坚持一下会死吗？"],
+  en: ["Eyes on the prize.", "Your rival is studying.", "Is phone better than future?", "Breathing allowed. Phone not.", "I am watching you.", "Is that all you got?", "Stay focused."]
 };
