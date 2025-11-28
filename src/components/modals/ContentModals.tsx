@@ -1,6 +1,6 @@
 import { useRef } from 'react';
-// 🔥 修复：补充引入 ImageIcon
-import { X, Share2, Coffee, QrCode, ExternalLink, Gift, Bug, Brain, ImageIcon } from 'lucide-react';
+// 🔥 确保引入了 Ban 和 Share2 等图标
+import { X, Share2, Coffee, QrCode, ExternalLink, Gift, Bug, Brain, ImageIcon, Ban } from 'lucide-react';
 import { PERSONAS, PersonaType, LangType, UI_TEXT } from '@/lib/constants';
 import { Typewriter } from '../ui/Typewriter';
 
@@ -9,7 +9,7 @@ export const DailyQuoteModal = ({ show, onClose, data, isLoading, onDownload, is
   if (!show) return null;
   const ref = useRef<HTMLDivElement>(null);
   return (
-    <div className="absolute inset-0 z-[160] flex items-center justify-center bg-black/90 backdrop-blur-md p-6 animate-[fadeIn_0.3s_ease-out]">
+    <div className="fixed inset-0 z-[160] flex items-center justify-center bg-black/90 backdrop-blur-md p-6 animate-[fadeIn_0.3s_ease-out]">
       <div className="w-full max-w-sm relative">
         <button onClick={onClose} className="absolute -top-12 right-0 p-2 text-gray-400 hover:text-white"><X size={24}/></button>
         <div ref={ref} className="bg-[#111] rounded-3xl border border-white/10 overflow-hidden shadow-2xl relative p-8 text-center flex flex-col items-center">
@@ -27,7 +27,7 @@ export const ProfileModal = ({ show, onClose, data, isLoading, onDownload, isGen
   if (!show) return null;
   const ref = useRef<HTMLDivElement>(null);
   return (
-    <div className="absolute inset-0 z-[160] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-[fadeIn_0.3s_ease-out]">
+    <div className="fixed inset-0 z-[160] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-[fadeIn_0.3s_ease-out]">
       <div className="w-full max-w-sm relative">
         <button onClick={onClose} className="absolute -top-12 right-0 p-2 text-gray-400 hover:text-white"><X size={24}/></button>
         <div ref={ref} className="bg-[#050505] rounded-3xl border border-white/10 overflow-hidden shadow-2xl relative">
@@ -48,7 +48,7 @@ export const ProfileModal = ({ show, onClose, data, isLoading, onDownload, isGen
 export const DiaryModal = ({ show, onClose, content, isLoading, currentP }: any) => {
   if (!show) return null;
   return (
-    <div className="absolute inset-0 z-[160] flex items-center justify-center bg-black/90 backdrop-blur-md p-6 animate-[fadeIn_0.3s_ease-out]">
+    <div className="fixed inset-0 z-[160] flex items-center justify-center bg-black/90 backdrop-blur-md p-6 animate-[fadeIn_0.3s_ease-out]">
       <div className="w-full max-w-sm bg-[#f5f5f0] text-[#1a1a1a] rounded-xl shadow-2xl relative overflow-hidden transform rotate-1">
         <div className="h-8 bg-red-800/10 border-b border-red-800/20 flex items-center px-4 gap-2"><div className="w-2 h-2 rounded-full bg-red-800/30"></div><div className="w-2 h-2 rounded-full bg-red-800/30"></div><div className="w-2 h-2 rounded-full bg-red-800/30"></div></div>
         <button onClick={onClose} className="absolute top-2 right-2 p-1 text-gray-400 hover:text-black z-10"><X size={20}/></button>
@@ -60,6 +60,66 @@ export const DiaryModal = ({ show, onClose, content, isLoading, currentP }: any)
           </div>
           <div className="mt-6 pt-4 border-t border-gray-300 text-center"><p className="text-[10px] text-gray-400 italic">Confidential. Do not share.</p></div>
         </div>
+      </div>
+    </div>
+  );
+};
+
+// --- 🔥 Shame Modal (耻辱柱) ---
+export const ShameModal = ({ show, onClose, data, lang, onDownload, isGenerating, ui }: any) => {
+  if (!show) return null;
+  const ref = useRef<HTMLDivElement>(null);
+  
+  return (
+    <div className="fixed inset-0 z-[600] flex items-center justify-center bg-red-950/90 backdrop-blur-md p-6 animate-[fadeIn_0.3s_ease-out]">
+      <div className="w-full max-w-sm relative">
+        <button onClick={onClose} className="absolute -top-12 right-0 p-2 text-white/50 hover:text-white"><X size={24}/></button>
+        
+        <div ref={ref} className="bg-[#0a0a0a] rounded-xl border-2 border-red-600 shadow-[0_0_50px_rgba(220,38,38,0.3)] overflow-hidden relative p-8 text-center flex flex-col items-center">
+           {/* 封条效果 */}
+           <div className="absolute top-4 -right-8 rotate-45 bg-red-600 text-black text-[10px] font-black py-1 px-10 tracking-widest border border-red-400">
+             FAILED
+           </div>
+
+           <div className="text-sm font-black text-red-600 uppercase tracking-[0.3em] mb-6 border-b border-red-900/30 pb-2 w-full">
+             {ui.shameTitle}
+           </div>
+
+           <div className="w-24 h-24 rounded-full border-2 border-red-600/50 mb-6 overflow-hidden grayscale contrast-125">
+             <img src={PERSONAS.Sol.avatar} alt="Sol" className="w-full h-full object-cover" />
+           </div>
+
+           <div className="text-lg text-gray-300 font-serif leading-relaxed mb-6">
+             <span className="font-bold text-white border-b border-white/20 pb-0.5">{data?.name}</span>
+             <span className="mx-1 text-sm text-gray-400">{ui.shameContent}</span>
+             <span className="font-mono font-bold text-red-500 text-xl mx-1">{data?.duration}</span>
+             <span className="text-sm text-gray-400">{lang === 'zh' ? '分钟' : 'mins'}</span>
+             <div className="mt-1 text-sm text-gray-400">{ui.shameAction}</div>
+           </div>
+
+           <div className="text-xs font-bold text-red-800 uppercase tracking-widest mb-6 animate-pulse">
+             — {ui.shameFooter} —
+           </div>
+
+           <div className="w-full pt-4 border-t border-white/5 flex justify-between items-end">
+             <div className="text-left">
+               <div className="text-[9px] text-gray-600 font-bold">DATE: {data?.date}</div>
+               <div className="text-[10px] text-red-600 font-bold tracking-wider">toughlove.online</div>
+             </div>
+             <div className="w-8 h-8 bg-red-900/20 rounded flex items-center justify-center">
+               <QrCode size={16} className="text-red-600" />
+             </div>
+           </div>
+        </div>
+
+        <button 
+          onClick={() => onDownload(ref)} 
+          disabled={isGenerating} 
+          className="w-full mt-6 py-3.5 rounded-xl bg-red-600 text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-red-700 transition-colors shadow-lg"
+        >
+          {isGenerating ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/> : <Share2 size={16} />}
+          {ui.saveShame}
+        </button>
       </div>
     </div>
   );

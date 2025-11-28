@@ -49,7 +49,15 @@ export const UI_TEXT = {
     iosStep1: "1. 点击浏览器的“分享”或“菜单”按钮",
     iosStep2: "2. 找到并选择“添加到主屏幕”",
     iosStep3: "3. 点击右上角的“添加”或“安装”即可",
-    androidStep1: "", androidStep2: "", androidStep3: ""
+    androidStep1: "", androidStep2: "", androidStep3: "",
+    
+    // 🔥 新增：耻辱柱相关文案
+    giveUpConfirm: "⚠️ 确定要当逃兵吗？这会被记录在案。",
+    shameTitle: "耻辱柱",
+    shameContent: "签署了专注协议，并在",
+    shameAction: "后当了逃兵。",
+    shameFooter: "Sol 对此表示遗憾。",
+    saveShame: "保存罪证",
   },
   en: {
     placeholder: "Say something human...",
@@ -98,7 +106,15 @@ export const UI_TEXT = {
     iosStep1: "1. Tap 'Share' or 'Menu' button",
     iosStep2: "2. Select 'Add to Home Screen'",
     iosStep3: "3. Tap 'Add' or 'Install'",
-    androidStep1: "", androidStep2: "", androidStep3: ""
+    androidStep1: "", androidStep2: "", androidStep3: "",
+
+    // 🔥 新增：耻辱柱相关文案 (英文)
+    giveUpConfirm: "⚠️ Give up now? It will be recorded.",
+    shameTitle: "WALL OF SHAME",
+    shameContent: "signed the Focus Protocol but fled after",
+    shameAction: ".",
+    shameFooter: "Sol is disappointed.",
+    saveShame: "Save Evidence",
   }
 };
 
@@ -301,8 +317,6 @@ export const PERSONAS: Record<PersonaType, {
     }
   }
 };
-
-// ... (保留原有 PERSONAS, UI_TEXT 等代码) ...
 
 // 🔥 新增：移入常量的配置数据
 export const QUICK_REPLIES_DATA: Record<PersonaType, { zh: string[]; en: string[] }> = {
