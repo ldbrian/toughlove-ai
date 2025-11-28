@@ -59,6 +59,9 @@ const FOCUS_ACTIVE_KEY = 'toughlove_focus_active';
 const FOCUS_REMAINING_KEY = 'toughlove_focus_remaining';
 const FOCUS_TOTAL_TIME = 25 * 60; 
 
+// 🔥 核心修复：更宽容的正则，允许 Tag 前后有换行、空格，甚至中文括号
+const CMD_REGEX = /(\n)?\s*(\[|【)CMD\s*:\s*FOCUS_OFFER(\]|】)/gi;
+
 const SILENT_AUDIO = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
 
 // 兜底语录
@@ -273,8 +276,8 @@ export default function Home() {
       localStorage.setItem(getTrustKey(activePersona), newCount.toString());
       if (newCount === 1 || newCount === 50 || newCount === 100) posthog.capture('trust_milestone', { persona: activePersona, level: newCount });
       
-      // 🔥 修复：不再只依赖 onFinish，双重保障在 useEffect 中
-      if (message.content.includes('[CMD:FOCUS_OFFER]')) {
+      // 🔥 修复：使用更宽容的 CMD_REGEX
+      if (CMD_REGEX.test(message.content)) {
           console.log("Detected Focus Command (onFinish)");
           setShowFocusOffer(true);
       }
@@ -300,7 +303,8 @@ export default function Home() {
 
       if (isAI && shouldPlay) {
          setVoiceMsgIds(prev => { const n = new Set(prev).add(message.id); saveVoiceIds(activePersona, Array.from(n)); return n; });
-         handlePlayAudio(message.content.replace(/\[CMD:FOCUS_OFFER\]/g, ''), message.id);
+         // 🔥 修复：TTS 时也去除 Tag
+         handlePlayAudio(message.content.replace(CMD_REGEX, ''), message.id);
       }
     }
   });
@@ -393,11 +397,11 @@ export default function Home() {
   useEffect(() => { if (messages.length > 0 && view === 'chat') { saveMemory(activePersona, messages); } }, [messages, activePersona, view]);
   useEffect(() => { scrollToBottom(); }, [messages, isLoading, view]);
 
-  // 🔥 核心修复：双重指令检测 (Backup for onFinish)
+  // 🔥 核心修复：使用 CMD_REGEX 检测指令
   useEffect(() => {
     if (messages.length > 0) {
         const lastMsg = messages[messages.length - 1];
-        if (lastMsg.role === 'assistant' && lastMsg.content.includes('[CMD:FOCUS_OFFER]')) {
+        if (lastMsg.role === 'assistant' && CMD_REGEX.test(lastMsg.content)) {
             // console.log("Detected Focus Command (Effect)");
             setShowFocusOffer(true);
         }
@@ -609,7 +613,8 @@ export default function Home() {
               const isAI = msg.role !== 'user';
               const isVoice = voiceMsgIds.has(msg.id); 
 
-              const contentDisplay = msg.content.replace(/\[CMD:FOCUS_OFFER\]/g, '').trim();
+              // 🔥 核心修复：渲染时移除 Tag (兼容各种格式)
+              const contentDisplay = msg.content.replace(CMD_REGEX, '').trim();
 
               return (
                 <div key={msg.id} className={`flex w-full ${!isAI ? 'justify-end' : 'justify-start'} mb-4 animate-[slideUp_0.1s_ease-out]`}>
