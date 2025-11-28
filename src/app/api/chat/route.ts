@@ -18,6 +18,7 @@ export const runtime = 'edge';
 
 const SAFE_WORDS = /求放过|别骂了|我难受|不行了|太过了|停止|救命|stop|help/i;
 const EMERGENCY_PROMPT = `[EMERGENCY OVERRIDE]: STOP roasting. Switch to GENTLE SUPPORT. Comfort the user.`;
+
 const BUSY_MESSAGES: Record<string, string[]> = {
   Ash: ["（自动回复）正在盯着那个人发呆...", "（自动回复）Zzz...", "（自动回复）烦着呢。"],
   Rin: ["（自动回复）谁准你现在找我的？", "（自动回复）在忙！", "（自动回复）洗澡中。"],
@@ -26,29 +27,30 @@ const BUSY_MESSAGES: Record<string, string[]> = {
   Echo: ["（自动回复）...", "（自动回复）凝视深渊中。", "（自动回复）信号消散了。"]
 };
 
-// 🔥 优化：大幅扩充触发词库，覆盖“想努力”和“在摆烂”两种场景
-const FOCUS_KEYWORDS = /学习|工作|作业|专注|复习|赶ddl|冲刺|考研|备考|效率|拖延|摸鱼|不想动|累了|救命|管管我|自律|study|work|focus|homework|deadline|grind|lock in|procrastinat|distracted|lazy/i;
+// 🔥 1. 触发词库 (大幅扩充)
+const FOCUS_KEYWORDS = /学习|工作|作业|专注|复习|赶ddl|冲刺|考研|备考|效率|拖延|摸鱼|不想动|累了|救命|管管我|自律|书|题|study|work|focus|homework|deadline|grind|lock in|procrastinat|distracted|lazy/i;
 
 export async function POST(req: Request) {
   try {
     const json = await req.json();
     const { messages, persona, language, interactionCount = 0, userName = "", envInfo, userId } = json;
+    
     const currentLang = (language as LangType) || 'zh';
     const currentPersona = PERSONAS[persona as PersonaType] || PERSONAS.Ash;
     const lastUserMsg = messages[messages.length - 1]?.content || "";
 
-    // 1. 风控拦截
+    // 2. 风控拦截
     const safetyCheck = validateInput(lastUserMsg);
     if (!safetyCheck.safe) {
       const encoder = new TextEncoder();
-      const stream = new ReadableStream({ start(c) { c.enqueue(encoder.encode("⚠️ Unsafe input.")); c.close(); } });
+      const stream = new ReadableStream({ start(c) { c.enqueue(encoder.encode("⚠️ System Alert: Unsafe input.")); c.close(); } });
       return new StreamingTextResponse(stream);
     }
 
     let isEmergency = false;
     if (SAFE_WORDS.test(lastUserMsg)) isEmergency = true;
 
-    // 2. 并行获取 DB 数据
+    // 3. 数据库并行查询
     let statusPromise = Promise.resolve(null);
     let memoryPromise = Promise.resolve(null);
 
@@ -73,7 +75,6 @@ export async function POST(req: Request) {
     if (memoryResult && (memoryResult as any).data) {
         const memories = (memoryResult as any).data;
         if (memories.length > 0) {
-            // 🔥 Memory Guard
             const memoryIntro = currentLang === 'en' ? "IGNORE memory language. Use FACTS but reply in ENGLISH." : "【记忆】";
             memoryPrompt = `\n[Memory]:\n${memoryIntro}:\n${memories.map((m: any) => `- ${m.content}`).join('\n')}`;
         }
@@ -96,29 +97,31 @@ export async function POST(req: Request) {
     const dynamicEnginePrompt = currentLang === 'zh' ? `[Engine]: 回复长度随机。` : `[Engine]: Randomize length.`;
     const emergencyOverride = isEmergency ? EMERGENCY_PROMPT : "";
 
-    // 🔥 专注模式诱导
-    let focusInstruction = "";
-    if (persona === 'Sol' && FOCUS_KEYWORDS.test(lastUserMsg)) {
-        focusInstruction = currentLang === 'zh' 
-          ? `\n[特殊指令]: 用户提到学习/工作。严厉嘲讽拖延，并在回复末尾加 "[CMD:FOCUS_OFFER]" 触发专注弹窗。`
-          : `\n[CMD]: User mentions work/study. Roast laziness. MUST append "[CMD:FOCUS_OFFER]" at the end to trigger Focus UI.`;
-    }
-
+    // 系统级语言锁
     const SYSTEM_LANG_CONSTRAINT = currentLang === 'zh' 
       ? `\n⚠️【严格指令】：必须用【中文】回复。`
       : `\n⚠️ [CRITICAL]: MUST reply in 【ENGLISH】 only. NO CHINESE. Actions in parentheses MUST be English.`;
 
-    const finalSystemPrompt = `${SAFETY_PROTOCOL} ${basePrompt} ${namePrompt} ${envPrompt} ${trustPrompt} ${memoryPrompt} ${focusInstruction} ${dynamicEnginePrompt} ${emergencyOverride} ${SYSTEM_LANG_CONSTRAINT}`;
+    const finalSystemPrompt = `${SAFETY_PROTOCOL} ${basePrompt} ${namePrompt} ${envPrompt} ${trustPrompt} ${memoryPrompt} ${dynamicEnginePrompt} ${emergencyOverride} ${SYSTEM_LANG_CONSTRAINT}`;
 
-    const conversation = [{ role: 'system', content: finalSystemPrompt }, ...messages];
+    // 4. 构造消息队列
+    const conversation = [
+      { role: 'system', content: finalSystemPrompt },
+      ...messages
+    ];
 
-    // 🔥 隐形注射：再次强调英文
+    // 🔥🔥🔥 核心修复：如果触发了专注关键词，强制插入一条 System 消息在最后 🔥🔥🔥
+    // 这比修改 System Prompt 有效得多，因为它是最新的上下文
+    if (persona === 'Sol' && FOCUS_KEYWORDS.test(lastUserMsg)) {
+        const triggerInstruction = currentLang === 'zh'
+          ? `[系统强制指令]: 检测到用户有学习/工作意向。请严厉嘲讽他的拖延行为，并在你的回复末尾必须加上 "[CMD:FOCUS_OFFER]" 标签。这很重要，用于触发前端功能。`
+          : `[SYSTEM TRIGGER]: User wants to study/work. Roast them. You MUST append "[CMD:FOCUS_OFFER]" at the end of your response to trigger the Focus UI.`;
+        
+        conversation.push({ role: 'system', content: triggerInstruction });
+    }
+
+    // 5. 英文模式下的语言锁 (三明治策略尾部)
     if (currentLang === 'en') {
-       const lastMsgIndex = conversation.length - 1;
-       const lastMsg = conversation[lastMsgIndex];
-       if (lastMsg.role === 'user') {
-         conversation[lastMsgIndex] = { ...lastMsg, content: `${lastMsg.content}\n\n[SYSTEM: REPLY IN ENGLISH ONLY. NO CHINESE CHARACTERS.]` };
-       }
        conversation.push({ role: 'system', content: "OUTPUT ENGLISH ONLY." });
     }
 
