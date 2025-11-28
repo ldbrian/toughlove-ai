@@ -13,12 +13,37 @@ import html2canvas from 'html2canvas';
 import { Message } from 'ai';
 import posthog from 'posthog-js';
 
-// 引入拆分后的组件
-import { BootScreen } from '@/components/ui/BootScreen';
-import { Typewriter } from '@/components/ui/Typewriter';
-import { FocusOverlay } from '@/components/features/FocusOverlay';
-import { DailyQuoteModal, ProfileModal, DiaryModal } from '@/components/modals/ContentModals';
-import { TriageModal, FocusOfferModal, DonateModal, LangSetupModal, NameModal, FeedbackModal, UpdateModal } from '@/components/modals/SystemModals';
+// --- 内联组件 (Components) ---
+
+const Typewriter = ({ content, isThinking }: { content: string, isThinking?: boolean }) => {
+  const [displayedContent, setDisplayedContent] = useState("");
+  useEffect(() => {
+    if (!isThinking) { setDisplayedContent(content); return; }
+    if (displayedContent.length < content.length) {
+      const delay = Math.random() * 30 + 20;
+      const timer = setTimeout(() => { setDisplayedContent(content.slice(0, displayedContent.length + 1)); }, delay);
+      return () => clearTimeout(timer);
+    }
+  }, [content, displayedContent, isThinking]);
+  return <ReactMarkdown>{displayedContent}</ReactMarkdown>;
+};
+
+const BootScreen = () => {
+  const [text, setText] = useState<string[]>([]);
+  const lines = ["INITIALIZING CORE SYSTEMS...", "LOADING PERSONALITY MODULES...", "ESTABLISHING NEURAL LINK...", "BYPASSING SAFETY PROTOCOLS...", "SYSTEM ONLINE."];
+  useEffect(() => {
+    let delay = 0;
+    lines.forEach((line) => { delay += Math.random() * 300 + 100; setTimeout(() => setText(prev => [...prev, line]), delay); });
+  }, []);
+  return (
+    <div className="flex flex-col h-screen bg-black text-green-500 font-mono text-xs p-8 justify-end pb-20">
+      {text.map((t, i) => <div key={i} className="mb-2 animate-[fadeIn_0.1s_ease-out]"><span className="opacity-50 mr-2">{`>`}</span>{t}</div>)}
+      <div className="mt-2 flex items-center gap-2 text-[#7F5CFF] animate-pulse"><Loader2 size={14} className="animate-spin" /><span>WAITING FOR USER INPUT...</span></div>
+    </div>
+  );
+};
+
+// --- 主程序 ---
 
 type DailyQuote = { content: string; date: string; persona: string; };
 type ViewState = 'selection' | 'chat';
@@ -33,12 +58,17 @@ const LAST_QUOTE_DATE_KEY = 'toughlove_last_quote_view_date';
 const FOCUS_ACTIVE_KEY = 'toughlove_focus_active';
 const FOCUS_REMAINING_KEY = 'toughlove_focus_remaining';
 const FOCUS_TOTAL_TIME = 25 * 60; 
+
 const SILENT_AUDIO = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
 
+// 兜底语录
+const SAFE_SOL_TAUNTS = {
+  zh: ["别发呆，盯着你的书。", "你的对手在看书。", "手机比未来好看吗？", "呼吸可以，玩手机不行。", "我在看着你。", "这就是你的定力？", "再坚持一下会死吗？"],
+  en: ["Eyes on the prize.", "Your rival is studying.", "Is phone better than future?", "Breathing allowed. Phone not.", "I am watching you.", "Is that all you got?", "Stay focused."]
+};
+
 export default function Home() {
-  // ==========================================
-  // 1. State Definition
-  // ==========================================
+  // 1. State
   const [mounted, setMounted] = useState(false);
   const [view, setView] = useState<ViewState>('selection');
   const [activePersona, setActivePersona] = useState<PersonaType>('Ash');
@@ -56,7 +86,14 @@ export default function Home() {
   const [showDiary, setShowDiary] = useState(false);
   const [showNameModal, setShowNameModal] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  
+  // Focus Mode
   const [showFocusOffer, setShowFocusOffer] = useState(false);
+  const [isFocusActive, setIsFocusActive] = useState(false);
+  const [focusRemaining, setFocusRemaining] = useState(0);
+  const [isFocusPaused, setIsFocusPaused] = useState(false);
+  const [focusWarning, setFocusWarning] = useState<string | null>(null);
+  const [tauntIndex, setTauntIndex] = useState(0);
 
   // Data
   const [quoteData, setQuoteData] = useState<DailyQuote | null>(null);
@@ -76,16 +113,11 @@ export default function Home() {
   const [isDiaryLoading, setIsDiaryLoading] = useState(false);
   const [hasNewDiary, setHasNewDiary] = useState(false);
 
-  // Audio & Focus
+  // Audio
   const [playingMsgId, setPlayingMsgId] = useState<string | null>(null);
   const [voiceMsgIds, setVoiceMsgIds] = useState<Set<string>>(new Set()); 
   const [forceVoice, setForceVoice] = useState(false);
   const [voiceTrial, setVoiceTrial] = useState(3);
-  const [isFocusActive, setIsFocusActive] = useState(false);
-  const [focusRemaining, setFocusRemaining] = useState(0);
-  const [isFocusPaused, setIsFocusPaused] = useState(false);
-  const [focusWarning, setFocusWarning] = useState<string | null>(null);
-  const [tauntIndex, setTauntIndex] = useState(0);
 
   // Refs
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -110,11 +142,6 @@ export default function Home() {
   const TRIAGE_TEXT = {
     zh: { title: "系统初始化", subtitle: "请声明你当前的精神状态。", opt1: "💊 我需要清醒", desc1: "拒绝煽情，毒舌直击。", opt2: "⛓️ 我需要管教", desc2: "强制自律，严厉导师。", opt3: "🩹 我需要陪伴", desc3: "虽然嘴硬，但会陪你。", footer: "TOUGHLOVE AI v2.0" },
     en: { title: "SYSTEM INITIALIZED", subtitle: "State your current mental status.", opt1: "💊 I need Reality", desc1: "No drama. Brutal truth.", opt2: "⛓️ I need Discipline", desc2: "Strict control. No excuses.", opt3: "🩹 I need Company", desc3: "Tsundere comfort. Not alone.", footer: "TOUGHLOVE AI v2.0" }
-  };
-
-  const SOL_TAUNTS = {
-    zh: ["别发呆，盯着你的书。", "你的对手在看书。", "手机比未来好看吗？", "呼吸可以，玩手机不行。", "我在看着你。", "这就是你的定力？", "再坚持一下会死吗？"],
-    en: ["Eyes on the prize.", "Your rival is studying.", "Is phone better than future?", "Breathing allowed. Phone not.", "I am watching you.", "Is that all you got?", "Stay focused."]
   };
 
   // Helpers
@@ -198,14 +225,13 @@ export default function Home() {
   const downloadQuoteCard = () => downloadCard(quoteCardRef, `ToughLove_${activePersona}_Quote.png`);
   const downloadProfileCard = () => downloadCard(profileCardRef, `ToughLove_Profile.png`);
 
-  // Focus Helpers
   const endFocusMode = () => { 
-      setIsFocusActive(false); 
-      setIsFocusPaused(false);
       if (typeof window !== 'undefined') {
         localStorage.removeItem(FOCUS_ACTIVE_KEY); 
         localStorage.removeItem(FOCUS_REMAINING_KEY);
       }
+      setIsFocusActive(false); 
+      setIsFocusPaused(false);
   };
   
   const startFocusMode = () => { 
@@ -229,7 +255,6 @@ export default function Home() {
   const confirmLanguage = (l: LangType) => { setLang(l); localStorage.setItem(LANG_PREF_KEY, l); localStorage.setItem(LANGUAGE_KEY, 'true'); setShowLangSetup(false); if(!localStorage.getItem(VISITED_KEY)) setShowTriage(true); posthog.capture('language_set', { language: l }); };
   const saveUserName = () => { const nameToSave = tempName.trim(); setUserName(nameToSave); localStorage.setItem(USER_NAME_KEY, nameToSave); setShowNameModal(false); posthog.capture('username_set'); };
   const handleFeedbackSubmit = () => { if (!feedbackText.trim()) return; posthog.capture('user_feedback', { content: feedbackText, userId: getDeviceId() }); alert(lang === 'zh' ? '反馈已收到！' : 'Feedback received!'); setFeedbackText(""); setShowFeedbackModal(false); };
-  
   const handleInstall = () => { posthog.capture('feature_install_click'); setShowInstallModal(true); setShowMenu(false); };
   const handleDonate = () => { posthog.capture('feature_donate_click'); setShowDonateModal(true); setShowMenu(false); }
   const goBMAC = () => { window.open('https://www.buymeacoffee.com/ldbrian', '_blank'); }
@@ -247,7 +272,12 @@ export default function Home() {
       setInteractionCount(newCount);
       localStorage.setItem(getTrustKey(activePersona), newCount.toString());
       if (newCount === 1 || newCount === 50 || newCount === 100) posthog.capture('trust_milestone', { persona: activePersona, level: newCount });
-      if (message.content.includes('[CMD:FOCUS_OFFER]')) setShowFocusOffer(true);
+      
+      // 🔥 修复：不再只依赖 onFinish，双重保障在 useEffect 中
+      if (message.content.includes('[CMD:FOCUS_OFFER]')) {
+          console.log("Detected Focus Command (onFinish)");
+          setShowFocusOffer(true);
+      }
 
       const isAI = message.role === 'assistant';
       const isLevel2 = newCount >= 50; 
@@ -337,7 +367,6 @@ export default function Home() {
   };
 
   const handleBribeSuccess = async () => { setShowDonateModal(false); localStorage.setItem('toughlove_is_patron', 'true'); const bribeMsg: Message = { id: Date.now().toString(), role: 'user', content: lang === 'zh' ? "☕️ (给你买了一杯热咖啡，请笑纳...)" : "☕️ (Bought you a coffee. Be nice...)" }; await append(bribeMsg); posthog.capture('user_bribed_ai', { persona: activePersona }); };
-  
   const handleOpenDiary = async () => { setShowDiary(true); if (!diaryContent || hasNewDiary) { setIsDiaryLoading(true); try { const res = await fetch('/api/diary', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: messages, persona: activePersona, language: lang, userName: userName }), }); const data = await res.json(); if (data.diary) { setDiaryContent(data.diary); setHasNewDiary(false); localStorage.setItem(getDiaryKey(activePersona), data.diary); localStorage.setItem(LAST_DIARY_TIME_KEY, Date.now().toString()); posthog.capture('diary_read', { persona: activePersona }); } else { setDiaryContent(lang === 'zh' ? "（日记本是空的。聊少了，懒得记。）" : "(Diary is empty. Not enough chat.)"); } } catch (e) { console.error(e); setDiaryContent("Error loading diary."); } finally { setIsDiaryLoading(false); } } };
   const handleOpenProfile = async () => { posthog.capture('feature_profile_open'); setShowMenu(false); setShowProfile(true); setIsProfileLoading(true); try { const res = await fetch('/api/profile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: getDeviceId(), language: lang }), }); const data = await res.json(); setProfileData(data); } catch (e) { console.error(e); } finally { setIsProfileLoading(false); } };
   const handleExport = () => { posthog.capture('feature_export', { persona: activePersona }); if (messages.length === 0) return; const dateStr = new Date().toLocaleString(); const header = `================================\n${ui.exportFileName}\nDate: ${dateStr}\nPersona: ${currentP.name}\nUser: ${userName || 'Anonymous'}\n================================\n\n`; const body = messages.map(m => { const role = m.role === 'user' ? (userName || 'ME') : currentP.name.toUpperCase(); return `[${role}]:\n${m.content.replace(/\|\|\|/g, '\n')}\n`; }).join('\n--------------------------------\n\n'); const blob = new Blob([header + body], { type: 'text/plain;charset=utf-8' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${ui.exportFileName}_${activePersona}_${new Date().toISOString().split('T')[0]}.txt`; a.style.display = 'none'; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); setShowMenu(false); };
@@ -364,7 +393,17 @@ export default function Home() {
   useEffect(() => { if (messages.length > 0 && view === 'chat') { saveMemory(activePersona, messages); } }, [messages, activePersona, view]);
   useEffect(() => { scrollToBottom(); }, [messages, isLoading, view]);
 
-  // Init Effect
+  // 🔥 核心修复：双重指令检测 (Backup for onFinish)
+  useEffect(() => {
+    if (messages.length > 0) {
+        const lastMsg = messages[messages.length - 1];
+        if (lastMsg.role === 'assistant' && lastMsg.content.includes('[CMD:FOCUS_OFFER]')) {
+            // console.log("Detected Focus Command (Effect)");
+            setShowFocusOffer(true);
+        }
+    }
+  }, [messages]);
+
   useEffect(() => {
     setMounted(true); 
     const savedLang = localStorage.getItem(LANG_PREF_KEY);
@@ -396,7 +435,6 @@ export default function Home() {
     getSimpleWeather().then(w => setCurrentWeather(w));
     posthog.capture('page_view', { lang: savedLang || lang });
 
-    // 🔥 核心修复：初始化时增加容错
     const savedFocus = localStorage.getItem(FOCUS_ACTIVE_KEY);
     if (savedFocus === 'true') {
         const remaining = parseInt(localStorage.getItem(FOCUS_REMAINING_KEY) || '0');
@@ -409,7 +447,6 @@ export default function Home() {
     }
   }, []);
 
-  // Focus Timer Effect
   useEffect(() => {
     if (isFocusActive && focusRemaining <= 0) {
         endFocusMode();
@@ -441,7 +478,7 @@ export default function Home() {
                 });
             }
         }, 1000);
-        tauntInterval = setInterval(() => { setTauntIndex(prev => (prev + 1) % SOL_TAUNTS[lang as 'zh'|'en'].length); }, 4000);
+        tauntInterval = setInterval(() => { setTauntIndex(prev => (prev + 1) % SAFE_SOL_TAUNTS[lang as 'zh'|'en'].length); }, 4000);
     }
     return () => { clearInterval(interval); clearInterval(tauntInterval); document.removeEventListener("visibilitychange", handleVisibilityChange); };
   }, [isFocusActive, isFocusPaused, lang]);
@@ -455,6 +492,7 @@ export default function Home() {
       <div className="absolute top-[-20%] left-0 right-0 h-[500px] bg-gradient-to-b from-[#7F5CFF]/10 to-transparent blur-[100px] pointer-events-none" />
       <audio ref={audioRef} className="hidden" playsInline />
 
+      {/* Focus Mode Overlay */}
       {isFocusActive && (
         <div className="fixed inset-0 z-[400] flex flex-col items-center justify-center bg-[#050505]/98 backdrop-blur-3xl animate-[fadeIn_0.5s_ease-out] touch-none">
           <div className="absolute top-10 text-[10px] font-bold tracking-[0.3em] text-gray-500 flex items-center gap-2">
@@ -471,7 +509,7 @@ export default function Home() {
             {Math.floor(focusRemaining / 60).toString().padStart(2, '0')}:{Math.floor(focusRemaining % 60).toString().padStart(2, '0')}
           </div>
           <div className="h-12 flex flex-col items-center justify-center mb-16 w-3/4 text-center">
-             {focusWarning ? (<div className="bg-red-600 text-white px-4 py-2 rounded-lg font-bold text-xs animate-bounce shadow-[0_0_20px_#dc2626]">{focusWarning}</div>) : (<p className={`text-sm font-medium transition-all duration-500 ${isFocusPaused ? 'text-gray-700' : 'text-red-400/80'}`}>“{SOL_TAUNTS[lang as 'zh'|'en'][tauntIndex]}”</p>)}
+             {focusWarning ? (<div className="bg-red-600 text-white px-4 py-2 rounded-lg font-bold text-xs animate-bounce shadow-[0_0_20px_#dc2626]">{focusWarning}</div>) : (<p className={`text-sm font-medium transition-all duration-500 ${isFocusPaused ? 'text-gray-700' : 'text-red-400/80'}`}>“{SAFE_SOL_TAUNTS[lang as 'zh'|'en'][tauntIndex]}”</p>)}
           </div>
           <button onClick={giveUpFocus} className="absolute bottom-10 px-6 py-2 rounded-full bg-red-900/20 border border-red-900/50 text-[10px] text-red-400 hover:text-red-200 hover:bg-red-800/40 transition-all font-mono flex items-center gap-2"><Ban size={14} />{lang === 'zh' ? '我是废物，我要放弃 (GIVE UP)' : 'I AM WEAK. LET ME OUT.'}</button>
         </div>
@@ -492,7 +530,6 @@ export default function Home() {
       )}
       
       {showQuote && ( <div className="absolute inset-0 z-[160] flex items-center justify-center bg-black/90 backdrop-blur-md p-6 animate-[fadeIn_0.3s_ease-out]"><div className="w-full max-w-sm relative"><button onClick={() => setShowQuote(false)} className="absolute -top-12 right-0 p-2 text-gray-400 hover:text-white"><X size={24}/></button><div ref={quoteCardRef} className="bg-[#111] rounded-3xl border border-white/10 overflow-hidden shadow-2xl relative p-8 text-center flex flex-col items-center"><div className="text-[10px] font-bold text-gray-600 uppercase tracking-widest mb-6 border-b border-white/5 pb-2 w-full flex justify-between"><span>{quoteData?.date || new Date().toLocaleDateString()}</span><span className="text-[#7F5CFF]">DAILY TOXIC</span></div>{isQuoteLoading ? (<div className="py-10 space-y-3"><div className="w-8 h-8 border-2 border-[#7F5CFF] border-t-transparent rounded-full animate-spin mx-auto"/><p className="text-xs text-gray-500 animate-pulse">{ui.makingPoison}</p></div>) : (<><div className="text-3xl mb-6 opacity-30">❝</div><p className="text-lg font-serif text-white leading-relaxed mb-8">{quoteData?.content}</p><div className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-8">— {PERSONAS[quoteData?.persona as PersonaType]?.name || activePersona} —</div><div className="w-full pt-4 border-t border-white/10 flex justify-between items-end"><div className="text-left"><div className="text-[9px] text-gray-600 font-bold">GET YOURS AT</div><div className="text-xs text-[#7F5CFF] font-bold tracking-wider">toughlove.online</div></div><div className="w-8 h-8 bg-white/10 rounded flex items-center justify-center"><QrCode size={16} className="text-white" /></div></div></>)}</div>{!isQuoteLoading && (<button onClick={downloadQuoteCard} disabled={isGeneratingImg} className="w-full mt-6 py-3.5 rounded-xl bg-white text-black font-bold text-sm flex items-center justify-center gap-2 hover:bg-gray-200 transition-colors shadow-[0_0_20px_rgba(255,255,255,0.2)]">{isGeneratingImg ? <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin"/> : <Share2 size={16} />}{ui.save}</button>)}</div></div>)}
-      
       {showTriage && (<div className="absolute inset-0 z-[300] bg-black flex flex-col items-center justify-center p-6 animate-[fadeIn_0.5s_ease-out]"><div className="w-full max-w-sm space-y-8"><div className="text-center space-y-2"><div className="w-16 h-16 bg-[#1a1a1a] rounded-full flex items-center justify-center text-3xl border border-white/10 mx-auto mb-4 shadow-[0_0_30px_rgba(127,92,255,0.2)] animate-pulse">⚡</div><h1 className="text-2xl font-bold text-white tracking-wider">{TRIAGE_TEXT[lang].title}</h1><p className="text-sm text-gray-500">{TRIAGE_TEXT[lang].subtitle}</p></div><div className="space-y-3"><button onClick={() => handleTriageSelection('Ash')} className="w-full group relative p-5 rounded-2xl bg-[#111] border border-white/10 hover:border-blue-500/50 transition-all text-left overflow-hidden active:scale-95"><div className="absolute inset-0 bg-gradient-to-r from-transparent to-blue-500/10 opacity-0 group-hover:opacity-100 transition-opacity"/><div className="relative z-10"><div className="flex justify-between items-center mb-1"><span className="text-lg font-bold text-white">{TRIAGE_TEXT[lang].opt1}</span><span className="text-2xl">🌙</span></div><p className="text-xs text-gray-500">{TRIAGE_TEXT[lang].desc1}</p></div></button><button onClick={() => handleTriageSelection('Sol')} className="w-full group relative p-5 rounded-2xl bg-[#111] border border-white/10 hover:border-emerald-500/50 transition-all text-left overflow-hidden active:scale-95"><div className="absolute inset-0 bg-gradient-to-r from-transparent to-emerald-500/10 opacity-0 group-hover:opacity-100 transition-opacity"/><div className="relative z-10"><div className="flex justify-between items-center mb-1"><span className="text-lg font-bold text-white">{TRIAGE_TEXT[lang].opt2}</span><span className="text-2xl">⛓️</span></div><p className="text-xs text-gray-500">{TRIAGE_TEXT[lang].desc2}</p></div></button><button onClick={() => handleTriageSelection('Rin')} className="w-full group relative p-5 rounded-2xl bg-[#111] border border-white/10 hover:border-pink-500/50 transition-all text-left overflow-hidden active:scale-95"><div className="absolute inset-0 bg-gradient-to-r from-transparent to-pink-500/10 opacity-0 group-hover:opacity-100 transition-opacity"/><div className="relative z-10"><div className="flex justify-between items-center mb-1"><span className="text-lg font-bold text-white">{TRIAGE_TEXT[lang].opt3}</span><span className="text-2xl">🔥</span></div><p className="text-xs text-gray-500">{TRIAGE_TEXT[lang].desc3}</p></div></button></div><p className="text-center text-[10px] text-gray-600 pt-8">{TRIAGE_TEXT[lang].footer}</p></div></div>)}
       {showLangSetup && (<div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-6 animate-[fadeIn_0.5s_ease-out]"><div className="mb-10 text-center"><div className="w-20 h-20 bg-[#1a1a1a] rounded-full flex items-center justify-center text-4xl border border-white/10 mx-auto mb-4 shadow-[0_0_30px_rgba(127,92,255,0.3)]">🧬</div><h1 className="text-2xl font-bold text-white tracking-wider mb-2">TOUGHLOVE AI</h1><p className="text-gray-500 text-sm">Choose your language / 选择语言</p></div><div className="flex flex-col gap-4 w-full max-w-xs"><button onClick={() => confirmLanguage('zh')} className={`p-6 rounded-2xl border transition-all flex items-center justify-between group ${lang === 'zh' ? 'bg-white/10 border-[#7F5CFF]' : 'bg-[#111] border-white/10 hover:border-white/30'}`}><div className="text-left"><div className="text-lg font-bold text-white">中文</div><div className="text-xs text-gray-500">Chinese</div></div>{lang === 'zh' && <div className="w-3 h-3 bg-[#7F5CFF] rounded-full shadow-[0_0_10px_#7F5CFF]"></div>}</button><button onClick={() => confirmLanguage('en')} className={`p-6 rounded-2xl border transition-all flex items-center justify-between group ${lang === 'en' ? 'bg-white/10 border-[#7F5CFF]' : 'bg-[#111] border-white/10 hover:border-white/30'}`}><div className="text-left"><div className="text-lg font-bold text-white">English</div><div className="text-xs text-gray-500">English</div></div>{lang === 'en' && <div className="w-3 h-3 bg-[#7F5CFF] rounded-full shadow-[0_0_10px_#7F5CFF]"></div>}</button></div></div>)}
       {showNameModal && (<div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6 animate-[fadeIn_0.2s_ease-out]"><div className="w-full max-w-xs bg-[#1a1a1a] rounded-3xl border border-white/10 shadow-2xl p-6"><div className="text-center mb-6"><div className="inline-flex p-3 bg-white/5 rounded-full mb-3 text-[#7F5CFF]"><UserPen size={24}/></div><h3 className="text-lg font-bold text-white">{ui.editName}</h3></div><input type="text" value={tempName} onChange={(e) => setTempName(e.target.value)} placeholder={ui.namePlaceholder} className="w-full bg-[#111] border border-white/10 rounded-xl px-4 py-3 text-white focus:border-[#7F5CFF] outline-none mb-6 text-center" maxLength={10} /><div className="flex gap-3"><button onClick={() => setShowNameModal(false)} className="flex-1 py-3 rounded-xl bg-white/5 text-gray-400 text-sm hover:bg-white/10 transition-colors">Cancel</button><button onClick={saveUserName} className="flex-1 py-3 rounded-xl bg-[#7F5CFF] text-white font-bold text-sm hover:bg-[#6b4bd6] transition-colors">{ui.nameSave}</button></div></div></div>)}
@@ -502,12 +539,10 @@ export default function Home() {
       {showUpdateModal && (<div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-6 animate-[fadeIn_0.3s_ease-out]"><div className="w-full max-w-sm bg-gradient-to-br from-[#111] to-[#0a0a0a] rounded-3xl border border-indigo-500/30 shadow-[0_0_50px_rgba(99,102,241,0.15)] overflow-hidden relative animate-[scaleIn_0.3s_cubic-bezier(0.16,1,0.3,1)]"><button onClick={dismissUpdate} className="absolute top-4 right-4 p-2 text-gray-500 hover:text-white z-10 transition-colors"><X size={20} /></button><div className="p-8 flex flex-col items-center text-center relative"><div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-indigo-900/20 to-transparent pointer-events-none"></div><div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-bold uppercase tracking-wider mb-6"><Sparkles size={12} /> {ui.updateTitle}</div><div className="relative w-20 h-20 mb-6"><div className="w-full h-full rounded-full bg-[#151515] flex items-center justify-center text-5xl border border-white/10 shadow-xl relative z-10">👁️</div><div className="absolute inset-0 bg-indigo-500 blur-xl opacity-30 animate-pulse"></div></div><h3 className="text-xl font-bold text-white mb-3">{ui.updateDesc}</h3><p className="text-sm text-gray-400 leading-relaxed whitespace-pre-line">{ui.updateContent}</p></div><div className="p-6 pt-0"><button onClick={handleTryNewFeature} className="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition-all shadow-lg shadow-indigo-900/20 flex items-center justify-center gap-2 group">{ui.tryNow}<span className="group-hover:translate-x-1 transition-transform">→</span></button></div></div></div>)}
       {showFeedbackModal && (<div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-sm p-6 animate-[fadeIn_0.2s_ease-out]"><div className="w-full max-w-sm bg-[#1a1a1a] rounded-3xl border border-white/10 shadow-2xl p-6 relative"><button onClick={() => setShowFeedbackModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-white"><X size={20}/></button><div className="text-center mb-6"><div className="inline-flex p-3 bg-purple-500/10 rounded-full mb-3 text-purple-400"><Bug size={24}/></div><h3 className="text-lg font-bold text-white">{lang === 'zh' ? '意见反馈' : 'Feedback'}</h3><p className="text-xs text-gray-400 mt-1">{lang === 'zh' ? '发现 Bug 或有好点子？' : 'Found a bug?'}</p></div><textarea value={feedbackText} onChange={(e) => setFeedbackText(e.target.value)} placeholder={lang === 'zh' ? '请告诉我...' : 'Tell me...'} className="w-full h-32 bg-[#111] border border-white/10 rounded-xl p-4 text-sm text-white focus:border-[#7F5CFF] outline-none resize-none mb-4"/><button onClick={handleFeedbackSubmit} className="w-full py-3 rounded-xl bg-[#7F5CFF] text-white font-bold text-sm hover:bg-[#6b4bd6] transition-colors">{lang === 'zh' ? '发送' : 'Send'}</button></div></div>)}
       
+      {/* 列表视图 */}
       {view === 'selection' && (
         <div className="z-10 flex flex-col h-full w-full max-w-md mx-auto p-4 animate-[fadeIn_0.5s_ease-out]">
-          <div className="flex justify-between items-center mb-6 px-2">
-             <h1 className="text-xl font-bold tracking-wider flex items-center gap-2"><MessageCircle size={20} className="text-[#7F5CFF]" /> Chats</h1>
-             <div className="flex gap-3"><button onClick={toggleLanguage} className="text-xs font-bold text-gray-400 hover:text-white uppercase border border-white/10 px-2 py-1 rounded-lg">{lang}</button></div>
-          </div>
+          <div className="flex justify-between items-center mb-6 px-2"><h1 className="text-xl font-bold tracking-wider flex items-center gap-2"><MessageCircle size={20} className="text-[#7F5CFF]" /> Chats</h1><div className="flex gap-3"><button onClick={toggleLanguage} className="text-xs font-bold text-gray-400 hover:text-white uppercase border border-white/10 px-2 py-1 rounded-lg">{lang}</button></div></div>
           <div className="flex flex-col gap-3 overflow-y-auto pb-20">
             {(Object.keys(PERSONAS) as PersonaType[]).map((key) => {
               const p = PERSONAS[key];
@@ -516,36 +551,18 @@ export default function Home() {
               const status = getPersonaStatus(key, new Date().getHours()); 
               return (
                 <div key={key} onClick={() => selectPersona(key)} className={`group relative p-4 rounded-2xl transition-all duration-200 cursor-pointer flex items-center gap-4 border shadow-sm ${info.isChatted ? 'bg-[#111] hover:bg-[#1a1a1a] border-white/5 hover:border-[#7F5CFF]/30' : 'bg-gradient-to-r from-[#151515] to-[#111] border-white/10 hover:border-white/30'}`}>
-                  <div className="relative flex-shrink-0">
-                    <div className={`w-14 h-14 rounded-full bg-gradient-to-b from-[#222] to-[#0a0a0a] flex items-center justify-center text-3xl border-2 overflow-hidden ${info.isChatted ? (info.trust >= 50 ? (info.trust >= 100 ? 'border-[#7F5CFF] shadow-[0_0_10px_#7F5CFF]' : 'border-blue-500') : 'border-gray-700') : 'border-white/10'}`}>
-                      {p.avatar.startsWith('/') ? (<img src={p.avatar} alt={p.name} className="w-full h-full object-cover" />) : (<span>{p.avatar}</span>)}
-                    </div>
-                    {info.isChatted && (<div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] border-2 border-[#111] ${lv.barColor.replace('bg-', 'text-white bg-')}`}>{lv.level}</div>)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-baseline mb-1">
-                      <h3 className="font-bold text-white text-base">{p.name}</h3>
-                      <span className="text-[10px] text-gray-500">{info.isChatted ? info.time : 'New'}</span>
-                    </div>
-                    <div className="flex flex-wrap gap-1 mb-1">
-                        {p.tags[lang].slice(0, 2).map(tag => (
-                            <span key={tag} className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-gray-400 border border-white/5 whitespace-nowrap">{tag}</span>
-                        ))}
-                    </div>
-                    <div className="text-[10px] text-gray-500 mb-1 flex items-center gap-1 truncate">{status}</div>
-                    <p className={`text-xs truncate transition-colors ${info.isChatted ? 'text-gray-400 group-hover:text-gray-300' : 'text-gray-500 italic'}`}>{info.isChatted ? info.lastMsg : p.slogan[lang]}</p>
-                  </div>
+                  <div className="relative flex-shrink-0"><div className={`w-14 h-14 rounded-full flex items-center justify-center text-3xl border-2 overflow-hidden ${info.isChatted ? (info.trust >= 50 ? (info.trust >= 100 ? 'border-[#7F5CFF]' : 'border-blue-500') : 'border-gray-700') : 'border-white/10'}`}>{p.avatar.startsWith('/') ? (<img src={p.avatar} alt={p.name} className="w-full h-full object-cover" />) : (<span>{p.avatar}</span>)}</div>{info.isChatted && (<div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] border-2 border-[#111] ${lv.barColor.replace('bg-', 'text-white bg-')}`}>{lv.level}</div>)}</div>
+                  <div className="flex-1 min-w-0"><div className="flex justify-between items-baseline mb-1"><h3 className="font-bold text-white text-base">{p.name}</h3><span className="text-[10px] text-gray-500">{info.isChatted ? info.time : 'New'}</span></div><div className="flex flex-wrap gap-1 mb-1">{p.tags[lang].slice(0, 2).map(tag => (<span key={tag} className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-gray-400 border border-white/5 whitespace-nowrap">{tag}</span>))}</div><div className="text-[10px] text-gray-500 mb-1 flex items-center gap-1 truncate">{status}</div><p className={`text-xs truncate transition-colors ${info.isChatted ? 'text-gray-400 group-hover:text-gray-300' : 'text-gray-500 italic'}`}>{info.isChatted ? info.lastMsg : p.slogan[lang]}</p></div>
                 </div>
               );
             })}
           </div>
-          <div className="fixed bottom-6 left-0 right-0 flex justify-center z-20 pointer-events-none">
-              <button onClick={handleOpenProfile} className="pointer-events-auto bg-[#1a1a1a]/80 backdrop-blur-md border border-white/10 text-gray-300 px-6 py-3 rounded-full shadow-2xl flex items-center gap-2 text-xs font-bold hover:bg-[#222] hover:text-white transition-all hover:scale-105 active:scale-95"><Brain size={14} className="text-[#7F5CFF]" /> {ui.profile}</button>
-          </div>
-          <button onClick={() => setShowFeedbackModal(true)} className="fixed bottom-6 right-6 z-50 p-3 rounded-full bg-[#1a1a1a] border border-white/10 text-gray-400 hover:text-white shadow-[0_0_20px_rgba(0,0,0,0.5)] hover:scale-110 transition-all active:scale-95" aria-label="Feedback"><Bug size={20} /></button>
+          <div className="fixed bottom-6 left-0 right-0 flex justify-center z-20 pointer-events-none"><button onClick={handleOpenProfile} className="pointer-events-auto bg-[#1a1a1a]/80 backdrop-blur-md border border-white/10 text-gray-300 px-6 py-3 rounded-full shadow-2xl flex items-center gap-2 text-xs font-bold hover:bg-[#222] hover:text-white transition-all hover:scale-105 active:scale-95"><Brain size={14} className="text-[#7F5CFF]" /> {ui.profile}</button></div>
+          <button onClick={() => setShowFeedbackModal(true)} className="fixed bottom-6 right-6 z-50 p-3 rounded-full bg-[#1a1a1a] border border-white/10 text-gray-400"><Bug size={20} /></button>
         </div>
       )}
 
+      {/* Chat View */}
       {view === 'chat' && (
         <div className={`z-10 flex flex-col h-full w-full max-w-lg mx-auto backdrop-blur-sm border-x shadow-2xl relative animate-[slideUp_0.3s_ease-out] ${levelInfo.bgClass} ${levelInfo.borderClass} ${levelInfo.glowClass} transition-all duration-1000`} style={levelInfo.customStyle}>
           <header className="flex-none px-4 py-3 bg-[#0a0a0a]/80 backdrop-blur-md sticky top-0 z-20 border-b border-white/5">
@@ -578,27 +595,11 @@ export default function Home() {
           <main className="flex-1 overflow-y-auto px-4 py-6 space-y-6 scroll-smooth">
             {messages.length === 0 && (
               <div className="h-full flex flex-col items-center justify-center text-center space-y-6 opacity-60">
-                <div className={`w-24 h-24 rounded-full bg-gradient-to-b from-white/5 to-transparent flex items-center justify-center text-5xl mb-2 border border-white/5 shadow-[0_0_30px_rgba(0,0,0,0.5)] animate-pulse overflow-hidden`}>
-                   {/* 智能判断：是图片还是 Emoji */}
-                   {currentP.avatar.startsWith('/') ? (
-                        <img src={currentP.avatar} alt={currentP.name} className="w-full h-full object-cover" />
-                      ) : (
-                        <span>{currentP.avatar}</span>
-                      )}
-                </div>
+                <div className={`w-24 h-24 rounded-full bg-gradient-to-b from-white/5 to-transparent flex items-center justify-center text-5xl mb-2 border border-white/5 shadow-[0_0_30px_rgba(0,0,0,0.5)] animate-pulse overflow-hidden`}>{currentP.avatar.startsWith('/') ? (<img src={currentP.avatar} alt={currentP.name} className="w-full h-full object-cover" />) : (<span>{currentP.avatar}</span>)}</div>
                 <div className="space-y-2 px-8"><p className="text-white/80 text-lg font-light">{lang === 'zh' ? '我是' : 'I am'} <span className={currentP.color}>{currentP.name}</span>.</p><p className="text-sm text-gray-400 italic font-serif">{currentP.slogan[lang]}</p></div>
                 <div className="mt-8 flex flex-col gap-3 items-center">
-                  <div className="flex items-center gap-2 text-green-400 bg-green-500/5 px-4 py-2 rounded-lg border border-green-500/10">
-                    <Lock size={14} />
-                    <span className="text-xs font-medium">
-                      {lang === 'zh' ? 'E2EE 端对端加密通道已建立' : 'E2EE Secure Connection Established'}
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-gray-500 max-w-[200px] leading-relaxed">
-                    {lang === 'zh' 
-                      ? '您的所有对话私隐受到严格保护。除 AI 分析所需的必要数据外，我们不会向任何第三方透露您的秘密。' 
-                      : 'Your privacy is strictly protected. No third-party data sharing.'}
-                  </p>
+                  <div className="flex items-center gap-2 text-green-400 bg-green-500/5 px-4 py-2 rounded-lg border border-green-500/10"><Lock size={14} /><span className="text-xs font-medium">{lang === 'zh' ? 'E2EE 端对端加密通道已建立' : 'E2EE Secure Connection Established'}</span></div>
+                  <p className="text-[10px] text-gray-500 max-w-[200px] leading-relaxed">{lang === 'zh' ? '您的所有对话私隐受到严格保护。除 AI 分析所需的必要数据外，我们不会向任何第三方透露您的秘密。' : 'Your privacy is strictly protected. No third-party data sharing.'}</p>
                 </div>
               </div>
             )}
@@ -608,33 +609,17 @@ export default function Home() {
               const isAI = msg.role !== 'user';
               const isVoice = voiceMsgIds.has(msg.id); 
 
-              // 🔥🔥🔥 核心修复：前端渲染净化 🔥🔥🔥
               const contentDisplay = msg.content.replace(/\[CMD:FOCUS_OFFER\]/g, '').trim();
 
               return (
                 <div key={msg.id} className={`flex w-full ${!isAI ? 'justify-end' : 'justify-start'} mb-4 animate-[slideUp_0.1s_ease-out]`}>
                   <div className={`max-w-[85%] flex flex-col items-start gap-1`}>
-                    
-                    <div className={`px-5 py-3.5 text-sm leading-6 shadow-md backdrop-blur-sm rounded-2xl border transition-all duration-300
-                      ${!isAI 
-                        ? 'bg-gradient-to-br from-[#7F5CFF] to-[#6242db] text-white rounded-tr-sm border-transparent' 
-                        : isVoice 
-                          ? 'bg-[#1a1a1a]/90 text-[#7F5CFF] border-[#7F5CFF]/50 shadow-[0_0_20px_rgba(127,92,255,0.2)]' 
-                          : 'bg-[#1a1a1a]/90 text-gray-200 rounded-tl-sm border-white/5' 
-                      }
-                    `}>
-                      {isAI && isVoice && (
-                        <div className="flex items-center gap-2 mb-2 pb-2 border-b border-[#7F5CFF]/20 text-[10px] font-bold opacity-90 uppercase tracking-widest">
-                           {playingMsgId === msg.id ? <Loader2 size={12} className="animate-spin"/> : <Volume2 size={12} />}
-                           <span>Voice Message</span>
-                        </div>
-                      )}
-
+                    <div className={`px-5 py-3.5 text-sm leading-6 shadow-md backdrop-blur-sm rounded-2xl border transition-all duration-300 ${!isAI ? 'bg-gradient-to-br from-[#7F5CFF] to-[#6242db] text-white rounded-tr-sm border-transparent' : isVoice ? 'bg-[#1a1a1a]/90 text-[#7F5CFF] border-[#7F5CFF]/50 shadow-[0_0_20px_rgba(127,92,255,0.2)]' : 'bg-[#1a1a1a]/90 text-gray-200 rounded-tl-sm border-white/5'}`}>
+                      {isAI && isVoice && (<div className="flex items-center gap-2 mb-2 pb-2 border-b border-[#7F5CFF]/20 text-[10px] font-bold opacity-90 uppercase tracking-widest">{playingMsgId === msg.id ? <Loader2 size={12} className="animate-spin"/> : <Volume2 size={12} />}<span>Voice Message</span></div>)}
                       {!isAI ? (
                         <ReactMarkdown>{contentDisplay}</ReactMarkdown>
                       ) : (
                         <div className="flex flex-col gap-1">
-                           {/* 处理 ||| 分割符 */}
                            {contentDisplay.split('|||').map((part, partIdx, arr) => {
                               if (!part.trim()) return null;
                               const isLastPart = partIdx === arr.length - 1;
@@ -643,86 +628,31 @@ export default function Home() {
                               if (shouldType) {
                                 return <Typewriter key={partIdx} content={part.trim()} isThinking={true} />;
                               }
-
                               return (
-                                <ReactMarkdown
-                                  key={partIdx}
-                                  components={{
-                                    a: ({ node, href, children, ...props }) => {
-                                      const linkHref = href || '';
-                                      
-                                      if (linkHref.startsWith('#trigger-')) {
-                                        const targetPersona = linkHref.replace('#trigger-', '') as PersonaType;
-                                        const pConfig = PERSONAS[targetPersona];
-                                        if (!pConfig) return <span>{children}</span>;
-                                        const colorClass = pConfig.color; 
-
-                                        return (
-                                          <button 
-                                            onClick={(e) => {
-                                              e.preventDefault();
-                                              e.stopPropagation();
-                                              selectPersona(targetPersona); 
-                                            }}
-                                            className="inline-flex items-center gap-1 mx-1 px-2 py-0.5 rounded-full bg-white/10 border border-white/10 hover:bg-white/20 transition-all transform hover:scale-105 align-middle -mt-0.5"
-                                            title={`跳转去找 ${targetPersona}`}
-                                          >
-                                            <span className={`text-[10px] font-bold ${colorClass} opacity-70`}>@</span>
-                                            <span className={`text-xs font-bold ${colorClass} underline decoration-dotted underline-offset-2`}>
-                                              {children}
-                                            </span>
-                                            {/* 确保 ArrowUpRight 已引入 */}
-                                            <ArrowUpRight size={10} className={`opacity-70 ${colorClass}`} />
-                                          </button>
-                                        );
-                                      }
-                                      
-                                      return (
-                                        <a 
-                                          href={linkHref} 
-                                          {...props} 
-                                          target="_blank" 
-                                          rel="noopener noreferrer" 
-                                          className="text-blue-400 underline hover:text-blue-300 break-all"
-                                        >
-                                          {children}
-                                        </a>
-                                      );
+                                <ReactMarkdown key={partIdx} components={{ a: ({ node, href, children, ...props }) => { 
+                                    const linkHref = href || '';
+                                    if (linkHref.startsWith('#trigger-')) {
+                                      const targetPersona = linkHref.replace('#trigger-', '') as PersonaType;
+                                      const pConfig = PERSONAS[targetPersona];
+                                      if (!pConfig) return <span>{children}</span>;
+                                      const colorClass = pConfig.color; 
+                                      return (<button onClick={(e) => { e.preventDefault(); e.stopPropagation(); selectPersona(targetPersona); }} className="inline-flex items-center gap-1 mx-1 px-2 py-0.5 rounded-full bg-white/10 border border-white/10 hover:bg-white/20 transition-all transform hover:scale-105 align-middle -mt-0.5" title={`跳转去找 ${targetPersona}`}><span className={`text-[10px] font-bold ${colorClass} opacity-70`}>@</span><span className={`text-xs font-bold ${colorClass} underline decoration-dotted underline-offset-2`}>{children}</span><ArrowUpRight size={10} className={`opacity-70 ${colorClass}`} /></button>);
                                     }
-                                  }}
-                                >
-                                  {formatMentions(part.trim())}
-                                </ReactMarkdown>
+                                    return (<a href={linkHref} {...props} target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300 break-all">{children}</a>);
+                                } }}>{formatMentions(part.trim())}</ReactMarkdown>
                               );
                            })}
                         </div>
                       )}
                     </div>
-
-                    {isAI && isVoice && playingMsgId !== msg.id && (
-                       <button 
-                         onClick={() => handlePlayAudio(contentDisplay, msg.id)} 
-                         className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-[#7F5CFF] ml-1 transition-colors"
-                       >
-                         <RotateCcw size={10} /> Replay
-                       </button>
-                    )}
+                    {isAI && isVoice && playingMsgId !== msg.id && (<button onClick={() => handlePlayAudio(contentDisplay, msg.id)} className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-[#7F5CFF] ml-1 transition-colors"><RotateCcw size={10} /> Replay</button>)}
                   </div>
                 </div>
               );
             })}
             
             {isLoading && messages.length > 0 && messages[messages.length - 1].role === 'user' && (
-               <div className="flex justify-start w-full animate-[slideUp_0.2s_ease-out]">
-                 <div className="flex items-center gap-2 bg-[#1a1a1a] px-4 py-3 rounded-2xl rounded-tl-sm border border-white/5">
-                   <div className="flex gap-1">
-                     <div className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                     <div className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                     <div className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                   </div>
-                   <span className="text-xs text-gray-500 ml-1">{ui.loading}</span>
-                 </div>
-               </div>
+               <div className="flex justify-start w-full animate-[slideUp_0.2s_ease-out]"><div className="flex items-center gap-2 bg-[#1a1a1a] px-4 py-3 rounded-2xl rounded-tl-sm border border-white/5"><div className="flex gap-1"><div className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} /><div className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} /><div className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} /></div><span className="text-xs text-gray-500 ml-1">{ui.loading}</span></div></div>
             )}
             <div ref={messagesEndRef} className="h-4" />
           </main>
@@ -731,24 +661,17 @@ export default function Home() {
             {messages.length <= 2 && !isLoading && (
               <div className="flex gap-2 overflow-x-auto pb-3 scrollbar-hide">
                 {QUICK_REPLIES_DATA[activePersona][lang].map((reply, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => {
-                      const msg: Message = { id: Date.now().toString(), role: 'user', content: reply };
-                      // 🔥 确保传入正确的 body 参数
-                      append(msg, { body: { persona: activePersona, language: lang, interactionCount, userName, envInfo: getLocalTimeInfo(), userId: getDeviceId() } });
-                      posthog.capture('use_quick_reply', { persona: activePersona, content: reply });
+                  <button key={idx} onClick={() => { 
+                      const msg: Message = { id: Date.now().toString(), role: 'user', content: reply }; 
+                      append(msg, { body: { persona: activePersona, language: lang, interactionCount, userName, envInfo: getLocalTimeInfo(), userId: getDeviceId() } }); 
+                      posthog.capture('use_quick_reply', { persona: activePersona, content: reply }); 
                       if (audioRef.current) { audioRef.current.src = SILENT_AUDIO; audioRef.current.play().catch(() => {}); }
-                    }}
-                    className="flex-shrink-0 px-3 py-1.5 bg-[#1a1a1a] border border-white/10 rounded-full text-xs text-gray-400 hover:text-white hover:border-[#7F5CFF] hover:bg-[#7F5CFF]/10 transition-all whitespace-nowrap"
-                  >
-                    {reply}
-                  </button>
+                  }} className="flex-shrink-0 px-3 py-1.5 bg-[#1a1a1a] border border-white/10 rounded-full text-xs text-gray-400 hover:text-white hover:border-[#7F5CFF] hover:bg-[#7F5CFF]/10 transition-all whitespace-nowrap">{reply}</button>
                 ))}
               </div>
             )}
             <form onSubmit={onFormSubmit} className="relative flex items-center gap-2 bg-[#151515] p-2 rounded-[24px] border border-white/10 shadow-2xl focus-within:border-[#7F5CFF]/50 transition-all duration-300">
-              <div className="relative flex items-center justify-center mr-2">
+              <div className="relative flex items-center justify-center mr-1">
                 {!forceVoice && voiceTrial > 0 && interactionCount < 50 && (
                    <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 px-2 py-1 bg-[#7F5CFF] text-white text-[10px] rounded-lg font-bold whitespace-nowrap animate-bounce shadow-[0_0_10px_#7F5CFF] z-20 pointer-events-none after:content-[''] after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-t-[#7F5CFF]">{lang === 'zh' ? '开启语音' : 'Voice Mode'}</div>
                 )}
@@ -757,7 +680,8 @@ export default function Home() {
                   {interactionCount < 50 && voiceTrial > 0 && (<span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-[9px] text-white font-bold border border-[#151515] animate-pulse">{voiceTrial}</span>)}
                   {interactionCount >= 50 && forceVoice && (<span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-green-500 shadow-[0_0_5px_#22c55e]"></span>)}
                 </button>
-                {/* 🔥🔥🔥 新增：Sol 专属的“申请监管”按钮 🔥🔥🔥 */}
+                
+                {/* 🔥 Sol 专属申请按钮 */}
                 {activePersona === 'Sol' && (
                   <button
                     type="button"
@@ -765,7 +689,6 @@ export default function Home() {
                     className="ml-2 p-2 rounded-full text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500 hover:text-white transition-all shadow-[0_0_10px_rgba(16,185,129,0.2)]"
                     title={lang === 'zh' ? "申请专注监管" : "Request Focus Protocol"}
                   >
-                    {/* 使用 Ban 或 Lock 图标 */}
                     <Ban size={18} />
                   </button>
                 )}
