@@ -757,6 +757,18 @@ export default function Home() {
                   {interactionCount < 50 && voiceTrial > 0 && (<span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-[9px] text-white font-bold border border-[#151515] animate-pulse">{voiceTrial}</span>)}
                   {interactionCount >= 50 && forceVoice && (<span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-green-500 shadow-[0_0_5px_#22c55e]"></span>)}
                 </button>
+                {/* 🔥🔥🔥 新增：Sol 专属的“申请监管”按钮 🔥🔥🔥 */}
+                {activePersona === 'Sol' && (
+                  <button
+                    type="button"
+                    onClick={() => setShowFocusOffer(true)}
+                    className="ml-2 p-2 rounded-full text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500 hover:text-white transition-all shadow-[0_0_10px_rgba(16,185,129,0.2)]"
+                    title={lang === 'zh' ? "申请专注监管" : "Request Focus Protocol"}
+                  >
+                    {/* 使用 Ban 或 Lock 图标 */}
+                    <Ban size={18} />
+                  </button>
+                )}
               </div>
 
               <input type="text" value={input} onChange={handleInputChange} placeholder={ui.placeholder} className="flex-1 bg-transparent text-white text-sm px-4 py-2 focus:outline-none placeholder-gray-600" />
