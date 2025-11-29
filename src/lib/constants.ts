@@ -60,6 +60,19 @@ export const UI_TEXT = {
     shameAction: "后当了逃兵。",
     shameFooter: "Sol 对此表示遗憾。",
     saveShame: "保存罪证",
+
+    // 🔥 Rin 便利贴文案
+    rinNoteTitle: "Rin 的加急便签",
+    rinTaskDone: "乖乖照做 (完成)",
+    rinTaskGiveUp: "我不听，我要摆烂",
+    rinGiveUpConfirm: "哈？这点小事都不愿意做？\n一旦放弃，Rin 会对你很失望。",
+    
+    // 🔥 光荣榜文案
+    gloryTitle: "光荣榜",
+    gloryContent: "在 Rin 的暴力监督下完成了",
+    gloryAction: "。",
+    gloryFooter: "Rin 居然夸你了 (稀有事件)",
+    saveGlory: "收藏小红花",
   },
   en: {
     placeholder: "Say something human...",
@@ -119,6 +132,19 @@ export const UI_TEXT = {
     shameAction: ".",
     shameFooter: "Sol is disappointed.",
     saveShame: "Save Evidence",
+
+    // 🔥 Rin Sticky Note
+    rinNoteTitle: "Rin's Sticky Note",
+    rinTaskDone: "I did it (Good boy)",
+    rinTaskGiveUp: "No, I choose rot",
+    rinGiveUpConfirm: "Huh? Can't even do this?\nRin will be disappointed.",
+    
+    // 🔥 Glory Board
+    gloryTitle: "WALL OF GLORY",
+    gloryContent: "completed",
+    gloryAction: "under Rin's supervision.",
+    gloryFooter: "Rin is proud (Rare).",
+    saveGlory: "Save Flower",
   }
 };
 
@@ -334,6 +360,25 @@ export const QUICK_REPLIES_DATA: Record<PersonaType, { zh: string[]; en: string[
 export const TRIAGE_TEXT = {
   zh: { title: "系统初始化", subtitle: "请声明你当前的精神状态。", opt1: "💊 我需要清醒", desc1: "拒绝煽情，毒舌直击。", opt2: "⛓️ 我需要管教", desc2: "强制自律，严厉导师。", opt3: "🩹 我需要陪伴", desc3: "虽然嘴硬，但会陪你。", footer: "TOUGHLOVE AI v2.0" },
   en: { title: "SYSTEM INITIALIZED", subtitle: "State your current mental status.", opt1: "💊 I need Reality", desc1: "No drama. Brutal truth.", opt2: "⛓️ I need Discipline", desc2: "Strict control. No excuses.", opt3: "🩹 I need Company", desc3: "Tsundere comfort. Not alone.", footer: "TOUGHLOVE AI v2.0" }
+};
+
+export const RIN_TASKS = {
+  zh: [
+    "立刻去喝一杯温水。\n不准只喝一口，要喝完。",
+    "放下手机，闭眼深呼吸 5 次。\n我会数着你的。",
+    "去洗一把脸。\n别让屏幕把你的脸照得油光满面。",
+    "站起来，伸个懒腰。\n听见骨头响了吗？老人家。",
+    "看着窗外（或者远方）发呆 20 秒。\n现在开始计时。",
+    "去清理一下你的桌面。\n乱得像猪窝一样，我看不下去了。"
+  ],
+  en: [
+    "Drink a full glass of water.\nRight now.",
+    "Put down phone. Deep breathe 5 times.",
+    "Go wash your face.\nWake up.",
+    "Stand up and stretch.\nDo it.",
+    "Look out the window for 20s.\nStarting now.",
+    "Clean your desk.\nIt's a mess."
+  ]
 };
 
 export const SOL_TAUNTS = {

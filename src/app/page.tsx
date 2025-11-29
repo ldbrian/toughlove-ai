@@ -9,13 +9,12 @@ import {
   Send, Calendar, ChevronLeft, MoreVertical, RotateCcw, 
   UserPen, Brain, Book, Lock, Sparkles, Shield, 
   Volume2, Loader2, Headphones, Ban, ArrowUpRight, 
-  MessageCircle, Bug, Zap, Heart, Globe, Download, Coffee// ✅ 修复：补充缺失的图标 Zap, Heart
+  MessageCircle, Bug, Zap, Heart, Globe, Download, Coffee
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
-// --- 引入拆分后的组件 ---
-// ✅ 修复：补充引入 SOL_TAUNTS
-import { PERSONAS, PersonaType, UI_TEXT, LangType, QUICK_REPLIES_DATA, SOL_TAUNTS } from '@/lib/constants';
+// --- 引入组件 & 常量 ---
+import { PERSONAS, PersonaType, UI_TEXT, LangType, QUICK_REPLIES_DATA, SOL_TAUNTS, RIN_TASKS } from '@/lib/constants';
 import { getDeviceId } from '@/lib/utils';
 import { getMemory, saveMemory, getVoiceIds, saveVoiceIds } from '@/lib/storage';
 import { getLocalTimeInfo, getSimpleWeather } from '@/lib/env';
@@ -27,6 +26,7 @@ import { Typewriter } from '@/components/ui/Typewriter';
 
 // 功能组件
 import { FocusOverlay } from '@/components/features/FocusOverlay';
+import { StickyNoteOverlay } from '@/components/features/StickyNoteOverlay'; // 🔥 新增：Rin 便利贴
 
 // 模态框组件
 import { 
@@ -35,14 +35,14 @@ import {
 } from '@/components/modals/SystemModals';
 
 import { 
-  DailyQuoteModal, ProfileModal, DiaryModal, ShameModal 
+  DailyQuoteModal, ProfileModal, DiaryModal, ShameModal, GloryModal // 🔥 新增：GloryModal
 } from '@/components/modals/ContentModals';
 
 // --- 类型定义 ---
 type DailyQuote = { content: string; date: string; persona: string; };
 type ViewState = 'selection' | 'chat';
 
-// --- 常量 ---
+// --- 常量定义 ---
 const CURRENT_VERSION_KEY = 'toughlove_v2.0_sensory_launch';
 const LANGUAGE_KEY = 'toughlove_language_confirmed';
 const LANG_PREF_KEY = 'toughlove_lang_preference';
@@ -50,13 +50,21 @@ const USER_NAME_KEY = 'toughlove_user_name';
 const LAST_DIARY_TIME_KEY = 'toughlove_last_diary_time';
 const VISITED_KEY = 'toughlove_has_visited';
 const LAST_QUOTE_DATE_KEY = 'toughlove_last_quote_view_date';
+
+// Sol Focus Keys
 const FOCUS_ACTIVE_KEY = 'toughlove_focus_active';
 const FOCUS_REMAINING_KEY = 'toughlove_focus_remaining';
 const FOCUS_START_TIME_KEY = 'toughlove_focus_start_time';
 const FOCUS_TOTAL_TIME = 25 * 60; 
 
-// 正则：更宽容的指令匹配
+// Rin Sticky Keys
+const RIN_ACTIVE_KEY = 'toughlove_rin_active';
+const RIN_TASK_KEY = 'toughlove_rin_task';
+
+// Regex Triggers
 const CMD_REGEX = /(\n)?\s*(\[|【)CMD\s*:\s*FOCUS_OFFER(\]|】)/gi;
+const RIN_CMD_REGEX = /(\n)?\s*(\[|【)CMD\s*:\s*RIN_OFFER(\]|】)/gi;
+
 const SILENT_AUDIO = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
 
 export default function Home() {
@@ -79,8 +87,9 @@ export default function Home() {
   const [showNameModal, setShowNameModal] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [showShameModal, setShowShameModal] = useState(false);
+  const [showGloryModal, setShowGloryModal] = useState(false); // 🔥 新增：光荣榜
 
-  // Focus Mode State
+  // Focus Mode State (Sol)
   const [showFocusOffer, setShowFocusOffer] = useState(false);
   const [isFocusActive, setIsFocusActive] = useState(false);
   const [focusRemaining, setFocusRemaining] = useState(0);
@@ -88,10 +97,15 @@ export default function Home() {
   const [focusWarning, setFocusWarning] = useState<string | null>(null);
   const [tauntIndex, setTauntIndex] = useState(0);
 
+  // Sticky Note State (Rin)
+  const [showStickyNote, setShowStickyNote] = useState(false);
+  const [currentStickyTask, setCurrentStickyTask] = useState("");
+
   // Data State
   const [quoteData, setQuoteData] = useState<DailyQuote | null>(null);
   const [profileData, setProfileData] = useState<{tags: string[], diagnosis: string} | null>(null);
   const [shameData, setShameData] = useState<{name: string, duration: number, date: string} | null>(null);
+  const [gloryData, setGloryData] = useState<{name: string, task: string, date: string} | null>(null); // 🔥 新增
   const [diaryContent, setDiaryContent] = useState("");
   const [feedbackText, setFeedbackText] = useState("");
   const [userName, setUserName] = useState("");
@@ -206,8 +220,9 @@ export default function Home() {
   const downloadQuoteCard = () => downloadCard(quoteCardRef, `ToughLove_${activePersona}_Quote.png`);
   const downloadProfileCard = () => downloadCard(profileCardRef, `ToughLove_Profile.png`);
   const downloadShameCard = (ref: any) => downloadCard(ref, `ToughLove_Shame.png`);
+  const downloadGloryCard = (ref: any) => downloadCard(ref, `ToughLove_Glory.png`); // 🔥 新增
 
-  // ================= Focus Mode Logic =================
+  // ================= Sol Logic (Focus Mode) =================
   const endFocusMode = () => { 
       if (typeof window !== 'undefined') {
         localStorage.removeItem(FOCUS_ACTIVE_KEY); 
@@ -247,6 +262,52 @@ export default function Home() {
       } 
   };
 
+  // ================= Rin Logic (Sticky Note) =================
+  const triggerRinProtocol = () => {
+    // 互斥：如果专注模式开启，Rin 暂不触发
+    if (isFocusActive) return;
+
+    const tasks = RIN_TASKS[lang] || RIN_TASKS['zh'];
+    const randomTask = tasks[Math.floor(Math.random() * tasks.length)];
+    
+    setCurrentStickyTask(randomTask);
+    setShowStickyNote(true);
+    
+    // 持久化状态
+    if (typeof window !== 'undefined') {
+        localStorage.setItem(RIN_ACTIVE_KEY, 'true');
+        localStorage.setItem(RIN_TASK_KEY, randomTask);
+    }
+    posthog.capture('rin_prescription_triggered');
+  };
+
+  const handleStickyComplete = () => {
+    // 清除状态
+    setShowStickyNote(false);
+    localStorage.removeItem(RIN_ACTIVE_KEY);
+    localStorage.removeItem(RIN_TASK_KEY);
+
+    // 准备光荣榜数据
+    const shortTask = currentStickyTask.split('。')[0] || "秘密任务";
+    setGloryData({
+        name: userName || ui.defaultName,
+        task: shortTask,
+        date: new Date().toLocaleDateString()
+    });
+
+    // 延迟弹窗 (等待撕纸动画结束)
+    setTimeout(() => setShowGloryModal(true), 600);
+    posthog.capture('rin_prescription_completed');
+  };
+
+  const handleStickyGiveUp = () => {
+    // 放弃逻辑
+    setShowStickyNote(false);
+    localStorage.removeItem(RIN_ACTIVE_KEY);
+    localStorage.removeItem(RIN_TASK_KEY);
+    posthog.capture('rin_prescription_given_up');
+  };
+
   // ================= UI Handlers =================
   const confirmLanguage = (l: LangType) => { setLang(l); localStorage.setItem(LANG_PREF_KEY, l); localStorage.setItem(LANGUAGE_KEY, 'true'); setShowLangSetup(false); if(!localStorage.getItem(VISITED_KEY)) setShowTriage(true); posthog.capture('language_set', { language: l }); };
   const saveUserName = () => { const nameToSave = tempName.trim(); setUserName(nameToSave); localStorage.setItem(USER_NAME_KEY, nameToSave); setShowNameModal(false); posthog.capture('username_set'); };
@@ -269,12 +330,19 @@ export default function Home() {
       localStorage.setItem(getTrustKey(activePersona), newCount.toString());
       if (newCount === 1 || newCount === 50 || newCount === 100) posthog.capture('trust_milestone', { persona: activePersona, level: newCount });
       
-      if (CMD_REGEX.test(message.content)) {
-          console.log("Detected Focus Command (onFinish)");
-          setShowFocusOffer(true);
+      const isAI = message.role === 'assistant';
+
+      if (isAI) {
+        // Sol Trigger
+        if (CMD_REGEX.test(message.content)) {
+            setShowFocusOffer(true);
+        }
+        // 🔥 Rin Trigger
+        if (RIN_CMD_REGEX.test(message.content)) {
+            triggerRinProtocol();
+        }
       }
 
-      const isAI = message.role === 'assistant';
       const isLevel2 = newCount >= 50; 
       let shouldPlay = false;
 
@@ -295,7 +363,9 @@ export default function Home() {
 
       if (isAI && shouldPlay) {
          setVoiceMsgIds(prev => { const n = new Set(prev).add(message.id); saveVoiceIds(activePersona, Array.from(n)); return n; });
-         handlePlayAudio(message.content.replace(CMD_REGEX, ''), message.id);
+         // TTS 清洗：同时去除 Sol 和 Rin 的指令
+         const cleanText = message.content.replace(CMD_REGEX, '').replace(RIN_CMD_REGEX, '');
+         handlePlayAudio(cleanText, message.id);
       }
     }
   });
@@ -380,24 +450,46 @@ export default function Home() {
   const prevLoadingRef = useRef(false);
   useEffect(() => {
     const wasLoading = prevLoadingRef.current;
-    if (wasLoading && !isLoading && messages.length > 0) { syncToCloud(messages); }
+    if (wasLoading && !isLoading && messages.length > 0) { 
+      // 🔥 修复: 同步云端前清洗所有指令
+      const cleanMsgs = messages.map(m => ({ 
+          ...m, 
+          content: m.content.replace(CMD_REGEX, '').replace(RIN_CMD_REGEX, '') 
+      }));
+      syncToCloud(cleanMsgs); 
+    }
     prevLoadingRef.current = isLoading;
   }, [isLoading, messages]);
 
-  useEffect(() => { if (messages.length > 0 && view === 'chat') { saveMemory(activePersona, messages); } }, [messages, activePersona, view]);
+  useEffect(() => { 
+    if (messages.length > 0 && view === 'chat') { 
+      // 🔥 修复: 存入本地前清洗所有指令
+      const cleanMsgs = messages.map(m => ({ 
+          ...m, 
+          content: m.content.replace(CMD_REGEX, '').replace(RIN_CMD_REGEX, '') 
+      }));
+      saveMemory(activePersona, cleanMsgs); 
+    } 
+  }, [messages, activePersona, view]);
+  
   useEffect(() => { scrollToBottom(); }, [messages, isLoading, view]);
 
-  // Focus CMD Check
+  // Command Check Effect (Sol + Rin)
   useEffect(() => {
     if (messages.length > 0) {
         const lastMsg = messages[messages.length - 1];
-        if (lastMsg.role === 'assistant' && CMD_REGEX.test(lastMsg.content)) {
-            setShowFocusOffer(true);
+        if (lastMsg.role === 'assistant') {
+            if (CMD_REGEX.test(lastMsg.content)) {
+                setShowFocusOffer(true);
+            }
+            if (RIN_CMD_REGEX.test(lastMsg.content)) {
+                triggerRinProtocol();
+            }
         }
     }
-  }, [messages]);
+  }, [messages]); // 依赖中不需要加 triggerRinProtocol，避免无限循环
 
-  // Init
+  // Init Effect
   useEffect(() => {
     setMounted(true); 
     const savedLang = localStorage.getItem(LANG_PREF_KEY);
@@ -429,6 +521,7 @@ export default function Home() {
     getSimpleWeather().then(w => setCurrentWeather(w));
     posthog.capture('page_view', { lang: savedLang || lang });
 
+    // Restore Sol State
     const savedFocus = localStorage.getItem(FOCUS_ACTIVE_KEY);
     if (savedFocus === 'true') {
         const remaining = parseInt(localStorage.getItem(FOCUS_REMAINING_KEY) || '0');
@@ -439,8 +532,18 @@ export default function Home() {
             endFocusMode();
         }
     }
+
+    // Restore Rin State
+    const isRinActive = localStorage.getItem(RIN_ACTIVE_KEY);
+    const savedTask = localStorage.getItem(RIN_TASK_KEY);
+    if (isRinActive === 'true' && savedTask) {
+        setCurrentStickyTask(savedTask);
+        setShowStickyNote(true);
+    }
+
   }, []);
 
+  // Focus Timer Effect
   useEffect(() => {
     if (isFocusActive && focusRemaining <= 0) {
         endFocusMode();
@@ -472,7 +575,6 @@ export default function Home() {
                 });
             }
         }, 1000);
-        // ✅ 修复：正确的 taunt 更新逻辑
         tauntInterval = setInterval(() => { 
             setTauntIndex(prev => (prev + 1) % SOL_TAUNTS[lang].length);
         }, 4000);
@@ -501,6 +603,16 @@ export default function Home() {
         />
       )}
 
+      {/* 🔥 挂载 Rin 便利贴 */}
+      {showStickyNote && (
+        <StickyNoteOverlay 
+          task={currentStickyTask} 
+          lang={lang} 
+          onComplete={handleStickyComplete}
+          onGiveUp={handleStickyGiveUp}
+        />
+      )}
+
       {/* === Modals === */}
       <FocusOfferModal show={showFocusOffer} lang={lang} onStart={startFocusMode} onCancel={() => setShowFocusOffer(false)} />
       <TriageModal show={showTriage} lang={lang} onSelect={handleTriageSelection} />
@@ -516,6 +628,8 @@ export default function Home() {
       
       <DiaryModal show={showDiary} onClose={() => setShowDiary(false)} content={diaryContent} isLoading={isDiaryLoading} currentP={currentP} />
       <ShameModal show={showShameModal} onClose={() => setShowShameModal(false)} data={shameData} lang={lang} onDownload={downloadShameCard} isGenerating={isGeneratingImg} ui={ui} />
+      {/* 🔥 挂载光荣榜 */}
+      <GloryModal show={showGloryModal} onClose={() => setShowGloryModal(false)} data={gloryData} lang={lang} onDownload={downloadGloryCard} isGenerating={isGeneratingImg} ui={ui} />
       
       {/* === Main Views === */}
       
@@ -560,47 +674,18 @@ export default function Home() {
                 <button onClick={fetchDailyQuote} className="p-2 text-gray-400 hover:text-[#7F5CFF] relative group"><Calendar size={18} /><span className={badgeStyle}></span></button>
                 <button onClick={() => setShowMenu(!showMenu)} className="p-2 text-gray-400 hover:text-white relative group"><MoreVertical size={18} /><span className={badgeStyle}></span></button>
                 {showMenu && (
-  <div className="absolute top-12 right-0 mt-2 w-48 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl z-50 flex flex-col p-1 animate-[fadeIn_0.1s_ease-out]">
-    {/* 1. 设置昵称 */}
-    <button onClick={handleEditName} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-white/5 rounded-xl transition-colors text-left">
-      <UserPen size={16} /> {userName || ui.editName}
-    </button>
-
-    {/* 🔥 2. 切换语言 (找回来的) */}
-    <button onClick={toggleLanguage} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-white/5 rounded-xl transition-colors text-left">
-      <Globe size={16} /> {ui.language}
-    </button>
-
-    {/* 🔥 3. 安装应用 (找回来的) */}
-    <button onClick={handleInstall} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-white/5 rounded-xl transition-colors text-left">
-      <Download size={16} /> {ui.install}
-    </button>
-
-    {/* 🔥 4. 请喝咖啡 (找回来的) */}
-    <button onClick={handleDonate} className="flex items-center gap-3 px-4 py-3 text-sm text-yellow-500 hover:bg-white/5 rounded-xl transition-colors text-left">
-      <Coffee size={16} /> Buy Coffee
-    </button>
-
-    {/* 🔥 5. 意见反馈 (找回来的) */}
-    <button onClick={() => setShowFeedbackModal(true)} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-white/5 rounded-xl transition-colors text-left">
-      <Bug size={16} /> Feedback
-    </button>
-
-    {/* 🔥 6. 关于/更新 (找回来的) */}
-    <button onClick={() => setShowUpdateModal(true)} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-white/5 rounded-xl transition-colors text-left">
-      <Sparkles size={16} /> {ui.about}
-    </button>
-
-    {/* 分割线 */}
-    <div className="h-px bg-white/5 my-1" />
-
-    {/* 7. 清除记忆 */}
-    <button onClick={handleReset} className="flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:bg-red-500/10 rounded-xl transition-colors text-left">
-      <RotateCcw size={16} /> {ui.reset}
-    </button>
-  </div>
-)}
-</div>
+                  <div className="absolute top-12 right-0 mt-2 w-48 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl z-50 flex flex-col p-1 animate-[fadeIn_0.1s_ease-out]">
+                    <button onClick={handleEditName} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-white/5 rounded-xl transition-colors text-left"><UserPen size={16} /> {userName || ui.editName}</button>
+                    <button onClick={toggleLanguage} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-white/5 rounded-xl transition-colors text-left"><Globe size={16} /> {ui.language}</button>
+                    <button onClick={handleInstall} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-white/5 rounded-xl transition-colors text-left"><Download size={16} /> {ui.install}</button>
+                    <button onClick={handleDonate} className="flex items-center gap-3 px-4 py-3 text-sm text-yellow-500 hover:bg-white/5 rounded-xl transition-colors text-left"><Coffee size={16} /> {ui.buyCoffee}</button>
+                    <button onClick={() => setShowFeedbackModal(true)} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-white/5 rounded-xl transition-colors text-left"><Bug size={16} /> {ui.feedback}</button>
+                    <button onClick={() => setShowUpdateModal(true)} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-white/5 rounded-xl transition-colors text-left"><Sparkles size={16} /> {ui.about}</button>
+                    <div className="h-px bg-white/5 my-1" />
+                    <button onClick={handleReset} className="flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:bg-red-500/10 rounded-xl transition-colors text-left"><RotateCcw size={16} /> {ui.reset}</button>
+                  </div>
+                )}
+              </div>
             </div>
             <div className="absolute bottom-0 left-0 w-full h-[1px] bg-white/5"><div className={`h-full ${levelInfo.barColor} shadow-[0_0_10px_currentColor] transition-all duration-500`} style={{ width: `${progressPercent}%` }}/></div>
           </header>
@@ -629,7 +714,8 @@ export default function Home() {
               const isAI = msg.role !== 'user';
               const isVoice = voiceMsgIds.has(msg.id); 
 
-              const contentDisplay = msg.content.replace(CMD_REGEX, '').trim();
+              // 清洗指令 Tag
+              const contentDisplay = msg.content.replace(CMD_REGEX, '').replace(RIN_CMD_REGEX, '').trim();
 
               return (
                 <div key={msg.id} className={`flex w-full ${!isAI ? 'justify-end' : 'justify-start'} mb-4 animate-[slideUp_0.1s_ease-out]`}>

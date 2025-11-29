@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 // 🔥 确保引入了 Ban 和 Share2 等图标
-import { X, Share2, Coffee, QrCode, ExternalLink, Gift, Bug, Brain, ImageIcon, Ban } from 'lucide-react';
+import { X, Share2, Coffee, QrCode, ExternalLink, Gift, Bug, Brain, ImageIcon, Ban, Award } from 'lucide-react';
 import { PERSONAS, PersonaType, LangType, UI_TEXT } from '@/lib/constants';
 import { Typewriter } from '../ui/Typewriter';
 
@@ -21,6 +21,66 @@ export const DailyQuoteModal = ({ show, onClose, data, isLoading, onDownload, is
   </div></div></>)}
         </div>
         {!isLoading && (<button onClick={() => onDownload(ref)} disabled={isGenerating} className="w-full mt-6 py-3.5 rounded-xl bg-white text-black font-bold text-sm flex items-center justify-center gap-2 hover:bg-gray-200 transition-colors shadow-[0_0_20px_rgba(255,255,255,0.2)]">{isGenerating ? <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin"/> : <Share2 size={16} />}{ui.save}</button>)}
+      </div>
+    </div>
+  );
+};
+
+// 🔥 新增：Glory Modal (光荣榜)
+export const GloryModal = ({ show, onClose, data, lang, onDownload, isGenerating, ui }: any) => {
+  if (!show) return null;
+  const ref = useRef<HTMLDivElement>(null);
+  
+  return (
+    <div className="fixed inset-0 z-[600] flex items-center justify-center bg-pink-950/90 backdrop-blur-md p-6 animate-[fadeIn_0.3s_ease-out]">
+      <div className="w-full max-w-sm relative">
+        <button onClick={onClose} className="absolute -top-12 right-0 p-2 text-white/50 hover:text-white"><X size={24}/></button>
+        
+        <div ref={ref} className="bg-[#fff0f5] rounded-xl border-4 border-pink-400 shadow-[0_0_60px_rgba(236,72,153,0.3)] overflow-hidden relative p-8 text-center flex flex-col items-center">
+           {/* 印章效果 */}
+           <div className="absolute top-6 right-6 rotate-12 w-20 h-20 border-4 border-pink-500 rounded-full flex items-center justify-center text-pink-500 font-black text-xs tracking-widest opacity-20 pointer-events-none">
+             GOOD JOB
+           </div>
+
+           <div className="text-sm font-black text-pink-500 uppercase tracking-[0.3em] mb-6 border-b border-pink-200 pb-2 w-full">
+             {ui.gloryTitle}
+           </div>
+
+           <div className="w-24 h-24 rounded-full border-2 border-pink-300 mb-6 overflow-hidden bg-pink-100 flex items-center justify-center shadow-inner">
+             {/* 强制使用 Rin 头像 */}
+             <img src={PERSONAS.Rin.avatar} alt="Rin" className="w-full h-full object-cover" />
+           </div>
+
+           <div className="text-lg text-gray-700 font-serif leading-relaxed mb-6">
+             <span className="font-bold text-black border-b border-pink-300 pb-0.5">{data?.name}</span>
+             <span className="mx-1 text-sm text-gray-500">{ui.gloryContent}</span>
+             <div className="font-bold text-pink-600 text-xl my-2">「 {data?.task} 」</div>
+             <div className="mt-1 text-sm text-gray-500">{ui.gloryAction}</div>
+           </div>
+
+           <div className="text-xs font-bold text-pink-400 uppercase tracking-widest mb-6">
+             — {ui.gloryFooter} —
+           </div>
+
+           <div className="w-full pt-4 border-t border-pink-200 flex justify-between items-end">
+             <div className="text-left">
+               <div className="text-[9px] text-gray-400 font-bold">DATE: {data?.date}</div>
+               <div className="text-[10px] text-pink-400 font-bold tracking-wider">toughlove.online</div>
+             </div>
+             <div className="w-10 h-10 bg-white p-1 rounded flex items-center justify-center">
+               <img src="/qrcode.png" alt="QR" className="w-full h-full object-contain" />
+             </div>
+           </div>
+        </div>
+
+        <button 
+          onClick={() => onDownload(ref)} 
+          disabled={isGenerating} 
+          className="w-full mt-6 py-3.5 rounded-xl bg-pink-500 text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-pink-600 transition-colors shadow-lg"
+        >
+          {isGenerating ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/> : <Share2 size={16} />}
+          {ui.saveGlory}
+        </button>
       </div>
     </div>
   );

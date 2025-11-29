@@ -27,8 +27,11 @@ const BUSY_MESSAGES: Record<string, string[]> = {
   Echo: ["（自动回复）...", "（自动回复）凝视深渊中。", "（自动回复）信号消散了。"]
 };
 
-// 🔥 1. 触发词库 (大幅扩充)
+// 🔥 1. Sol 触发词库 (专注)
 const FOCUS_KEYWORDS = /学习|工作|作业|专注|复习|赶ddl|冲刺|考研|备考|效率|拖延|摸鱼|不想动|累了|救命|管管我|自律|书|题|study|work|focus|homework|deadline|grind|lock in|procrastinat|distracted|lazy/i;
+
+// 🔥 2. Rin 触发词库 (情绪急救) - 新增
+const RIN_KEYWORDS = /难受|想哭|睡不着|失眠|焦虑|内耗|不想活|废物|抱抱|安慰|累|emo|熬夜|头痛|心烦|sad|cry|insomnia|anxious|depressed|tired|hug|comfort|pain|overthinking/i;
 
 export async function POST(req: Request) {
   try {
@@ -37,9 +40,25 @@ export async function POST(req: Request) {
     
     const currentLang = (language as LangType) || 'zh';
     const currentPersona = PERSONAS[persona as PersonaType] || PERSONAS.Ash;
+
+    // 🔥【成本控制 1】：简易限流 (Rate Limiting)
+    if (userId) {
+        const { count, error } = await supabase
+            .from('chat_histories')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', userId)
+            .gt('created_at', new Date(Date.now() - 60 * 1000).toISOString()); 
+
+        if (!error && count !== null && count > 15) {
+            return new Response(JSON.stringify({ error: 'Too many requests. Take a breath.' }), { status: 429 });
+        }
+    }
+
+    // 🔥【成本控制 2】：上下文截断
+    const MAX_HISTORY = 12;
+    const recentMessages = messages.slice(-MAX_HISTORY);
     
-    // 获取原始用户消息内容
-    let lastUserMsgContent = messages[messages.length - 1]?.content || "";
+    let lastUserMsgContent = recentMessages[recentMessages.length - 1]?.content || "";
 
     // 2. 风控拦截
     const safetyCheck = validateInput(lastUserMsgContent);
@@ -52,7 +71,7 @@ export async function POST(req: Request) {
     let isEmergency = false;
     if (SAFE_WORDS.test(lastUserMsgContent)) isEmergency = true;
 
-    // 3. 数据库并行查询
+    // 3. 数据库查询 (状态 + 记忆)
     let statusPromise = Promise.resolve(null);
     let memoryPromise = Promise.resolve(null);
 
@@ -99,13 +118,22 @@ export async function POST(req: Request) {
     const dynamicEnginePrompt = currentLang === 'zh' ? `[Engine]: 回复长度随机。` : `[Engine]: Randomize length.`;
     const emergencyOverride = isEmergency ? EMERGENCY_PROMPT : "";
 
-    // 🔥🔥🔥 核心修复：专注模式触发指令 (注入到 User Message) 🔥🔥🔥
-    // 只有 Sol 才会触发
+    // 🔥🔥🔥 触发器注入逻辑 (Trigger Injection) 🔥🔥🔥
+    
+    // A. Sol 专注模式触发
     if (persona === 'Sol' && FOCUS_KEYWORDS.test(lastUserMsgContent)) {
-        // 👇 修复：强制换行 + 明确格式
         const triggerInstruction = currentLang === 'zh'
-          ? `\n\n(SYSTEM: 这是一个触发点。用户想学习或正在偷懒。请严厉嘲讽他。回复结束后，必须**另起一行**输出且仅输出：[CMD:FOCUS_OFFER]。不要把标记放在句子中间。)`
-          : `\n\n(SYSTEM: Trigger point. Roast the user's laziness. At the very end, on a **NEW LINE**, output ONLY: [CMD:FOCUS_OFFER]. Do not put it inside sentences.)`;
+          ? `\n\n(SYSTEM: 触发点。用户想学习或偷懒。严厉嘲讽。回复末尾必须**另起一行**输出且仅输出：[CMD:FOCUS_OFFER]。)`
+          : `\n\n(SYSTEM: Trigger point. Roast laziness. At the very end, on a **NEW LINE**, output ONLY: [CMD:FOCUS_OFFER].)`;
+        
+        lastUserMsgContent += triggerInstruction;
+    }
+
+    // 🔥 B. Rin 情绪处方触发 (新增)
+    if (persona === 'Rin' && RIN_KEYWORDS.test(lastUserMsgContent)) {
+        const triggerInstruction = currentLang === 'zh'
+          ? `\n\n(SYSTEM: 触发点。用户情绪低落/身体不适。请表现出傲娇的关心（嘴硬心软）。回复末尾必须**另起一行**输出且仅输出：[CMD:RIN_OFFER]。)`
+          : `\n\n(SYSTEM: Trigger point. User is sad/unwell. Be tsundere (harsh but caring). At the very end, on a **NEW LINE**, output ONLY: [CMD:RIN_OFFER].)`;
         
         lastUserMsgContent += triggerInstruction;
     }
@@ -117,7 +145,7 @@ export async function POST(req: Request) {
     const finalSystemPrompt = `${SAFETY_PROTOCOL} ${basePrompt} ${namePrompt} ${envPrompt} ${trustPrompt} ${memoryPrompt} ${dynamicEnginePrompt} ${emergencyOverride} ${SYSTEM_LANG_CONSTRAINT}`;
 
     // 4. 重构消息队列
-    const newMessages = [...messages];
+    const newMessages = [...recentMessages];
     if (newMessages.length > 0) {
         newMessages[newMessages.length - 1].content = lastUserMsgContent;
     }
@@ -131,7 +159,14 @@ export async function POST(req: Request) {
        conversation.push({ role: 'system', content: "OUTPUT ENGLISH ONLY." });
     }
 
-    const response = await openai.chat.completions.create({ model: 'deepseek-chat', stream: true, messages: conversation, temperature: 0.9 });
+    const response = await openai.chat.completions.create({
+      model: 'deepseek-chat', 
+      stream: true, 
+      messages: conversation, 
+      temperature: 0.9,
+      max_tokens: 300, // 🔥【成本控制 3】
+    });
+    
     const stream = OpenAIStream(response as any);
     return new StreamingTextResponse(stream);
 
