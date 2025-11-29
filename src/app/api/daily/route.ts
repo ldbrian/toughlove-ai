@@ -1,107 +1,74 @@
 import { NextResponse } from 'next/server';
+import { OpenAI } from 'openai';
 import { createClient } from '@supabase/supabase-js';
-import { PERSONAS, PersonaType, LangType } from '@/lib/constants';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+const openai = new OpenAI({
+  apiKey: process.env.DEEPSEEK_API_KEY,
+  baseURL: 'https://api.deepseek.com',
+});
 
 export const runtime = 'edge';
 
-// 初始化 Supabase (使用服务端 Key 以确保读写权限)
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'build-time-dummy-key';
-const supabase = createClient(supabaseUrl, supabaseKey);
-
 export async function POST(req: Request) {
   try {
-    const { persona, userId, language } = await req.json();
+    const { content, userId } = await req.json();
+
+    if (!content) return NextResponse.json({ error: 'Empty content' }, { status: 400 });
+
+    const systemPrompt = `你是一位敏锐的心理侧写师 Echo。用户正在向你倾诉日记。
+    任务：
+    1. 捕捉用户当下的情绪状态、潜意识动机。
+    2. 提取 3-5 个精准的【情绪/状态标签】（如：#焦虑 #渴望认可 #内耗中）。
+    3. 写一句【简短洞察】（30字以内），一针见血地点破他的状态。
     
-    const currentLang = (language as LangType) || 'zh';
-    const currentPersona = PERSONAS[persona as PersonaType] || PERSONAS.Ash;
-    const today = new Date().toISOString().split('T')[0];
+    ⚠️ 严格输出纯 JSON 格式，不要包含 Markdown 符号：
+    { "tags": ["tag1", "tag2"], "insight": "..." }`;
 
-    if (!userId) {
-      return NextResponse.json({ error: 'User ID required' }, { status: 400 });
-    }
-
-    // 1. 检查今日是否已生成 (恢复每日一次的逻辑)
-    // 仪式感核心：每天点进来看到的都是那句定死的毒鸡汤
-    const { data: existing } = await supabase
-      .from('daily_quotes')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('date', today)
-      .eq('persona', persona) // 每个人格每天可以有一条不同的
-      .single();
-
-    if (existing) {
-      return NextResponse.json(existing);
-    }
-
-    // 2. 如果今天没生成，去查“上一次”生成的记录 (用于去重)
-    const { data: history } = await supabase
-      .from('daily_quotes')
-      .select('content')
-      .eq('user_id', userId)
-      .eq('persona', persona)
-      .order('date', { ascending: false })
-      .limit(1)
-      .single();
-
-    const lastQuote = history?.content || "";
-
-    // 3. 构建 Prompt
-    const basePrompt = currentPersona.prompts[currentLang];
-    
-    // 🔥 核心优化：将历史记录注入 Prompt，强制避嫌
-    let avoidInstruction = "";
-    if (lastQuote) {
-        avoidInstruction = currentLang === 'zh'
-            ? `\n❌ 禁止生成与这就话类似的内容：“${lastQuote}”。必须换个角度骂。`
-            : `\n❌ DO NOT repeat or paraphrase this previous quote: "${lastQuote}". Find a new angle.`;
-    }
-
-    const taskPrompt = currentLang === 'zh' 
-      ? `请生成一句“今日毒签”。
-         要求：
-         1. 极度简短 (20字以内)。
-         2. 犀利、冷幽默、不带引号。
-         3. 随机性强，不要用套话。${avoidInstruction}`
-      : `Generate a "Daily Toxic Quote". 
-         Requirements:
-         1. Short (<15 words).
-         2. Savage, no quotes.
-         3. High randomness. ${avoidInstruction}`;
-
-    // 4. 调用 AI
-    const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: 'deepseek-chat',
-        messages: [
-          { role: 'system', content: basePrompt },
-          { role: 'user', content: taskPrompt }
-        ],
-        temperature: 1.3, // 🔥 保持高温度，增加随机性
-      }),
+    const response = await openai.chat.completions.create({
+      model: 'deepseek-chat',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: content }
+      ],
+      temperature: 0.7,
     });
 
-    const aiData = await response.json();
-    const content = aiData.choices?.[0]?.message?.content || (currentLang === 'zh' ? "今天不想骂你，滚吧。" : "Silence.");
+    let rawContent = response.choices[0].message.content || '{}';
+    
+    // 🔥 修复：清洗 Markdown 格式 (```json ... ```)
+    rawContent = rawContent.replace(/```json/g, '').replace(/```/g, '').trim();
 
-    // 5. 存库 (锁定今日)
-    await supabase.from('daily_quotes').insert({
-      user_id: userId,
-      date: today,
-      content: content,
-      persona: persona
-    });
+    let result;
+    try {
+        result = JSON.parse(rawContent);
+    } catch (e) {
+        console.error("JSON Parse Error:", rawContent);
+        // 降级处理，防止前端白屏
+        result = { tags: ["#分析中"], insight: rawContent.slice(0, 50) || "内心迷雾重重，看不清。" };
+    }
 
-    return NextResponse.json({ date: today, content, persona });
+    const tags = result.tags || [];
+    const insight = result.insight || "内心迷雾重重，看不清。";
+
+    if (userId) {
+        const { error } = await supabase.from('memories').insert({
+            user_id: userId,
+            type: 'insight_echo',
+            content: insight,
+            metadata: { tags: tags }
+        });
+        if (error) console.error("DB Insert Error:", error);
+    }
+
+    return NextResponse.json({ tags, insight });
 
   } catch (error) {
-    console.error("Daily Quote Error:", error);
-    return NextResponse.json({ error: 'Error generating quote' }, { status: 500 });
+    console.error("Diary API Error:", error);
+    return NextResponse.json({ error: 'Failed' }, { status: 500 });
   }
 }
