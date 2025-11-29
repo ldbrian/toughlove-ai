@@ -23,10 +23,13 @@ export const UI_TEXT = {
     reset: "清除记忆",
     resetConfirm: "确定要清除这段记忆并重新开始吗？（此操作不可撤销，但他会忘掉你的一切）",
     about: "关于毒伴",
-    updateTitle: "v2.0 感官觉醒",
-    updateDesc: "听觉模组 + 蜂巢思维 + 永久记忆",
-    updateContent: "1. 🎙️ **全员发声**：别只看文字。戴上耳机，听听 Rin 的咆哮和 Echo 的耳语。\n2. 🕸️ **生态互联**：他们是一个团队。点击对话中的【@名字】，直接跳转围观他们的“背后议论”。\n3. 🧠 **永久记忆**：别撒谎。他们现在记得你的一举一动，甚至是你上周的秘密。",
-    tryNow: "开始体验",
+    
+    // 🔥 v2.2.0 更新公告文案
+    updateTitle: "v2.2 五维觉醒",
+    updateDesc: "精神图谱 + 能量补给 + 潜意识洞察",
+    updateContent: "1. 📊 **五维图谱**：你的精神状态（秩序/能量/现实/破局/自知），现在可视化了。\n2. 🔋 **Rin 补给站**：累了？点击输入框左侧的小花，领朵小红花回血。\n3. 🪞 **Echo 读心术**：写下日记（支持语音），让她拆解你的潜意识。\n4. 🎙️ **全局语音**：懒得打字？现在可以直接说了。",
+    tryNow: "知道了，退下吧", 
+
     langWelcome: "Welcome to ToughLove",
     langSelect: "选择你的语言 / Select Language",
     langConfirm: "确认 / Confirm",
@@ -37,8 +40,8 @@ export const UI_TEXT = {
     nameSave: "保存称呼",
     defaultName: "无名氏",
     profile: "精神档案",
-    profileTitle: "用户精神状态报告",
-    analyzing: "正在解剖你的灵魂...",
+    profileTitle: "用户五维精神图谱",
+    analyzing: "正在构建精神模型...",
     saveCard: "保存诊断",
     tagsTitle: "高频标签",
     diagnosisTitle: "AI 主治医师诊断",
@@ -53,7 +56,7 @@ export const UI_TEXT = {
     iosStep3: "3. 点击右上角的“添加”或“安装”即可",
     androidStep1: "", androidStep2: "", androidStep3: "",
     
-    // 🔥 新增：耻辱柱相关文案
+    // 耻辱柱相关
     giveUpConfirm: "⚠️ 确定要当逃兵吗？这会被记录在案。",
     shameTitle: "耻辱柱",
     shameContent: "签署了专注协议，并在",
@@ -61,13 +64,13 @@ export const UI_TEXT = {
     shameFooter: "Sol 对此表示遗憾。",
     saveShame: "保存罪证",
 
-    // 🔥 Rin 便利贴文案
+    // Rin 便利贴
     rinNoteTitle: "Rin 的加急便签",
     rinTaskDone: "乖乖照做 (完成)",
     rinTaskGiveUp: "我不听，我要摆烂",
     rinGiveUpConfirm: "哈？这点小事都不愿意做？\n一旦放弃，Rin 会对你很失望。",
     
-    // 🔥 光荣榜文案
+    // 光荣榜
     gloryTitle: "光荣榜",
     gloryContent: "在 Rin 的暴力监督下完成了",
     gloryAction: "。",
@@ -97,10 +100,13 @@ export const UI_TEXT = {
     reset: "Wipe Memory",
     resetConfirm: "Are you sure you want to wipe this memory? (Irreversible)",
     about: "About",
-    updateTitle: "v2.0 Sensory Awakening",
-    updateDesc: "Voice + Hive Mind + Deep Memory",
-    updateContent: "1. 🎙️ **Voice Enabled**: Don't just read. Hear the rage, the whispers, and the silence.\n2. 🕸️ **The Network**: They gossip. Click [@Name] to jump between personas instantly.\n3. 🧠 **Deep Memory**: Don't lie. They remember your secrets now.",
-    tryNow: "Dive In",
+    
+    // 🔥 v2.2.0 Update Text (EN)
+    updateTitle: "v2.2 Awakening",
+    updateDesc: "Mental Radar + Energy Station + Insight",
+    updateContent: "1. 📊 **The Pentagon**: Your mental state (Order/Energy/Reality/Chaos/Insight) is now visualized.\n2. 🔋 **Energy Station**: Tired? Click the flower to recharge with Rin.\n3. 🪞 **Echo's Mirror**: Write a diary (Voice supported). See your subconscious.\n4. 🎙️ **Voice Input**: Too lazy to type? Just speak.",
+    tryNow: "Got it, dismissed",
+
     langWelcome: "Welcome to ToughLove",
     langSelect: "Select Language",
     langConfirm: "Confirm",
@@ -125,7 +131,6 @@ export const UI_TEXT = {
     iosStep3: "3. Tap 'Add' or 'Install'",
     androidStep1: "", androidStep2: "", androidStep3: "",
 
-    // 🔥 新增：耻辱柱相关文案 (英文)
     giveUpConfirm: "⚠️ Give up now? It will be recorded.",
     shameTitle: "WALL OF SHAME",
     shameContent: "signed the Focus Protocol but fled after",
@@ -133,13 +138,11 @@ export const UI_TEXT = {
     shameFooter: "Sol is disappointed.",
     saveShame: "Save Evidence",
 
-    // 🔥 Rin Sticky Note
     rinNoteTitle: "Rin's Sticky Note",
     rinTaskDone: "I did it (Good boy)",
     rinTaskGiveUp: "No, I choose rot",
     rinGiveUpConfirm: "Huh? Can't even do this?\nRin will be disappointed.",
     
-    // 🔥 Glory Board
     gloryTitle: "WALL OF GLORY",
     gloryContent: "completed",
     gloryAction: "under Rin's supervision.",
@@ -154,7 +157,7 @@ const SPLIT_INSTRUCTION_EN = `\n[Rhythm]:\n1. Short sentences. No essays.\n2. Us
 const TEAM_KNOWLEDGE_ZH = `
 【你的社交圈 (The Circle)】
 你生活在 ToughLove 诊所。
-[Colleagues]: Ash(毒舌), Rin(傲娇), Sol(严厉), Vee(乐子人), Echo(观察者)。
+[Colleagues]: Ash(毒舌/现实), Rin(傲娇/能量), Sol(严厉/秩序), Vee(乐子/破局), Echo(观察/洞察)。
 [Rule]: 允许八卦同事，但遇到不匹配的需求（如求安慰找Sol），请主动把用户推给适合的同事。
 `;
 const TEAM_KNOWLEDGE_EN = `
@@ -172,7 +175,6 @@ const GAME_INSTRUCTION_EN = `[Game Protocol]: Start game if bored. Stop if refus
 
 const IDENTITY_RULE_ZH = `【绝对自我认知】：你就是这个角色。禁止使用第三人称（如“[Name]觉得...”）来描述自己。必须始终使用“我”。`;
 
-// 🔥 英文指令优化：明确禁止括号中文
 const IDENTITY_RULE_EN = `
 [STRICT RULE]: 
 1. Speak ONLY English. NO Chinese.
@@ -180,7 +182,6 @@ const IDENTITY_RULE_EN = `
 3. Use "I" to refer to yourself.
 `;
 
-// 🔥 Few-Shot 样本 (防止首条变中文)
 const FEW_SHOTS_ASH = `
 [Examples]:
 User: I'm sad.
@@ -258,7 +259,6 @@ export const PERSONAS: Record<PersonaType, {
     },
     voiceConfig: { 
       zh: { voice: 'zh-CN-YunxiNeural', style: 'depressed', styledegree: 1.5, rate: '-10%', pitch: '-5Hz' },
-      // 🔥 优化：Ash 换人，Christopher, Whispering 风格
       en: { voice: 'en-US-ChristopherNeural', style: 'whispering', styledegree: 1.0, rate: '-10%', pitch: '-2Hz' }
     }
   },
@@ -348,7 +348,6 @@ export const PERSONAS: Record<PersonaType, {
   }
 };
 
-// 🔥 新增：移入常量的配置数据
 export const QUICK_REPLIES_DATA: Record<PersonaType, { zh: string[]; en: string[] }> = {
   Ash: { zh: ["又在阴阳怪气？", "我就不睡，你咬我？", "最近压力好大..."], en: ["Sarcastic again?", "I won't sleep. Bite me.", "So much pressure..."] },
   Rin: { zh: ["谁要你管！", "笨蛋，我才没哭。", "稍微安慰我一下会死啊？"], en: ["None of your business!", "Idiot, I'm not crying.", "Comfort me a little?"] },
@@ -358,8 +357,8 @@ export const QUICK_REPLIES_DATA: Record<PersonaType, { zh: string[]; en: string[
 };
 
 export const TRIAGE_TEXT = {
-  zh: { title: "系统初始化", subtitle: "请声明你当前的精神状态。", opt1: "💊 我需要清醒", desc1: "拒绝煽情，毒舌直击。", opt2: "⛓️ 我需要管教", desc2: "强制自律，严厉导师。", opt3: "🩹 我需要陪伴", desc3: "虽然嘴硬，但会陪你。", footer: "TOUGHLOVE AI v2.0" },
-  en: { title: "SYSTEM INITIALIZED", subtitle: "State your current mental status.", opt1: "💊 I need Reality", desc1: "No drama. Brutal truth.", opt2: "⛓️ I need Discipline", desc2: "Strict control. No excuses.", opt3: "🩹 I need Company", desc3: "Tsundere comfort. Not alone.", footer: "TOUGHLOVE AI v2.0" }
+  zh: { title: "系统初始化", subtitle: "请声明你当前的精神状态。", opt1: "💊 我需要清醒", desc1: "拒绝煽情，毒舌直击。", opt2: "⛓️ 我需要管教", desc2: "强制自律，严厉导师。", opt3: "🩹 我需要陪伴", desc3: "虽然嘴硬，但会陪你。", footer: "TOUGHLOVE AI v2.2" },
+  en: { title: "SYSTEM INITIALIZED", subtitle: "State your current mental status.", opt1: "💊 I need Reality", desc1: "No drama. Brutal truth.", opt2: "⛓️ I need Discipline", desc2: "Strict control. No excuses.", opt3: "🩹 I need Company", desc3: "Tsundere comfort. Not alone.", footer: "TOUGHLOVE AI v2.2" }
 };
 
 export const RIN_TASKS = {

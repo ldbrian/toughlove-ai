@@ -40,7 +40,7 @@ import {
 } from '@/components/modals/ContentModals';
 
 // --- Constants ---
-const CURRENT_VERSION_KEY = 'toughlove_v2.2_awakening';
+const CURRENT_VERSION_KEY = 'toughlove_v2.2.0_release'; // 🔥 版本号更新
 const LANGUAGE_KEY = 'toughlove_language_confirmed';
 const LANG_PREF_KEY = 'toughlove_lang_preference';
 const USER_NAME_KEY = 'toughlove_user_name';
@@ -230,12 +230,60 @@ export default function Home() {
   };
 
   // Sol Logic
-  const endFocusMode = () => { if (typeof window !== 'undefined') { localStorage.removeItem(FOCUS_ACTIVE_KEY); localStorage.removeItem(FOCUS_REMAINING_KEY); } setIsFocusActive(false); setIsFocusPaused(false); };
-  const startFocusMode = () => { setShowFocusOffer(false); setIsFocusActive(true); setFocusRemaining(FOCUS_TOTAL_TIME); if (typeof window !== 'undefined') { localStorage.setItem(FOCUS_ACTIVE_KEY, 'true'); localStorage.setItem(FOCUS_REMAINING_KEY, FOCUS_TOTAL_TIME.toString()); localStorage.setItem(FOCUS_START_TIME_KEY, Date.now().toString()); } posthog.capture('focus_mode_start'); };
-  const giveUpFocus = () => { if (confirm(ui.giveUpConfirm)) { const startTimeStr = localStorage.getItem(FOCUS_START_TIME_KEY); const startTime = startTimeStr ? parseInt(startTimeStr) : Date.now(); const durationMin = Math.max(1, Math.floor((Date.now() - startTime) / 60000)); setShameData({ name: userName || ui.defaultName, duration: durationMin, date: new Date().toLocaleDateString() }); endFocusMode(); setShowShameModal(true); posthog.capture('focus_mode_giveup', { duration: durationMin }); } };
+  const endFocusMode = () => { 
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem(FOCUS_ACTIVE_KEY); 
+        localStorage.removeItem(FOCUS_REMAINING_KEY);
+      }
+      setIsFocusActive(false); 
+      setIsFocusPaused(false);
+  };
+  
+  const startFocusMode = () => { 
+      setShowFocusOffer(false); 
+      setIsFocusActive(true); 
+      setFocusRemaining(FOCUS_TOTAL_TIME); 
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(FOCUS_ACTIVE_KEY, 'true'); 
+        localStorage.setItem(FOCUS_REMAINING_KEY, FOCUS_TOTAL_TIME.toString()); 
+        localStorage.setItem(FOCUS_START_TIME_KEY, Date.now().toString());
+      }
+      posthog.capture('focus_mode_start'); 
+  };
+  
+  const giveUpFocus = () => { 
+      if (confirm(ui.giveUpConfirm)) {
+          const startTimeStr = localStorage.getItem(FOCUS_START_TIME_KEY);
+          const startTime = startTimeStr ? parseInt(startTimeStr) : Date.now();
+          const durationMin = Math.max(1, Math.floor((Date.now() - startTime) / 60000));
+
+          setShameData({
+            name: userName || ui.defaultName,
+            duration: durationMin,
+            date: new Date().toLocaleDateString()
+          });
+
+          endFocusMode(); 
+          setShowShameModal(true);
+          posthog.capture('focus_mode_giveup', { duration: durationMin }); 
+      } 
+  };
 
   // Rin Logic
-  const triggerRinProtocol = () => { if (isFocusActive) return; const tasks = RIN_TASKS[lang] || RIN_TASKS['zh']; const randomTask = tasks[Math.floor(Math.random() * tasks.length)]; setCurrentStickyTask(randomTask); setShowStickyNote(true); if (typeof window !== 'undefined') { localStorage.setItem(RIN_ACTIVE_KEY, 'true'); localStorage.setItem(RIN_TASK_KEY, randomTask); } posthog.capture('rin_prescription_triggered'); };
+  const triggerRinProtocol = () => {
+    if (isFocusActive) return;
+    const tasks = RIN_TASKS[lang] || RIN_TASKS['zh'];
+    const randomTask = tasks[Math.floor(Math.random() * tasks.length)];
+    
+    setCurrentStickyTask(randomTask);
+    setShowStickyNote(true);
+    
+    if (typeof window !== 'undefined') {
+        localStorage.setItem(RIN_ACTIVE_KEY, 'true');
+        localStorage.setItem(RIN_TASK_KEY, randomTask);
+    }
+    posthog.capture('rin_prescription_triggered');
+  };
 
   const handleStickyComplete = async () => {
     setShowStickyNote(false);
@@ -272,6 +320,8 @@ export default function Home() {
   const goBMAC = () => { window.open('https://www.buymeacoffee.com/ldbrian', '_blank'); }
   const handleEditName = () => { setTempName(userName); setShowNameModal(true); setShowMenu(false); }
   const dismissUpdate = () => { localStorage.setItem(CURRENT_VERSION_KEY, 'true'); setShowUpdateModal(false); };
+  // 🔥 修复：去掉跳转逻辑，原地停留
+  const handleTryNewFeature = () => { posthog.capture('update_click_try'); dismissUpdate(); }; 
   const toggleLanguage = () => { const newLang = lang === 'zh' ? 'en' : 'zh'; setLang(newLang); localStorage.setItem(LANG_PREF_KEY, newLang); setShowMenu(false); };
   const backToSelection = () => { setView('selection'); setTick(tick + 1); };
 
@@ -295,7 +345,6 @@ export default function Home() {
 
   const selectPersona = async (persona: PersonaType) => { posthog.capture('persona_select', { persona: persona }); setForceVoice(false); setActivePersona(persona); setView('chat'); const localHistory = getMemory(persona); const localVoiceIds = getVoiceIds(persona); setMessages(localHistory); setVoiceMsgIds(new Set(localVoiceIds)); try { const res = await fetch(`/api/sync?userId=${getDeviceId()}&persona=${persona}`); const data = await res.json(); if (data.messages && data.messages.length > 0) { if (data.messages.length >= localHistory.length) { setMessages(data.messages); saveMemory(persona, data.messages); } } else if (localHistory.length === 0) { const p = PERSONAS[persona]; const greetings = p.greetings[lang]; const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)]; const welcomeMsg: Message = { id: Date.now().toString(), role: 'assistant', content: randomGreeting }; setMessages([welcomeMsg]); saveMemory(persona, [welcomeMsg]); } } catch (e) { if (localHistory.length === 0) { const p = PERSONAS[persona]; const greetings = p.greetings[lang]; const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)]; const welcomeMsg: Message = { id: Date.now().toString(), role: 'assistant', content: randomGreeting }; setMessages([welcomeMsg]); saveMemory(persona, [welcomeMsg]); } } };
   const handleTriageSelection = (target: PersonaType) => { localStorage.setItem(VISITED_KEY, 'true'); setShowTriage(false); selectPersona(target); posthog.capture('triage_select', { target }); };
-  const handleTryNewFeature = () => { posthog.capture('update_click_try'); dismissUpdate(); selectPersona('Sol'); }; 
   const handleReset = () => { if (confirm(ui.resetConfirm)) { posthog.capture('chat_reset', { persona: activePersona }); setMessages([]); saveMemory(activePersona, []); localStorage.removeItem(`toughlove_voice_ids_${activePersona}`); setVoiceMsgIds(new Set()); syncToCloud([]); setShowMenu(false); setInteractionCount(0); localStorage.setItem(getTrustKey(activePersona), '0'); const p = PERSONAS[activePersona]; const greetings = p.greetings[lang]; const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)]; setTimeout(() => { const welcomeMsg: Message = { id: Date.now().toString(), role: 'assistant', content: randomGreeting }; setMessages([welcomeMsg]); saveMemory(activePersona, [welcomeMsg]); syncToCloud([welcomeMsg]); }, 100); } };
   const handleBribeSuccess = async () => { setShowDonateModal(false); localStorage.setItem('toughlove_is_patron', 'true'); const bribeMsg: Message = { id: Date.now().toString(), role: 'user', content: lang === 'zh' ? "☕️ (给你买了一杯热咖啡，请笑纳...)" : "☕️ (Bought you a coffee. Be nice...)" }; await append(bribeMsg); posthog.capture('user_bribed_ai', { persona: activePersona }); };
   const handleOpenProfile = async () => { posthog.capture('feature_profile_open'); setShowMenu(false); setShowProfile(true); setIsProfileLoading(true); try { const res = await fetch('/api/profile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: getDeviceId(), language: lang }), }); const data = await res.json(); setProfileData(data); } catch (e) { console.error(e); } finally { setIsProfileLoading(false); } };
@@ -380,8 +429,8 @@ export default function Home() {
              <div className="flex items-center justify-between">
               <div className="flex items-center gap-3 min-w-0 flex-1">
                 <button onClick={backToSelection} className="text-gray-400 hover:text-white transition-colors"><div className="p-1.5 bg-white/5 rounded-full hover:bg-[#7F5CFF] transition-colors"><ChevronLeft size={16} className="group-hover:text-white" /></div></button>
-                <div className="relative cursor-pointer" onClick={handleExport} title={ui.export}><div className="w-10 h-10 rounded-full bg-[#1a1a1a] border border-white/10 flex items-center justify-center text-xl shadow-[0_0_15px_rgba(0,0,0,0.5)] overflow-hidden">{currentP.avatar.startsWith('/') ? (<img src={currentP.avatar} alt={currentP.name} className="w-full h-full object-cover" />) : (<span>{currentP.avatar}</span>)}</div></div>
-                <div className="flex flex-col justify-center min-w-0"><h1 className="font-bold text-sm text-white tracking-wide truncate flex items-center gap-2">{currentP.name}<span className={`text-[9px] font-normal transition-all duration-300 ${isLoading ? 'text-[#7F5CFF] animate-pulse font-bold' : `opacity-50 ${currentP.color}`}`}>{isLoading ? ui.loading : currentP.title[lang]}</span></h1><div className="flex items-center gap-2 mt-0.5"><div className={`text-[9px] px-1.5 py-px rounded-md border border-white/10 bg-white/5 flex items-center gap-1 ${levelInfo.barColor.replace('bg-', 'text-')}`}>{levelInfo.icon} <span className="font-mono font-bold">Lv.{levelInfo.level}</span></div></div></div>
+                <div className="relative cursor-pointer" onClick={handleExport} title={ui.export}><div className="w-10 h-10 rounded-full bg-[#1a1a1a] border border-white/10 flex items-center justify-center text-xl shadow-[0_0_15px_rgba(0,0,0,0.5)] overflow-hidden">{currentP.avatar.startsWith('/') ? (<img src={currentP.avatar} alt={currentP.name} className="w-full h-full object-cover" />) : (<span>{currentP.avatar}</span>)}</div><div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-[#0a0a0a]"></div></div>
+                <div className="flex flex-col justify-center min-w-0"><h1 className="font-bold text-sm text-white tracking-wide truncate flex items-center gap-2">{currentP.name}<span className={`text-[9px] font-normal transition-all duration-300 ${isLoading ? 'text-[#7F5CFF] animate-pulse font-bold' : `opacity-50 ${currentP.color}`}`}>{isLoading ? ui.loading : currentP.title[lang]}</span></h1><div className="flex items-center gap-2 mt-0.5"><div className={`text-[9px] px-1.5 py-px rounded-md border border-white/10 bg-white/5 flex items-center gap-1 ${levelInfo.barColor.replace('bg-', 'text-')}`}>{levelInfo.icon} <span className="font-mono font-bold">Lv.{levelInfo.level}</span></div><div onClick={(e) => { e.stopPropagation(); alert(lang === 'zh' ? '🔒 安全承诺：\n对话记录优先存储于本地。\n云端同步仅用于生成画像，传输全程加密。' : '🔒 E2EE Secure.'); }} className="flex items-center gap-1 px-1.5 py-px rounded-md bg-green-500/10 border border-green-500/20 text-green-500 cursor-pointer hover:bg-green-500/20 transition-colors whitespace-nowrap"><Shield size={9} /><span className="text-[9px] font-bold">E2EE</span></div></div></div>
               </div>
               <div className="flex items-center gap-1">
                 <button onClick={fetchDailyQuote} className="p-2 text-gray-400 hover:text-[#7F5CFF] relative group"><Calendar size={18} /></button>
@@ -421,15 +470,56 @@ export default function Home() {
                     <div className={`px-5 py-3.5 text-sm leading-6 shadow-md backdrop-blur-sm rounded-2xl border transition-all duration-300 ${!isAI ? 'bg-gradient-to-br from-[#7F5CFF] to-[#6242db] text-white rounded-tr-sm border-transparent' : isVoice ? 'bg-[#1a1a1a]/90 text-[#7F5CFF] border-[#7F5CFF]/50 shadow-[0_0_20px_rgba(127,92,255,0.2)]' : 'bg-[#1a1a1a]/90 text-gray-200 rounded-tl-sm border-white/5'}`}>
                       {isAI && isVoice && (<div className="flex items-center gap-2 mb-2 pb-2 border-b border-[#7F5CFF]/20 text-[10px] font-bold opacity-90 uppercase tracking-widest">{playingMsgId === msg.id ? <Loader2 size={12} className="animate-spin"/> : <Volume2 size={12} />}<span>Voice Message</span></div>)}
                       {!isAI ? (
-                        <ReactMarkdown>{contentDisplay}</ReactMarkdown>
+                        <ReactMarkdown 
+                          components={{ 
+                            a: ({ node, href, children, ...props }) => { 
+                                const linkHref = href || '';
+                                if (linkHref.startsWith('#trigger-')) {
+                                  const targetPersona = linkHref.replace('#trigger-', '') as PersonaType;
+                                  const pConfig = PERSONAS[targetPersona];
+                                  if (!pConfig) return <span>{children}</span>;
+                                  const colorClass = pConfig.color; 
+                                  return (
+                                    <button 
+                                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); selectPersona(targetPersona); }} 
+                                      className="inline-flex items-center gap-1 mx-1 px-2 py-0.5 rounded-full bg-white/10 border border-white/10 hover:bg-white/20 transition-all transform hover:scale-105 align-middle -mt-0.5 cursor-pointer" 
+                                      title={`Switch to ${targetPersona}`}
+                                    >
+                                      <span className={`text-[10px] font-bold ${colorClass} opacity-70`}>@</span>
+                                      <span className={`text-xs font-bold ${colorClass} underline decoration-dotted underline-offset-2`}>{children}</span>
+                                      <ArrowUpRight size={10} className={`opacity-70 ${colorClass}`} />
+                                    </button>
+                                  );
+                                }
+                                return (<a href={linkHref} {...props} target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300 break-all">{children}</a>);
+                            } 
+                          }}
+                        >
+                          {contentDisplay}
+                        </ReactMarkdown>
                       ) : (
                         <div className="flex flex-col gap-1">
                            {contentDisplay.split('|||').map((part, partIdx, arr) => {
                               if (!part.trim()) return null;
                               const isLastPart = partIdx === arr.length - 1;
                               const shouldType = isLastMessage && isLoading && isLastPart;
-                              if (shouldType) return <Typewriter key={partIdx} content={part.trim()} isThinking={true} />;
-                              return <ReactMarkdown key={partIdx} components={{ a: ({ node, href, children, ...props }) => { return (<a href={href} {...props} target="_blank" rel="noopener noreferrer" className="text-blue-400 underline">{children}</a>); } }}>{formatMentions(part.trim())}</ReactMarkdown>;
+                              
+                              if (shouldType) {
+                                return <Typewriter key={partIdx} content={part.trim()} isThinking={true} />;
+                              }
+                              return (
+                                <ReactMarkdown key={partIdx} components={{ a: ({ node, href, children, ...props }) => { 
+                                    const linkHref = href || '';
+                                    if (linkHref.startsWith('#trigger-')) {
+                                      const targetPersona = linkHref.replace('#trigger-', '') as PersonaType;
+                                      const pConfig = PERSONAS[targetPersona];
+                                      if (!pConfig) return <span>{children}</span>;
+                                      const colorClass = pConfig.color; 
+                                      return (<button onClick={(e) => { e.preventDefault(); e.stopPropagation(); selectPersona(targetPersona); }} className="inline-flex items-center gap-1 mx-1 px-2 py-0.5 rounded-full bg-white/10 border border-white/10 hover:bg-white/20 transition-all transform hover:scale-105 align-middle -mt-0.5" title={`Switch to ${targetPersona}`}><span className={`text-[10px] font-bold ${colorClass} opacity-70`}>@</span><span className={`text-xs font-bold ${colorClass} underline decoration-dotted underline-offset-2`}>{children}</span><ArrowUpRight size={10} className={`opacity-70 ${colorClass}`} /></button>);
+                                    }
+                                    return (<a href={linkHref} {...props} target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300 break-all">{children}</a>);
+                                } }}>{formatMentions(part.trim())}</ReactMarkdown>
+                              );
                            })}
                         </div>
                       )}
@@ -444,31 +534,12 @@ export default function Home() {
           </main>
 
           <footer className="flex-none p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-            {messages.length <= 2 && !isLoading && QUICK_REPLIES_DATA[activePersona] && (
-              <div className="flex gap-2 overflow-x-auto pb-3 scrollbar-hide">
-                {QUICK_REPLIES_DATA[activePersona][lang].map((reply, idx) => (
-                  <button key={idx} onClick={() => { 
-                      const msg: Message = { id: Date.now().toString(), role: 'user', content: reply }; 
-                      append(msg, { body: { persona: activePersona, language: lang, interactionCount, userName, envInfo: getLocalTimeInfo(), userId: getDeviceId() } }); 
-                      posthog.capture('use_quick_reply', { persona: activePersona, content: reply }); 
-                      if (audioRef.current) { audioRef.current.src = SILENT_AUDIO; audioRef.current.play().catch(() => {}); }
-                  }} className="flex-shrink-0 px-3 py-1.5 bg-[#1a1a1a] border border-white/10 rounded-full text-xs text-gray-400 hover:text-white hover:border-[#7F5CFF] hover:bg-[#7F5CFF]/10 transition-all whitespace-nowrap">{reply}</button>
-                ))}
-              </div>
-            )}
-            
             <form onSubmit={onFormSubmit} className="relative flex items-center gap-2 bg-[#151515] p-2 rounded-[24px] border border-white/10 shadow-2xl focus-within:border-[#7F5CFF]/50 transition-all duration-300">
               <div className="relative flex items-center justify-center mr-1 gap-1">
-                {/* Voice Button */}
-                <button 
-                  type="button" 
-                  onClick={startVoiceInput}
-                  className={`p-2 rounded-full transition-all ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'text-gray-400 hover:text-white'}`}
-                >
+                <button type="button" onClick={startVoiceInput} className={`p-2 rounded-full transition-all ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'text-gray-400 hover:text-white'}`}>
                   {isRecording ? <MicOff size={18}/> : <Mic size={18}/>}
                 </button>
                 
-                {/* Persona Specific Buttons */}
                 {activePersona === 'Sol' && (
                   <button type="button" onClick={() => setShowFocusOffer(true)} className="p-2 rounded-full text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-400" title={lang === 'zh' ? "专注监管" : "Focus Protocol"}>
                     <Ban size={18} />
@@ -476,18 +547,10 @@ export default function Home() {
                 )}
                 {activePersona === 'Rin' && (
                   <div className="relative">
-                    <button 
-                      type="button" 
-                      onClick={openEnergyStation} 
-                      className="p-2 rounded-full text-pink-400 hover:bg-pink-500/10 hover:text-pink-300 transition-colors" 
-                      title={lang === 'zh' ? "能量补给" : "Energy Station"}
-                    >
+                    <button type="button" onClick={openEnergyStation} className="p-2 rounded-full text-pink-400 hover:bg-pink-500/10 hover:text-pink-300 transition-colors" title={lang === 'zh' ? "能量补给" : "Energy Station"}>
                       <Flower2 size={18} />
                     </button>
-                    {/* Red Dot */}
-                    {hasNewGlory && (
-                      <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 border-2 border-[#151515] rounded-full animate-bounce pointer-events-none"></span>
-                    )}
+                    {hasNewGlory && (<span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 border-2 border-[#151515] rounded-full animate-bounce pointer-events-none"></span>)}
                   </div>
                 )}
                 {activePersona === 'Echo' && (
