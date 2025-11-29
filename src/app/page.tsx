@@ -5,6 +5,8 @@ import { useChat } from 'ai/react';
 import { Message } from 'ai';
 import posthog from 'posthog-js';
 import html2canvas from 'html2canvas';
+import dynamic from 'next/dynamic'; // 🔥 引入 dynamic
+
 import { 
   Send, Calendar, ChevronLeft, MoreVertical, RotateCcw, 
   UserPen, Brain, Book, Lock, Sparkles, Shield, 
@@ -13,7 +15,7 @@ import {
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
-// --- 引入组件 & 常量 ---
+// --- 引入拆分后的组件 ---
 import { PERSONAS, PersonaType, UI_TEXT, LangType, QUICK_REPLIES_DATA, SOL_TAUNTS, RIN_TASKS } from '@/lib/constants';
 import { getDeviceId } from '@/lib/utils';
 import { getMemory, saveMemory, getVoiceIds, saveVoiceIds } from '@/lib/storage';
@@ -26,24 +28,30 @@ import { Typewriter } from '@/components/ui/Typewriter';
 
 // 功能组件
 import { FocusOverlay } from '@/components/features/FocusOverlay';
-import { StickyNoteOverlay } from '@/components/features/StickyNoteOverlay'; // 🔥 新增：Rin 便利贴
+import { StickyNoteOverlay } from '@/components/features/StickyNoteOverlay';
 
-// 模态框组件
-import { 
-  TriageModal, FocusOfferModal, DonateModal, LangSetupModal, 
-  NameModal, FeedbackModal, UpdateModal 
-} from '@/components/modals/SystemModals';
+// 🔥 性能优化：所有模态框改为动态懒加载 (Lazy Load)
+// 这样首页加载时不会下载这些弹窗的代码，点击时才加载
+const TriageModal = dynamic(() => import('@/components/modals/SystemModals').then(mod => mod.TriageModal), { ssr: false });
+const FocusOfferModal = dynamic(() => import('@/components/modals/SystemModals').then(mod => mod.FocusOfferModal), { ssr: false });
+const DonateModal = dynamic(() => import('@/components/modals/SystemModals').then(mod => mod.DonateModal), { ssr: false });
+const LangSetupModal = dynamic(() => import('@/components/modals/SystemModals').then(mod => mod.LangSetupModal), { ssr: false });
+const NameModal = dynamic(() => import('@/components/modals/SystemModals').then(mod => mod.NameModal), { ssr: false });
+const FeedbackModal = dynamic(() => import('@/components/modals/SystemModals').then(mod => mod.FeedbackModal), { ssr: false });
+const UpdateModal = dynamic(() => import('@/components/modals/SystemModals').then(mod => mod.UpdateModal), { ssr: false });
 
-import { 
-  DailyQuoteModal, ProfileModal, DiaryModal, ShameModal, GloryModal // 🔥 新增：GloryModal
-} from '@/components/modals/ContentModals';
+const DailyQuoteModal = dynamic(() => import('@/components/modals/ContentModals').then(mod => mod.DailyQuoteModal), { ssr: false });
+const ProfileModal = dynamic(() => import('@/components/modals/ContentModals').then(mod => mod.ProfileModal), { ssr: false });
+const DiaryModal = dynamic(() => import('@/components/modals/ContentModals').then(mod => mod.DiaryModal), { ssr: false });
+const ShameModal = dynamic(() => import('@/components/modals/ContentModals').then(mod => mod.ShameModal), { ssr: false });
+const GloryModal = dynamic(() => import('@/components/modals/ContentModals').then(mod => mod.GloryModal), { ssr: false });
 
 // --- 类型定义 ---
 type DailyQuote = { content: string; date: string; persona: string; };
 type ViewState = 'selection' | 'chat';
 
-// --- 常量定义 ---
-const CURRENT_VERSION_KEY = 'toughlove_v2.0_sensory_launch';
+// --- 常量 ---
+const CURRENT_VERSION_KEY = 'toughlove_v2.1_sensory_awakening'; // 更新版本号
 const LANGUAGE_KEY = 'toughlove_language_confirmed';
 const LANG_PREF_KEY = 'toughlove_lang_preference';
 const USER_NAME_KEY = 'toughlove_user_name';
@@ -51,24 +59,24 @@ const LAST_DIARY_TIME_KEY = 'toughlove_last_diary_time';
 const VISITED_KEY = 'toughlove_has_visited';
 const LAST_QUOTE_DATE_KEY = 'toughlove_last_quote_view_date';
 
-// Sol Focus Keys
+// Sol Keys
 const FOCUS_ACTIVE_KEY = 'toughlove_focus_active';
 const FOCUS_REMAINING_KEY = 'toughlove_focus_remaining';
 const FOCUS_START_TIME_KEY = 'toughlove_focus_start_time';
 const FOCUS_TOTAL_TIME = 25 * 60; 
 
-// Rin Sticky Keys
+// Rin Keys
 const RIN_ACTIVE_KEY = 'toughlove_rin_active';
 const RIN_TASK_KEY = 'toughlove_rin_task';
 
-// Regex Triggers
+// Triggers
 const CMD_REGEX = /(\n)?\s*(\[|【)CMD\s*:\s*FOCUS_OFFER(\]|】)/gi;
 const RIN_CMD_REGEX = /(\n)?\s*(\[|【)CMD\s*:\s*RIN_OFFER(\]|】)/gi;
 
 const SILENT_AUDIO = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
 
 export default function Home() {
-  // ================= State Management =================
+  // ================= State =================
   const [mounted, setMounted] = useState(false);
   const [view, setView] = useState<ViewState>('selection');
   const [activePersona, setActivePersona] = useState<PersonaType>('Ash');
@@ -87,9 +95,9 @@ export default function Home() {
   const [showNameModal, setShowNameModal] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [showShameModal, setShowShameModal] = useState(false);
-  const [showGloryModal, setShowGloryModal] = useState(false); // 🔥 新增：光荣榜
+  const [showGloryModal, setShowGloryModal] = useState(false);
 
-  // Focus Mode State (Sol)
+  // Focus Mode (Sol)
   const [showFocusOffer, setShowFocusOffer] = useState(false);
   const [isFocusActive, setIsFocusActive] = useState(false);
   const [focusRemaining, setFocusRemaining] = useState(0);
@@ -97,15 +105,15 @@ export default function Home() {
   const [focusWarning, setFocusWarning] = useState<string | null>(null);
   const [tauntIndex, setTauntIndex] = useState(0);
 
-  // Sticky Note State (Rin)
+  // Sticky Note (Rin)
   const [showStickyNote, setShowStickyNote] = useState(false);
   const [currentStickyTask, setCurrentStickyTask] = useState("");
 
-  // Data State
+  // Data
   const [quoteData, setQuoteData] = useState<DailyQuote | null>(null);
   const [profileData, setProfileData] = useState<{tags: string[], diagnosis: string} | null>(null);
   const [shameData, setShameData] = useState<{name: string, duration: number, date: string} | null>(null);
-  const [gloryData, setGloryData] = useState<{name: string, task: string, date: string} | null>(null); // 🔥 新增
+  const [gloryData, setGloryData] = useState<{name: string, task: string, date: string} | null>(null);
   const [diaryContent, setDiaryContent] = useState("");
   const [feedbackText, setFeedbackText] = useState("");
   const [userName, setUserName] = useState("");
@@ -114,14 +122,14 @@ export default function Home() {
   const [tick, setTick] = useState(0);
   const [currentWeather, setCurrentWeather] = useState("");
 
-  // Loading State
+  // Loading
   const [isQuoteLoading, setIsQuoteLoading] = useState(false);
   const [isGeneratingImg, setIsGeneratingImg] = useState(false);
   const [isProfileLoading, setIsProfileLoading] = useState(false);
   const [isDiaryLoading, setIsDiaryLoading] = useState(false);
   const [hasNewDiary, setHasNewDiary] = useState(false);
 
-  // Audio State
+  // Audio
   const [playingMsgId, setPlayingMsgId] = useState<string | null>(null);
   const [voiceMsgIds, setVoiceMsgIds] = useState<Set<string>>(new Set()); 
   const [forceVoice, setForceVoice] = useState(false);
@@ -133,7 +141,6 @@ export default function Home() {
   const profileCardRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Derived Props
   const ui = UI_TEXT[lang];
   const currentP = PERSONAS[activePersona];
   const badgeStyle = "absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-[#1a1a1a] animate-pulse";
@@ -169,7 +176,7 @@ export default function Home() {
     return { isChatted: false, lastMsg: PERSONAS[pKey].greetings[lang][0], trust, time: "New" };
   };
 
-  // ================= Async Actions =================
+  // Async Actions
   const syncToCloud = async (currentMessages: any[]) => {
     try {
       await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: getDeviceId(), persona: activePersona, messages: currentMessages }) });
@@ -220,9 +227,9 @@ export default function Home() {
   const downloadQuoteCard = () => downloadCard(quoteCardRef, `ToughLove_${activePersona}_Quote.png`);
   const downloadProfileCard = () => downloadCard(profileCardRef, `ToughLove_Profile.png`);
   const downloadShameCard = (ref: any) => downloadCard(ref, `ToughLove_Shame.png`);
-  const downloadGloryCard = (ref: any) => downloadCard(ref, `ToughLove_Glory.png`); // 🔥 新增
+  const downloadGloryCard = (ref: any) => downloadCard(ref, `ToughLove_Glory.png`);
 
-  // ================= Sol Logic (Focus Mode) =================
+  // Sol Logic
   const endFocusMode = () => { 
       if (typeof window !== 'undefined') {
         localStorage.removeItem(FOCUS_ACTIVE_KEY); 
@@ -262,18 +269,15 @@ export default function Home() {
       } 
   };
 
-  // ================= Rin Logic (Sticky Note) =================
+  // Rin Logic
   const triggerRinProtocol = () => {
-    // 互斥：如果专注模式开启，Rin 暂不触发
     if (isFocusActive) return;
-
     const tasks = RIN_TASKS[lang] || RIN_TASKS['zh'];
     const randomTask = tasks[Math.floor(Math.random() * tasks.length)];
     
     setCurrentStickyTask(randomTask);
     setShowStickyNote(true);
     
-    // 持久化状态
     if (typeof window !== 'undefined') {
         localStorage.setItem(RIN_ACTIVE_KEY, 'true');
         localStorage.setItem(RIN_TASK_KEY, randomTask);
@@ -282,12 +286,10 @@ export default function Home() {
   };
 
   const handleStickyComplete = () => {
-    // 清除状态
     setShowStickyNote(false);
     localStorage.removeItem(RIN_ACTIVE_KEY);
     localStorage.removeItem(RIN_TASK_KEY);
 
-    // 准备光荣榜数据
     const shortTask = currentStickyTask.split('。')[0] || "秘密任务";
     setGloryData({
         name: userName || ui.defaultName,
@@ -295,20 +297,18 @@ export default function Home() {
         date: new Date().toLocaleDateString()
     });
 
-    // 延迟弹窗 (等待撕纸动画结束)
     setTimeout(() => setShowGloryModal(true), 600);
     posthog.capture('rin_prescription_completed');
   };
 
   const handleStickyGiveUp = () => {
-    // 放弃逻辑
     setShowStickyNote(false);
     localStorage.removeItem(RIN_ACTIVE_KEY);
     localStorage.removeItem(RIN_TASK_KEY);
     posthog.capture('rin_prescription_given_up');
   };
 
-  // ================= UI Handlers =================
+  // UI Handlers
   const confirmLanguage = (l: LangType) => { setLang(l); localStorage.setItem(LANG_PREF_KEY, l); localStorage.setItem(LANGUAGE_KEY, 'true'); setShowLangSetup(false); if(!localStorage.getItem(VISITED_KEY)) setShowTriage(true); posthog.capture('language_set', { language: l }); };
   const saveUserName = () => { const nameToSave = tempName.trim(); setUserName(nameToSave); localStorage.setItem(USER_NAME_KEY, nameToSave); setShowNameModal(false); posthog.capture('username_set'); };
   const handleFeedbackSubmit = () => { if (!feedbackText.trim()) return; posthog.capture('user_feedback', { content: feedbackText, userId: getDeviceId() }); alert(lang === 'zh' ? '反馈已收到！' : 'Feedback received!'); setFeedbackText(""); setShowFeedbackModal(false); };
@@ -320,7 +320,7 @@ export default function Home() {
   const toggleLanguage = () => { const newLang = lang === 'zh' ? 'en' : 'zh'; setLang(newLang); localStorage.setItem(LANG_PREF_KEY, newLang); setShowMenu(false); };
   const backToSelection = () => { setView('selection'); setTick(tick + 1); };
 
-  // ================= UseChat Hook =================
+  // UseChat Hook
   const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages, setInput, append } = useChat({
     api: '/api/chat',
     onError: (err) => console.error("Stream Error:", err),
@@ -331,16 +331,9 @@ export default function Home() {
       if (newCount === 1 || newCount === 50 || newCount === 100) posthog.capture('trust_milestone', { persona: activePersona, level: newCount });
       
       const isAI = message.role === 'assistant';
-
       if (isAI) {
-        // Sol Trigger
-        if (CMD_REGEX.test(message.content)) {
-            setShowFocusOffer(true);
-        }
-        // 🔥 Rin Trigger
-        if (RIN_CMD_REGEX.test(message.content)) {
-            triggerRinProtocol();
-        }
+        if (CMD_REGEX.test(message.content)) setShowFocusOffer(true);
+        if (RIN_CMD_REGEX.test(message.content)) triggerRinProtocol();
       }
 
       const isLevel2 = newCount >= 50; 
@@ -363,7 +356,6 @@ export default function Home() {
 
       if (isAI && shouldPlay) {
          setVoiceMsgIds(prev => { const n = new Set(prev).add(message.id); saveVoiceIds(activePersona, Array.from(n)); return n; });
-         // TTS 清洗：同时去除 Sol 和 Rin 的指令
          const cleanText = message.content.replace(CMD_REGEX, '').replace(RIN_CMD_REGEX, '');
          handlePlayAudio(cleanText, message.id);
       }
@@ -446,12 +438,11 @@ export default function Home() {
   
   const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); };
 
-  // ================= Effects =================
+  // Effects
   const prevLoadingRef = useRef(false);
   useEffect(() => {
     const wasLoading = prevLoadingRef.current;
     if (wasLoading && !isLoading && messages.length > 0) { 
-      // 🔥 修复: 同步云端前清洗所有指令
       const cleanMsgs = messages.map(m => ({ 
           ...m, 
           content: m.content.replace(CMD_REGEX, '').replace(RIN_CMD_REGEX, '') 
@@ -463,7 +454,6 @@ export default function Home() {
 
   useEffect(() => { 
     if (messages.length > 0 && view === 'chat') { 
-      // 🔥 修复: 存入本地前清洗所有指令
       const cleanMsgs = messages.map(m => ({ 
           ...m, 
           content: m.content.replace(CMD_REGEX, '').replace(RIN_CMD_REGEX, '') 
@@ -474,22 +464,16 @@ export default function Home() {
   
   useEffect(() => { scrollToBottom(); }, [messages, isLoading, view]);
 
-  // Command Check Effect (Sol + Rin)
   useEffect(() => {
     if (messages.length > 0) {
         const lastMsg = messages[messages.length - 1];
         if (lastMsg.role === 'assistant') {
-            if (CMD_REGEX.test(lastMsg.content)) {
-                setShowFocusOffer(true);
-            }
-            if (RIN_CMD_REGEX.test(lastMsg.content)) {
-                triggerRinProtocol();
-            }
+            if (CMD_REGEX.test(lastMsg.content)) setShowFocusOffer(true);
+            if (RIN_CMD_REGEX.test(lastMsg.content)) triggerRinProtocol();
         }
     }
-  }, [messages]); // 依赖中不需要加 triggerRinProtocol，避免无限循环
+  }, [messages]);
 
-  // Init Effect
   useEffect(() => {
     setMounted(true); 
     const savedLang = localStorage.getItem(LANG_PREF_KEY);
@@ -521,7 +505,7 @@ export default function Home() {
     getSimpleWeather().then(w => setCurrentWeather(w));
     posthog.capture('page_view', { lang: savedLang || lang });
 
-    // Restore Sol State
+    // Restore Sol
     const savedFocus = localStorage.getItem(FOCUS_ACTIVE_KEY);
     if (savedFocus === 'true') {
         const remaining = parseInt(localStorage.getItem(FOCUS_REMAINING_KEY) || '0');
@@ -533,17 +517,15 @@ export default function Home() {
         }
     }
 
-    // Restore Rin State
+    // Restore Rin
     const isRinActive = localStorage.getItem(RIN_ACTIVE_KEY);
     const savedTask = localStorage.getItem(RIN_TASK_KEY);
     if (isRinActive === 'true' && savedTask) {
         setCurrentStickyTask(savedTask);
         setShowStickyNote(true);
     }
-
   }, []);
 
-  // Focus Timer Effect
   useEffect(() => {
     if (isFocusActive && focusRemaining <= 0) {
         endFocusMode();
@@ -591,7 +573,7 @@ export default function Home() {
       <div className="absolute top-[-20%] left-0 right-0 h-[500px] bg-gradient-to-b from-[#7F5CFF]/10 to-transparent blur-[100px] pointer-events-none" />
       <audio ref={audioRef} className="hidden" playsInline />
 
-      {/* === Features & Overlays === */}
+      {/* Features */}
       {isFocusActive && (
         <FocusOverlay 
           isFocusPaused={isFocusPaused}
@@ -603,7 +585,6 @@ export default function Home() {
         />
       )}
 
-      {/* 🔥 挂载 Rin 便利贴 */}
       {showStickyNote && (
         <StickyNoteOverlay 
           task={currentStickyTask} 
@@ -613,7 +594,7 @@ export default function Home() {
         />
       )}
 
-      {/* === Modals === */}
+      {/* Modals */}
       <FocusOfferModal show={showFocusOffer} lang={lang} onStart={startFocusMode} onCancel={() => setShowFocusOffer(false)} />
       <TriageModal show={showTriage} lang={lang} onSelect={handleTriageSelection} />
       <LangSetupModal show={showLangSetup} lang={lang} onConfirm={confirmLanguage} />
@@ -622,18 +603,15 @@ export default function Home() {
       <FeedbackModal show={showFeedbackModal} onClose={() => setShowFeedbackModal(false)} text={feedbackText} setText={setFeedbackText} onSubmit={handleFeedbackSubmit} lang={lang} />
       <UpdateModal show={showUpdateModal} onClose={dismissUpdate} ui={ui} onTry={handleTryNewFeature} />
 
-      {/* Content Modals - 使用 ref 传递给 download */}
+      {/* Dynamic Content Modals */}
       <div ref={quoteCardRef} className="contents"><DailyQuoteModal show={showQuote} onClose={() => setShowQuote(false)} data={quoteData} isLoading={isQuoteLoading} onDownload={() => downloadQuoteCard()} isGenerating={isGeneratingImg} ui={ui} activePersona={activePersona} /></div>
       <div ref={profileCardRef} className="contents"><ProfileModal show={showProfile} onClose={() => setShowProfile(false)} data={profileData} isLoading={isProfileLoading} onDownload={() => downloadProfileCard()} isGenerating={isGeneratingImg} ui={ui} mounted={mounted} deviceId={getDeviceId()} /></div>
       
       <DiaryModal show={showDiary} onClose={() => setShowDiary(false)} content={diaryContent} isLoading={isDiaryLoading} currentP={currentP} />
       <ShameModal show={showShameModal} onClose={() => setShowShameModal(false)} data={shameData} lang={lang} onDownload={downloadShameCard} isGenerating={isGeneratingImg} ui={ui} />
-      {/* 🔥 挂载光荣榜 */}
       <GloryModal show={showGloryModal} onClose={() => setShowGloryModal(false)} data={gloryData} lang={lang} onDownload={downloadGloryCard} isGenerating={isGeneratingImg} ui={ui} />
       
-      {/* === Main Views === */}
-      
-      {/* VIEW: SELECTION */}
+      {/* Views */}
       {view === 'selection' && (
         <div className="z-10 flex flex-col h-full w-full max-w-md mx-auto p-4 animate-[fadeIn_0.5s_ease-out]">
           <div className="flex justify-between items-center mb-6 px-2"><h1 className="text-xl font-bold tracking-wider flex items-center gap-2"><MessageCircle size={20} className="text-[#7F5CFF]" /> Chats</h1><div className="flex gap-3"><button onClick={toggleLanguage} className="text-xs font-bold text-gray-400 hover:text-white uppercase border border-white/10 px-2 py-1 rounded-lg">{lang}</button></div></div>
@@ -714,7 +692,6 @@ export default function Home() {
               const isAI = msg.role !== 'user';
               const isVoice = voiceMsgIds.has(msg.id); 
 
-              // 清洗指令 Tag
               const contentDisplay = msg.content.replace(CMD_REGEX, '').replace(RIN_CMD_REGEX, '').trim();
 
               return (

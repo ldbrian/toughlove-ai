@@ -27,10 +27,8 @@ const BUSY_MESSAGES: Record<string, string[]> = {
   Echo: ["（自动回复）...", "（自动回复）凝视深渊中。", "（自动回复）信号消散了。"]
 };
 
-// 🔥 1. Sol 触发词库 (专注)
+// 🔥 触发词库
 const FOCUS_KEYWORDS = /学习|工作|作业|专注|复习|赶ddl|冲刺|考研|备考|效率|拖延|摸鱼|不想动|累了|救命|管管我|自律|书|题|study|work|focus|homework|deadline|grind|lock in|procrastinat|distracted|lazy/i;
-
-// 🔥 2. Rin 触发词库 (情绪急救) - 新增
 const RIN_KEYWORDS = /难受|想哭|睡不着|失眠|焦虑|内耗|不想活|废物|抱抱|安慰|累|emo|熬夜|头痛|心烦|sad|cry|insomnia|anxious|depressed|tired|hug|comfort|pain|overthinking/i;
 
 export async function POST(req: Request) {
@@ -39,9 +37,9 @@ export async function POST(req: Request) {
     const { messages, persona, language, interactionCount = 0, userName = "", envInfo, userId } = json;
     
     const currentLang = (language as LangType) || 'zh';
-    const currentPersona = PERSONAS[persona as PersonaType] || PERSONAS.Ash;
-
-    // 🔥【成本控制 1】：简易限流 (Rate Limiting)
+    
+    // 🔥【成本控制 1】：简易限流 (Rate Limit)
+    // 限制单用户 1 分钟内最多 15 次请求
     if (userId) {
         const { count, error } = await supabase
             .from('chat_histories')
@@ -54,13 +52,13 @@ export async function POST(req: Request) {
         }
     }
 
-    // 🔥【成本控制 2】：上下文截断
+    // 🔥【成本控制 2】：上下文截断 (Context Limit)
+    // 强制只取最后 12 条，防止 Token 爆炸
     const MAX_HISTORY = 12;
     const recentMessages = messages.slice(-MAX_HISTORY);
-    
     let lastUserMsgContent = recentMessages[recentMessages.length - 1]?.content || "";
 
-    // 2. 风控拦截
+    // 安全检查
     const safetyCheck = validateInput(lastUserMsgContent);
     if (!safetyCheck.safe) {
       const encoder = new TextEncoder();
@@ -71,7 +69,7 @@ export async function POST(req: Request) {
     let isEmergency = false;
     if (SAFE_WORDS.test(lastUserMsgContent)) isEmergency = true;
 
-    // 3. 数据库查询 (状态 + 记忆)
+    // 数据库查询 (状态 + 记忆)
     let statusPromise = Promise.resolve(null);
     let memoryPromise = Promise.resolve(null);
 
@@ -84,6 +82,7 @@ export async function POST(req: Request) {
 
     const [statusResult, memoryResult] = await Promise.all([statusPromise, memoryPromise]);
 
+    // 忙碌状态拦截
     if (statusResult && (statusResult as any).data && ((statusResult as any).data.status === 'busy' || (statusResult as any).data.status === 'offline')) {
         const scripts = BUSY_MESSAGES[persona as string] || BUSY_MESSAGES['Ash'];
         const randomScript = scripts[Math.floor(Math.random() * scripts.length)];
@@ -92,6 +91,10 @@ export async function POST(req: Request) {
         return new StreamingTextResponse(stream);
     }
 
+    // 构建 Prompt
+    const currentPersona = PERSONAS[persona as PersonaType] || PERSONAS.Ash;
+    const basePrompt = currentPersona.prompts[currentLang];
+    
     let memoryPrompt = "";
     if (memoryResult && (memoryResult as any).data) {
         const memories = (memoryResult as any).data;
@@ -113,28 +116,25 @@ export async function POST(req: Request) {
     else if (count < 100) trustPrompt = currentLang === 'zh' ? `\n[Lv.2]: 嘴硬心软。` : `\n[Lv.2]: Casual. Tsundere.`;
     else trustPrompt = currentLang === 'zh' ? `\n[Lv.3]: 共犯/依赖。` : `\n[Lv.3]: Deep bond.`;
 
-    const basePrompt = currentPersona.prompts[currentLang];
     let namePrompt = userName && userName.trim() !== "" ? (currentLang === 'zh' ? `\n[用户]: "${userName}"` : `\n[User]: "${userName}"`) : "";
     const dynamicEnginePrompt = currentLang === 'zh' ? `[Engine]: 回复长度随机。` : `[Engine]: Randomize length.`;
     const emergencyOverride = isEmergency ? EMERGENCY_PROMPT : "";
 
-    // 🔥🔥🔥 触发器注入逻辑 (Trigger Injection) 🔥🔥🔥
+    // 🔥 指令注入 (Trigger Injection)
     
-    // A. Sol 专注模式触发
+    // Sol: 专注模式
     if (persona === 'Sol' && FOCUS_KEYWORDS.test(lastUserMsgContent)) {
         const triggerInstruction = currentLang === 'zh'
           ? `\n\n(SYSTEM: 触发点。用户想学习或偷懒。严厉嘲讽。回复末尾必须**另起一行**输出且仅输出：[CMD:FOCUS_OFFER]。)`
           : `\n\n(SYSTEM: Trigger point. Roast laziness. At the very end, on a **NEW LINE**, output ONLY: [CMD:FOCUS_OFFER].)`;
-        
         lastUserMsgContent += triggerInstruction;
     }
 
-    // 🔥 B. Rin 情绪处方触发 (新增)
+    // 🔥 Rin: 强制关怀处方
     if (persona === 'Rin' && RIN_KEYWORDS.test(lastUserMsgContent)) {
         const triggerInstruction = currentLang === 'zh'
-          ? `\n\n(SYSTEM: 触发点。用户情绪低落/身体不适。请表现出傲娇的关心（嘴硬心软）。回复末尾必须**另起一行**输出且仅输出：[CMD:RIN_OFFER]。)`
-          : `\n\n(SYSTEM: Trigger point. User is sad/unwell. Be tsundere (harsh but caring). At the very end, on a **NEW LINE**, output ONLY: [CMD:RIN_OFFER].)`;
-        
+          ? `\n\n(SYSTEM: 触发点。用户情绪低落/失眠/焦虑。请表现出傲娇的关心（嘴硬心软）。回复末尾必须**另起一行**输出且仅输出：[CMD:RIN_OFFER]。)`
+          : `\n\n(SYSTEM: Trigger point. User is sad/anxious. Be tsundere. At the very end, on a **NEW LINE**, output ONLY: [CMD:RIN_OFFER].)`;
         lastUserMsgContent += triggerInstruction;
     }
 
@@ -144,7 +144,7 @@ export async function POST(req: Request) {
 
     const finalSystemPrompt = `${SAFETY_PROTOCOL} ${basePrompt} ${namePrompt} ${envPrompt} ${trustPrompt} ${memoryPrompt} ${dynamicEnginePrompt} ${emergencyOverride} ${SYSTEM_LANG_CONSTRAINT}`;
 
-    // 4. 重构消息队列
+    // 重构消息队列 (使用截断后的 recentMessages)
     const newMessages = [...recentMessages];
     if (newMessages.length > 0) {
         newMessages[newMessages.length - 1].content = lastUserMsgContent;
@@ -164,7 +164,7 @@ export async function POST(req: Request) {
       stream: true, 
       messages: conversation, 
       temperature: 0.9,
-      max_tokens: 300, // 🔥【成本控制 3】
+      max_tokens: 300, // 🔥【成本控制 3】：输出长度熔断
     });
     
     const stream = OpenAIStream(response as any);
