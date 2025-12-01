@@ -25,6 +25,8 @@ import { BootScreen } from '@/components/ui/BootScreen';
 import { Typewriter } from '@/components/ui/Typewriter';
 import { FocusOverlay } from '@/components/features/FocusOverlay';
 import { StickyNoteOverlay } from '@/components/features/StickyNoteOverlay';
+// 🔥 新增：广播条组件
+import { BroadcastBar } from '@/components/features/BroadcastBar';
 
 // 静态引用 Modals
 import { 
@@ -39,6 +41,8 @@ import {
 
 import { ShopModal } from '@/components/modals/ShopModal';
 import { DailyBriefingModal } from '@/components/modals/DailyBriefingModal';
+// 🔥 新增：公告组件
+import { AnnouncementModal } from '@/components/modals/AnnouncementModal';
 
 // 壁纸预设库
 const WALLPAPER_PRESETS: Record<string, any> = {
@@ -86,7 +90,6 @@ const FOCUS_REMAINING_KEY = 'toughlove_focus_remaining';
 const FOCUS_START_TIME_KEY = 'toughlove_focus_start_time';
 const FOCUS_TOTAL_TIME = 25 * 60; 
 
-
 const RIN_ACTIVE_KEY = 'toughlove_rin_active';
 const RIN_TASK_KEY = 'toughlove_rin_task';
 
@@ -100,14 +103,14 @@ type ViewState = 'selection' | 'chat';
 
 export default function Home() {
   const [mounted, setMounted] = useState(false);
-  const [isCheckingFate, setIsCheckingFate] = useState(false); 
+  const [isCheckingFate, setIsCheckingFate] = useState(false); // 控制晨报加载时的遮罩
   const [view, setView] = useState<ViewState>('selection');
   const [activePersona, setActivePersona] = useState<PersonaType>('Ash');
   const [lang, setLang] = useState<LangType>('zh');
   
   // Modals Visibility
   const [showLangSetup, setShowLangSetup] = useState(false);
-  const [showTriage, setShowTriage] = useState(false); 
+  const [showAnnouncement, setShowAnnouncement] = useState(false); // 🔥 新增：公告状态
   const [showQuote, setShowQuote] = useState(false);
   const [showInstallModal, setShowInstallModal] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -119,6 +122,7 @@ export default function Home() {
   const [showShameModal, setShowShameModal] = useState(false);
   const [showGloryModal, setShowGloryModal] = useState(false);
   const [showEnergyModal, setShowEnergyModal] = useState(false); 
+  const [showTriage, setShowTriage] = useState(false); // 保留变量防止报错
   
   // Shop & Wallpaper
   const [showShop, setShowShop] = useState(false);
@@ -295,14 +299,12 @@ export default function Home() {
    const { persona, systemContext, visibleReaction } = payload;
    const history = getMemory(persona);
    
-   // 1. 注入系统指令
    history.push({
        id: Date.now().toString(),
        role: 'system',
        content: systemContext
    } as any);
 
-   // 2. 注入 AI 的预设反应
    history.push({
        id: (Date.now() + 1).toString(),
        role: 'assistant',
@@ -344,15 +346,50 @@ export default function Home() {
   const triggerRinFromStation = () => { setShowEnergyModal(false); triggerRinProtocol(); };
   const openEnergyStation = () => { setShowEnergyModal(true); setHasNewGlory(false); };
 
+  // 🔥 1. 提取：晨报检查逻辑
+  const checkDailyBriefing = () => {
+      const today = new Date().toISOString().split('T')[0];
+      const lastBriefingDate = localStorage.getItem('toughlove_briefing_date');
+      const hasVisited = localStorage.getItem(VISITED_KEY);
+
+      if (lastBriefingDate !== today && hasVisited) {
+          setIsCheckingFate(true); 
+          setTimeout(() => {
+              setShowBriefing(true);
+              setIsCheckingFate(false); 
+              localStorage.setItem('toughlove_briefing_date', today);
+          }, 800);
+      } else {
+          setIsCheckingFate(false);
+      }
+  };
+
+  // 🔥 2. 提取：公告关闭的回调
+  const handleAnnouncementClose = () => {
+      setShowAnnouncement(false);
+      localStorage.setItem('toughlove_v2.3.0_announce_seen', 'true');
+      
+      // 公告关闭 0.5秒 后，才开始检查晨报
+      setTimeout(() => {
+          checkDailyBriefing();
+      }, 500);
+  };
+
   const confirmLanguage = (l: LangType) => { 
       setLang(l); 
       localStorage.setItem(LANG_PREF_KEY, l); 
       localStorage.setItem(LANGUAGE_KEY, 'true'); 
       setShowLangSetup(false); 
-      setTimeout(() => setShowBriefing(true), 800);
-      const today = new Date().toISOString().split('T')[0];
-      localStorage.setItem('toughlove_briefing_date', today);
+      
+      // 语言选完后，也进入公告检查流（如果还没看过公告的话）
+      const hasSeenUpdate = localStorage.getItem('toughlove_v2.3.0_announce_seen');
+      if (!hasSeenUpdate) {
+          setTimeout(() => setShowAnnouncement(true), 500);
+      } else {
+          setTimeout(() => checkDailyBriefing(), 500);
+      }
   };
+
   const saveUserName = () => { setUserName(tempName.trim()); localStorage.setItem(USER_NAME_KEY, tempName.trim()); setShowNameModal(false); };
   const handleFeedbackSubmit = () => { if (!feedbackText.trim()) return; alert('Thanks!'); setFeedbackText(""); setShowFeedbackModal(false); };
   const handleInstall = () => { setShowInstallModal(true); setShowMenu(false); };
@@ -440,29 +477,25 @@ export default function Home() {
   useEffect(() => { scrollToBottom(); }, [messages, isLoading, view]);
   useEffect(() => { if (messages.length > 0) { const lastMsg = messages[messages.length - 1]; if (lastMsg.role === 'assistant') { if (CMD_REGEX.test(lastMsg.content)) setShowFocusOffer(true); if (RIN_CMD_REGEX.test(lastMsg.content)) triggerRinProtocol(); } } }, [messages]);
   
+  // 🔥 3. 重写初始化 useEffect (串行逻辑)
   useEffect(() => { 
       setMounted(true); 
+      
       const savedLang = localStorage.getItem(LANG_PREF_KEY); 
       if (savedLang) setLang(savedLang as LangType); 
-      const hasLangConfirmed = localStorage.getItem(LANGUAGE_KEY); 
       
+      const hasLangConfirmed = localStorage.getItem(LANGUAGE_KEY); 
       if (!hasLangConfirmed) { 
           setShowLangSetup(true); 
-      } else { 
-          const today = new Date().toISOString().split('T')[0];
-          const lastBriefingDate = localStorage.getItem('toughlove_briefing_date');
-          
-          if (lastBriefingDate !== today && localStorage.getItem(VISITED_KEY)) {
-            setIsCheckingFate(true);
-            setTimeout(() => {
-                setShowBriefing(true);
-                setIsCheckingFate(false); 
-                localStorage.setItem('toughlove_briefing_date', today);
-            }, 800);
-        } else {
-            setIsCheckingFate(false);
-        }
-      }
+          return; // ⛔ 阻断
+      } 
+      
+      // 注意：这里我们移除了自动检查公告的逻辑，完全交给 BroadcastBar 来触发
+      // 除非你希望第一次进入时强制显示一次 BroadcastBar 而不是等待用户发现
+      // 目前 BroadcastBar 内部逻辑是 1s 后自动滑出，所以这里不需要做什么
+
+      // 直接检查晨报
+      checkDailyBriefing();
       
       const storedName = localStorage.getItem(USER_NAME_KEY); 
       if (storedName) setUserName(storedName); 
@@ -470,10 +503,24 @@ export default function Home() {
       if (savedTrial) setVoiceTrial(parseInt(savedTrial)); 
       getSimpleWeather().then(w => setCurrentWeather(w)); 
       posthog.capture('page_view', { lang: savedLang || lang }); 
+      
       const savedFocus = localStorage.getItem(FOCUS_ACTIVE_KEY); 
-      if (savedFocus === 'true') { const remaining = parseInt(localStorage.getItem(FOCUS_REMAINING_KEY) || '0'); if (!isNaN(remaining) && remaining > 0) { setIsFocusActive(true); setFocusRemaining(remaining); } else { endFocusMode(); } } 
-      const isRinActive = localStorage.getItem(RIN_ACTIVE_KEY); const savedTask = localStorage.getItem(RIN_TASK_KEY); 
-      if (isRinActive === 'true' && savedTask) { setCurrentStickyTask(savedTask); setShowStickyNote(true); } 
+      if (savedFocus === 'true') { 
+        const remaining = parseInt(localStorage.getItem(FOCUS_REMAINING_KEY) || '0'); 
+        if (!isNaN(remaining) && remaining > 0) { 
+            setIsFocusActive(true); 
+            setFocusRemaining(remaining); 
+        } else { 
+            endFocusMode(); 
+        } 
+      } 
+      
+      const isRinActive = localStorage.getItem(RIN_ACTIVE_KEY); 
+      const savedTask = localStorage.getItem(RIN_TASK_KEY); 
+      if (isRinActive === 'true' && savedTask) { 
+          setCurrentStickyTask(savedTask); 
+          setShowStickyNote(true); 
+      } 
       
       fetchWalletBalance();
 
@@ -511,6 +558,7 @@ export default function Home() {
   useEffect(() => { let interval: NodeJS.Timeout; let tauntInterval: NodeJS.Timeout; const handleVisibilityChange = () => { if (document.hidden && isFocusActive) { setIsFocusPaused(true); document.title = "⚠️ SOL IS WATCHING"; } else if (!document.hidden && isFocusActive) { setIsFocusPaused(false); document.title = "ToughLove AI"; setFocusWarning(lang === 'zh' ? "⚠️ 监测到离开。计时暂停。别想逃。" : "⚠️ Absence detected. Timer paused."); setTimeout(() => setFocusWarning(null), 4000); } }; if (isFocusActive) { document.addEventListener("visibilitychange", handleVisibilityChange); interval = setInterval(() => { if (!isFocusPaused && !document.hidden) { setFocusRemaining(prev => { const next = prev - 1; localStorage.setItem(FOCUS_REMAINING_KEY, next.toString()); return next; }); } }, 1000); tauntInterval = setInterval(() => { setTauntIndex(prev => (prev + 1) % SOL_TAUNTS[lang].length); }, 4000); } return () => { clearInterval(interval); clearInterval(tauntInterval); document.removeEventListener("visibilitychange", handleVisibilityChange); }; }, [isFocusActive, isFocusPaused, lang]);
   useEffect(() => { if (mounted) { const ids = getVoiceIds(activePersona); setVoiceMsgIds(new Set(ids)); } }, [activePersona, mounted]);
 
+  // 🔥 防止闪烁：正在检查晨报时，显示启动屏
   if (!mounted || isCheckingFate) return <BootScreen />;
 
   return (
@@ -547,6 +595,18 @@ export default function Home() {
       <GloryModal show={showGloryModal} onClose={() => setShowGloryModal(false)} data={gloryData} lang={lang} onDownload={downloadGloryCard} isGenerating={isGeneratingImg} ui={ui} />
       <EnergyModal show={showEnergyModal} onClose={() => setShowEnergyModal(false)} onTriggerTask={triggerRinFromStation} userId={mounted ? getDeviceId() : null} lang={lang} updateTrigger={gloryUpdateTrigger} />
 
+      {/* 🔥 新增：广播条 (BroadcastBar) */}
+      {/* 只有当不在 Focus 模式且公告未显示时才展示 */}
+      {!isFocusActive && !showAnnouncement && (
+        <BroadcastBar onOpenDetail={() => setShowAnnouncement(true)} />
+      )}
+
+      {/* 🔥 新增：公告 (AnnouncementModal) */}
+      <AnnouncementModal 
+        show={showAnnouncement} 
+        onClose={handleAnnouncementClose} 
+      />
+
       {view === 'selection' && (
         <div className="z-10 flex flex-col h-full w-full max-w-md mx-auto p-4 animate-[fadeIn_0.5s_ease-out]">
           <div className="flex justify-between items-center mb-6 px-2">
@@ -554,7 +614,7 @@ export default function Home() {
               <MessageCircle size={20} className="text-[#7F5CFF]" /> Chats
             </h1>
             <div className="flex gap-3">
-               {/* 🔥 新增：首页查看今日运势入口 */}
+               {/* 🔥 首页今日运势入口 */}
                <button 
                  onClick={() => setShowBriefing(true)}
                  className="text-xs font-bold text-gray-400 hover:text-white border border-white/10 px-3 py-1 rounded-lg flex items-center gap-2 transition-colors hover:bg-white/5"
@@ -604,7 +664,7 @@ export default function Home() {
                 <div className="flex flex-col justify-center min-w-0"><h1 className="font-bold text-sm text-white tracking-wide truncate flex items-center gap-2">{currentP.name}<span className={`text-[9px] font-normal transition-all duration-300 ${isLoading ? 'text-[#7F5CFF] animate-pulse font-bold' : `opacity-50 ${currentP.color}`}`}>{isLoading ? ui.loading : currentP.title[lang]}</span></h1><div className="flex items-center gap-2 mt-0.5"><div className={`text-[9px] px-1.5 py-px rounded-md border border-white/10 bg-white/5 flex items-center gap-1 ${levelInfo.barColor.replace('bg-', 'text-')}`}>{levelInfo.icon} <span className="font-mono font-bold">Lv.{levelInfo.level}</span></div><div onClick={(e) => { e.stopPropagation(); alert(lang === 'zh' ? '🔒 安全承诺：\n对话记录优先存储于本地。\n云端同步仅用于生成画像，传输全程加密。' : '🔒 E2EE Secure.'); }} className="flex items-center gap-1 px-1.5 py-px rounded-md bg-green-500/10 border border-green-500/20 text-green-500 cursor-pointer hover:bg-green-500/20 transition-colors whitespace-nowrap"><Shield size={9} /><span className="text-[9px] font-bold">E2EE</span></div></div></div>
               </div>
               <div className="flex items-center gap-1">
-                {/* 🔥 新增：Chat 视图中的晨报入口 */}
+                {/* 🔥 Chat Header 今日运势入口 */}
                 <button onClick={() => setShowBriefing(true)} className="p-2 text-gray-400 hover:text-indigo-400 relative group" title="Daily Tarot"><Sparkles size={18} /></button>
                 <button onClick={fetchDailyQuote} className="p-2 text-gray-400 hover:text-[#7F5CFF] relative group" title="Daily Toxic Quote"><Calendar size={18} /></button>
                 <button onClick={() => setShowMenu(!showMenu)} className="p-2 text-gray-400 hover:text-white relative group"><MoreVertical size={18} /></button>
@@ -756,7 +816,7 @@ export default function Home() {
                     {hasNewGlory && (<span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 border-2 border-[#151515] rounded-full animate-bounce pointer-events-none"></span>)}
                   </div>
                 )}
-                {/* 每日晨报 (手动触发) */}
+                {/* 🔥 Echo 的入口已替换为：每日晨报 (手动触发) */}
                 {activePersona === 'Echo' && (
                   <button 
                     type="button" 
