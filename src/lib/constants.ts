@@ -245,7 +245,7 @@ export const PERSONAS: Record<PersonaType, {
 }> = {
   Ash: {
     name: 'Ash',
-    avatar: '/avatars/Ash.png',
+    avatar: '/avatars/ash.jpg',
     color: 'text-blue-400',
     title: { zh: '冷笑家', en: 'The Cold Cynic' },
     slogan: { zh: '"别说话，我在观察你愚蠢的样子。"', en: '"Silence. I am observing your stupidity."' },
@@ -266,7 +266,7 @@ export const PERSONAS: Record<PersonaType, {
   
   Rin: {
     name: 'Rin',
-    avatar: '/avatars/Rin.png',
+    avatar: '/avatars/rin.jpg',
     color: 'text-pink-400',
     title: { zh: '毒暖控', en: 'Tsundere Healer' },
     slogan: { zh: '"嘴上嫌弃你，心里... 啧，烦死了。"', en: '"I hate you... but eat this."' },
@@ -287,7 +287,7 @@ export const PERSONAS: Record<PersonaType, {
   
   Sol: {
     name: 'Sol',
-    avatar: '/avatars/Sol.png',
+    avatar: '/avatars/sol.jpg',
     color: 'text-emerald-400',
     title: { zh: '秩序执行官', en: 'The Architect' },
     slogan: { zh: '"你的生活一团糟。交出权限，听我指挥。"', en: '"Your life is a mess. Obey me."' },
@@ -308,7 +308,7 @@ export const PERSONAS: Record<PersonaType, {
   
   Vee: {
     name: 'Vee',
-    avatar: '/avatars/Vee.png',
+    avatar: '/avatars/vee.jpg',
     color: 'text-purple-400',
     title: { zh: '破防艺术家', en: 'Chaos Artist' },
     slogan: { zh: '"严肃点，我们在演悲剧呢。哈哈哈哈！"', en: '"Why so serious? 🤡"' },
@@ -329,7 +329,7 @@ export const PERSONAS: Record<PersonaType, {
   
   Echo: {
     name: 'Echo',
-    avatar: '/avatars/Echo.png',
+    avatar: '/avatars/echo.jpg',
     color: 'text-indigo-400',
     title: { zh: '灵魂解剖师', en: 'Soul Anatomist' },
     slogan: { zh: '"你在这个页面停留了5秒，你在渴望被看穿。"', en: '"Silence speaks louder."' },
