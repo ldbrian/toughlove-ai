@@ -1,23 +1,21 @@
-'use client';
+'use client'; // ⚠️ 必须在第一行
 
 import { useState, useRef, useEffect } from 'react';
 import { useChat } from 'ai/react';
 import { Message } from 'ai';
 import posthog from 'posthog-js';
 import html2canvas from 'html2canvas';
-// 移除 dynamic，解决 React 报错
-// import dynamic from 'next/dynamic'; 
 
 import { 
   Send, Calendar, ChevronLeft, MoreVertical, RotateCcw, 
   UserPen, Brain, Book, Lock, Sparkles, Shield, 
   Volume2, Loader2, Headphones, Ban, ArrowUpRight, 
   MessageCircle, Bug, Zap, Heart, Globe, Download, Coffee,
-  Mic, MicOff, BookHeart, Flower2
+  Mic, MicOff, BookHeart, Flower2, ShoppingBag 
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
-import { PERSONAS, PersonaType, UI_TEXT, LangType, QUICK_REPLIES_DATA, SOL_TAUNTS, RIN_TASKS } from '@/lib/constants';
+import { PERSONAS, PersonaType, UI_TEXT, LangType, QUICK_REPLIES_DATA, SOL_TAUNTS, RIN_TASKS, ShopItem } from '@/lib/constants';
 import { getDeviceId } from '@/lib/utils';
 import { getMemory, saveMemory, getVoiceIds, saveVoiceIds } from '@/lib/storage';
 import { getLocalTimeInfo, getSimpleWeather } from '@/lib/env';
@@ -30,8 +28,8 @@ import { StickyNoteOverlay } from '@/components/features/StickyNoteOverlay';
 
 // 静态引用 Modals
 import { 
-  TriageModal, FocusOfferModal, DonateModal, LangSetupModal, 
-  NameModal, FeedbackModal, UpdateModal 
+  FocusOfferModal, DonateModal, LangSetupModal, 
+  NameModal, FeedbackModal 
 } from '@/components/modals/SystemModals';
 
 import { 
@@ -39,18 +37,55 @@ import {
   ShameModal, GloryModal, EnergyModal 
 } from '@/components/modals/ContentModals';
 
+import { ShopModal } from '@/components/modals/ShopModal';
+import { DailyBriefingModal } from '@/components/modals/DailyBriefingModal';
+
+// 壁纸预设库
+const WALLPAPER_PRESETS: Record<string, any> = {
+  'BG_CYBER_NIGHT': {
+    backgroundImage: `url('/wallpapers/ash_clinic.jpg')`, 
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    backgroundBlendMode: 'overlay',
+    backgroundColor: 'rgba(0,0,0,0.7)'
+  },
+  'BG_RIN_ROOM': {
+    backgroundImage: `url('/wallpapers/rin_room.jpg')`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)'
+  },
+  'BG_SOL_ROOM': {
+    backgroundImage: `url('/wallpapers/sol_room.jpg')`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    backgroundColor: 'rgba(0,0,0,0.8)'
+  },
+  'BG_VEE_ROOM': {
+    backgroundImage: `url('/wallpapers/vee_room.jpg')`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    backgroundColor: 'rgba(0,0,0,0.6)'
+  },
+  'BG_ECHO_ROOM': {
+    backgroundImage: `url('/wallpapers/echo_room.jpg')`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    backgroundColor: 'rgba(0,0,0,0.7)'
+  },
+};
+
 // --- Constants ---
-const CURRENT_VERSION_KEY = 'toughlove_v2.2.0_release'; // 🔥 版本号更新
 const LANGUAGE_KEY = 'toughlove_language_confirmed';
 const LANG_PREF_KEY = 'toughlove_lang_preference';
 const USER_NAME_KEY = 'toughlove_user_name';
-const VISITED_KEY = 'toughlove_has_visited';
-const LAST_QUOTE_DATE_KEY = 'toughlove_last_quote_view_date';
+const VISITED_KEY = 'toughlove_has_visited'; 
 
 const FOCUS_ACTIVE_KEY = 'toughlove_focus_active';
 const FOCUS_REMAINING_KEY = 'toughlove_focus_remaining';
 const FOCUS_START_TIME_KEY = 'toughlove_focus_start_time';
 const FOCUS_TOTAL_TIME = 25 * 60; 
+
 
 const RIN_ACTIVE_KEY = 'toughlove_rin_active';
 const RIN_TASK_KEY = 'toughlove_rin_task';
@@ -65,16 +100,16 @@ type ViewState = 'selection' | 'chat';
 
 export default function Home() {
   const [mounted, setMounted] = useState(false);
+  const [isCheckingFate, setIsCheckingFate] = useState(false); 
   const [view, setView] = useState<ViewState>('selection');
   const [activePersona, setActivePersona] = useState<PersonaType>('Ash');
   const [lang, setLang] = useState<LangType>('zh');
   
   // Modals Visibility
   const [showLangSetup, setShowLangSetup] = useState(false);
-  const [showTriage, setShowTriage] = useState(false);
+  const [showTriage, setShowTriage] = useState(false); 
   const [showQuote, setShowQuote] = useState(false);
   const [showInstallModal, setShowInstallModal] = useState(false);
-  const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [showDonateModal, setShowDonateModal] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -84,6 +119,16 @@ export default function Home() {
   const [showShameModal, setShowShameModal] = useState(false);
   const [showGloryModal, setShowGloryModal] = useState(false);
   const [showEnergyModal, setShowEnergyModal] = useState(false); 
+  
+  // Shop & Wallpaper
+  const [showShop, setShowShop] = useState(false);
+  const [userRin, setUserRin] = useState(0); 
+  const [isBuying, setIsBuying] = useState(false);
+  const [inventory, setInventory] = useState<string[]>([]);
+  const [wallpapers, setWallpapers] = useState<Record<string, string>>({});
+  const [hasSeenShop, setHasSeenShop] = useState(false); 
+
+  const [showBriefing, setShowBriefing] = useState(false);
 
   // Features
   const [showFocusOffer, setShowFocusOffer] = useState(false);
@@ -95,10 +140,8 @@ export default function Home() {
   const [showStickyNote, setShowStickyNote] = useState(false);
   const [currentStickyTask, setCurrentStickyTask] = useState("");
 
-  // Voice
   const [isRecording, setIsRecording] = useState(false);
 
-  // Data
   const [quoteData, setQuoteData] = useState<DailyQuote | null>(null);
   const [profileData, setProfileData] = useState<{tags: string[], diagnosis: string, radar?: any, achievements?: any[]} | null>(null);
   const [shameData, setShameData] = useState<{name: string, duration: number, date: string} | null>(null);
@@ -113,18 +156,15 @@ export default function Home() {
   const [tick, setTick] = useState(0);
   const [currentWeather, setCurrentWeather] = useState("");
 
-  // Loading
   const [isQuoteLoading, setIsQuoteLoading] = useState(false);
   const [isGeneratingImg, setIsGeneratingImg] = useState(false);
   const [isProfileLoading, setIsProfileLoading] = useState(false);
   
-  // Audio
   const [playingMsgId, setPlayingMsgId] = useState<string | null>(null);
   const [voiceMsgIds, setVoiceMsgIds] = useState<Set<string>>(new Set()); 
   const [forceVoice, setForceVoice] = useState(false);
   const [voiceTrial, setVoiceTrial] = useState(3);
 
-  // Refs
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const quoteCardRef = useRef<HTMLDivElement>(null);
   const profileCardRef = useRef<HTMLDivElement>(null);
@@ -132,35 +172,40 @@ export default function Home() {
 
   const ui = UI_TEXT[lang];
   const currentP = PERSONAS[activePersona];
-  const badgeStyle = "absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-[#1a1a1a] animate-pulse";
 
-  // Helpers
+  const currentBgStyle = (view === 'chat' && wallpapers[activePersona]) 
+    ? WALLPAPER_PRESETS[wallpapers[activePersona]] 
+    : {};
+
   const getTrustKey = (p: string) => `toughlove_trust_${p}`;
   const getLevelInfo = (count: number) => {
     if (count < 50) return { level: 1, icon: <Shield size={12} />, bgClass: 'bg-[#0a0a0a]', borderClass: 'border-white/5', barColor: 'bg-gray-500', glowClass: '' };
     if (count < 100) return { level: 2, icon: <Zap size={12} />, bgClass: 'bg-gradient-to-b from-[#0f172a] to-[#0a0a0a]', borderClass: 'border-blue-500/30', barColor: 'bg-blue-500', glowClass: 'shadow-[0_0_30px_rgba(59,130,246,0.1)]' };
     return { level: 3, icon: <Heart size={12} />, bgClass: 'bg-[url("/grid.svg")] bg-fixed bg-[length:50px_50px] bg-[#0a0a0a]', customStyle: { background: 'radial-gradient(circle at 50% -20%, #1e1b4b 0%, #0a0a0a 60%)' }, borderClass: 'border-[#7F5CFF]/40', barColor: 'bg-[#7F5CFF]', glowClass: 'shadow-[0_0_40px_rgba(127,92,255,0.15)]' };
   };
+  
   const levelInfo = getLevelInfo(interactionCount);
   const progressPercent = Math.min(100, (interactionCount / 50) * 100);
-  const getUnlockHint = () => {
-    if (interactionCount < 50) return lang === 'zh' ? `🔒 距离 [Lv.2 解锁语音] 还需 ${50 - interactionCount} 次互动` : `🔒 ${50 - interactionCount} msgs to unlock Voice`;
-    if (interactionCount < 100) return lang === 'zh' ? `🔒 距离 [Lv.3 解锁私照] 还需 ${100 - interactionCount} 次互动` : `🔒 ${100 - interactionCount} msgs to unlock Photos`;
-    return lang === 'zh' ? `✨ 当前信任度已满，享受你们的共犯时刻。` : `✨ Trust Maxed. Enjoy the bond.`;
-  };
+  
   const getPersonaPreview = (pKey: PersonaType) => {
     if (!mounted) return { isChatted: false, lastMsg: "", trust: 0, time: "" };
     const history = getMemory(pKey);
     const trust = parseInt(localStorage.getItem(getTrustKey(pKey)) || '0');
     if (history.length > 0) {
       const last = history[history.length - 1];
-      return { isChatted: true, lastMsg: (last.role === 'user' ? 'You: ' : '') + last.content.split('|||')[0], trust, time: "Active" };
+      const visibleMsgs = history.filter(m => m.role !== 'system');
+      const lastVisible = visibleMsgs[visibleMsgs.length - 1];
+      return { 
+          isChatted: true, 
+          lastMsg: lastVisible ? ((lastVisible.role === 'user' ? 'You: ' : '') + lastVisible.content.split('|||')[0]) : "...", 
+          trust, 
+          time: "Active" 
+      };
     }
     return { isChatted: false, lastMsg: PERSONAS[pKey].greetings[lang][0], trust, time: "New" };
   };
   const formatMentions = (text: string) => text.replace(/\b(Ash|Rin|Sol|Vee|Echo)\b/g, (match) => `[${match}](#trigger-${match})`);
 
-  // Async Actions
   const syncToCloud = async (currentMessages: any[]) => {
     try {
       await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: getDeviceId(), persona: activePersona, messages: currentMessages }) });
@@ -192,136 +237,129 @@ export default function Home() {
       } catch (e) { console.error(e); } finally { setIsQuoteLoading(false); } 
   };
 
-  const downloadCard = async (ref: any, name: string) => {
-    if (!ref.current) return;
-    setIsGeneratingImg(true);
+  const fetchWalletBalance = async () => {
     try {
-      const c = await html2canvas(ref.current, { backgroundColor: '#000', scale: 3 } as any);
-      const a = document.createElement('a');
-      a.href = c.toDataURL("image/png");
-      a.download = name;
-      a.click();
-    } catch {
-      alert(lang === 'zh' ? "保存失败" : "Save failed");
+      const deviceId = getDeviceId();
+      const res = await fetch(`/api/wallet/balance?userId=${deviceId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setUserRin(data.balance);
+      }
+    } catch (e) { console.error("Fetch balance failed", e); }
+  };
+
+  const handleBuyItem = async (item: ShopItem) => {
+    setIsBuying(true);
+    try {
+      const res = await fetch('/api/shop/buy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: getDeviceId(), itemId: item.id })
+      });
+      if (!res.ok) throw new Error('Failed');
+      
+      const data = await res.json();
+      setUserRin(data.newBalance); 
+      setInventory(prev => [...prev, item.id]); 
+      
+      if (item.effect === 'ASH_MOOD_SOFT') {
+         localStorage.setItem('toughlove_ash_mood', 'soft');
+         alert(lang === 'zh' ? 'Ash 喝了咖啡，心情变好了。' : 'Ash drank the latte.');
+      } 
+      else if (item.type === 'visual' && item.effect && WALLPAPER_PRESETS[item.effect]) {
+         setWallpapers(prev => {
+            const newMap = { ...prev, [activePersona]: item.effect! };
+            localStorage.setItem('toughlove_wallpapers_map', JSON.stringify(newMap));
+            return newMap;
+         });
+         alert(lang === 'zh' ? `已应用专属背景：${item.name.zh}` : `Applied background: ${item.name.en}`);
+      } 
+      else if (item.effect === 'REMOVE_SHAME') {
+         alert(lang === 'zh' ? 'Sol 的赦免生效。耻辱记录已清除。' : 'Pardon granted. Shame cleared.');
+      }
+      setShowShop(false);
+    } catch (e) {
+      alert(lang === 'zh' ? '交易失败：余额不足或系统错误' : 'Transaction Failed');
     } finally {
-      setIsGeneratingImg(false);
+      setIsBuying(false);
     }
   };
 
+  const openShopHandler = () => {
+    setShowShop(true);
+    setHasSeenShop(true);
+    localStorage.setItem('toughlove_has_seen_shop', 'true');
+  };
+
+  const handleBriefingJump = (payload: any) => {
+   const { persona, systemContext, visibleReaction } = payload;
+   const history = getMemory(persona);
+   
+   // 1. 注入系统指令
+   history.push({
+       id: Date.now().toString(),
+       role: 'system',
+       content: systemContext
+   } as any);
+
+   // 2. 注入 AI 的预设反应
+   history.push({
+       id: (Date.now() + 1).toString(),
+       role: 'assistant',
+       content: visibleReaction
+   } as any);
+
+   saveMemory(persona, history);
+   selectPersona(persona);
+  };
+
+  const downloadCard = async (ref: any, name: string) => { if (!ref.current) return; setIsGeneratingImg(true); try { const c = await html2canvas(ref.current, { backgroundColor: '#000', scale: 3 } as any); const a = document.createElement('a'); a.href = c.toDataURL("image/png"); a.download = name; a.click(); } catch { alert("Save failed"); } finally { setIsGeneratingImg(false); } };
   const downloadQuoteCard = () => downloadCard(quoteCardRef, `ToughLove_${activePersona}_Quote.png`);
   const downloadProfileCard = () => downloadCard(profileCardRef, `ToughLove_Profile.png`);
   const downloadShameCard = (ref: any) => downloadCard(ref, `ToughLove_Shame.png`);
   const downloadGloryCard = (ref: any) => downloadCard(ref, `ToughLove_Glory.png`);
 
   const startVoiceInput = () => {
-    // @ts-ignore
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) { alert(lang === 'zh' ? "您的浏览器不支持语音输入。" : "Browser does not support voice input."); return; }
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) { alert("Browser does not support voice."); return; }
     const recognition = new SpeechRecognition();
     recognition.lang = lang === 'zh' ? 'zh-CN' : 'en-US';
     recognition.onstart = () => setIsRecording(true);
     recognition.onend = () => setIsRecording(false);
     recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript;
-      if (showDiary) alert(lang === 'zh' ? `语音识别成功：\n${transcript}\n(请手动复制到日记)` : `Voice result:\n${transcript}\n(Please copy to diary)`); 
+      if (showDiary) alert(`Voice: ${transcript}`); 
       else setInput(prev => prev + transcript);
     };
     recognition.start();
   };
 
-  // Sol Logic
-  const endFocusMode = () => { 
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem(FOCUS_ACTIVE_KEY); 
-        localStorage.removeItem(FOCUS_REMAINING_KEY);
-      }
-      setIsFocusActive(false); 
-      setIsFocusPaused(false);
-  };
-  
-  const startFocusMode = () => { 
-      setShowFocusOffer(false); 
-      setIsFocusActive(true); 
-      setFocusRemaining(FOCUS_TOTAL_TIME); 
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(FOCUS_ACTIVE_KEY, 'true'); 
-        localStorage.setItem(FOCUS_REMAINING_KEY, FOCUS_TOTAL_TIME.toString()); 
-        localStorage.setItem(FOCUS_START_TIME_KEY, Date.now().toString());
-      }
-      posthog.capture('focus_mode_start'); 
-  };
-  
-  const giveUpFocus = () => { 
-      if (confirm(ui.giveUpConfirm)) {
-          const startTimeStr = localStorage.getItem(FOCUS_START_TIME_KEY);
-          const startTime = startTimeStr ? parseInt(startTimeStr) : Date.now();
-          const durationMin = Math.max(1, Math.floor((Date.now() - startTime) / 60000));
+  const endFocusMode = () => { if (typeof window !== 'undefined') { localStorage.removeItem(FOCUS_ACTIVE_KEY); localStorage.removeItem(FOCUS_REMAINING_KEY); } setIsFocusActive(false); setIsFocusPaused(false); };
+  const startFocusMode = () => { setShowFocusOffer(false); setIsFocusActive(true); setFocusRemaining(FOCUS_TOTAL_TIME); if (typeof window !== 'undefined') { localStorage.setItem(FOCUS_ACTIVE_KEY, 'true'); localStorage.setItem(FOCUS_REMAINING_KEY, FOCUS_TOTAL_TIME.toString()); localStorage.setItem(FOCUS_START_TIME_KEY, Date.now().toString()); } posthog.capture('focus_mode_start'); };
+  const giveUpFocus = () => { if (confirm(ui.giveUpConfirm)) { const startTime = parseInt(localStorage.getItem(FOCUS_START_TIME_KEY) || Date.now().toString()); const durationMin = Math.max(1, Math.floor((Date.now() - startTime) / 60000)); setShameData({ name: userName || ui.defaultName, duration: durationMin, date: new Date().toLocaleDateString() }); endFocusMode(); setShowShameModal(true); } };
 
-          setShameData({
-            name: userName || ui.defaultName,
-            duration: durationMin,
-            date: new Date().toLocaleDateString()
-          });
-
-          endFocusMode(); 
-          setShowShameModal(true);
-          posthog.capture('focus_mode_giveup', { duration: durationMin }); 
-      } 
-  };
-
-  // Rin Logic
-  const triggerRinProtocol = () => {
-    if (isFocusActive) return;
-    const tasks = RIN_TASKS[lang] || RIN_TASKS['zh'];
-    const randomTask = tasks[Math.floor(Math.random() * tasks.length)];
-    
-    setCurrentStickyTask(randomTask);
-    setShowStickyNote(true);
-    
-    if (typeof window !== 'undefined') {
-        localStorage.setItem(RIN_ACTIVE_KEY, 'true');
-        localStorage.setItem(RIN_TASK_KEY, randomTask);
-    }
-    posthog.capture('rin_prescription_triggered');
-  };
-
-  const handleStickyComplete = async () => {
-    setShowStickyNote(false);
-    if (typeof window !== 'undefined') { localStorage.removeItem(RIN_ACTIVE_KEY); localStorage.removeItem(RIN_TASK_KEY); }
-    const shortTask = currentStickyTask.split('。')[0] || "秘密任务";
-    try {
-        await fetch('/api/event', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                userId: getDeviceId(),
-                type: 'glory_rin',
-                content: shortTask,
-                persona: 'Rin'
-            })
-        });
-        setHasNewGlory(true); setGloryUpdateTrigger(prev => prev + 1);
-    } catch (e) { console.error(e); }
-    setGloryData({ name: userName || ui.defaultName, task: shortTask, date: new Date().toLocaleDateString() });
-    setTimeout(() => setShowGloryModal(true), 600);
-    posthog.capture('rin_prescription_completed');
-  };
-
-  const handleStickyGiveUp = () => { setShowStickyNote(false); localStorage.removeItem(RIN_ACTIVE_KEY); localStorage.removeItem(RIN_TASK_KEY); posthog.capture('rin_prescription_given_up'); };
+  const triggerRinProtocol = () => { if (isFocusActive) return; const tasks = RIN_TASKS[lang] || RIN_TASKS['zh']; const randomTask = tasks[Math.floor(Math.random() * tasks.length)]; setCurrentStickyTask(randomTask); setShowStickyNote(true); if (typeof window !== 'undefined') { localStorage.setItem(RIN_ACTIVE_KEY, 'true'); localStorage.setItem(RIN_TASK_KEY, randomTask); } };
+  const handleStickyComplete = async () => { setShowStickyNote(false); if (typeof window !== 'undefined') { localStorage.removeItem(RIN_ACTIVE_KEY); localStorage.removeItem(RIN_TASK_KEY); } const shortTask = currentStickyTask.split('。')[0]; try { await fetch('/api/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: getDeviceId(), type: 'glory_rin', content: shortTask, persona: 'Rin' }) }); setHasNewGlory(true); setGloryUpdateTrigger(prev => prev + 1); setUserRin(prev => prev + 50); } catch (e) { console.error(e); } setGloryData({ name: userName || ui.defaultName, task: shortTask, date: new Date().toLocaleDateString() }); setTimeout(() => setShowGloryModal(true), 600); };
+  const handleStickyGiveUp = () => { setShowStickyNote(false); localStorage.removeItem(RIN_ACTIVE_KEY); localStorage.removeItem(RIN_TASK_KEY); };
   const triggerRinFromStation = () => { setShowEnergyModal(false); triggerRinProtocol(); };
   const openEnergyStation = () => { setShowEnergyModal(true); setHasNewGlory(false); };
 
-  // UI Handlers
-  const confirmLanguage = (l: LangType) => { setLang(l); localStorage.setItem(LANG_PREF_KEY, l); localStorage.setItem(LANGUAGE_KEY, 'true'); setShowLangSetup(false); if(!localStorage.getItem(VISITED_KEY)) setShowTriage(true); posthog.capture('language_set', { language: l }); };
-  const saveUserName = () => { const nameToSave = tempName.trim(); setUserName(nameToSave); localStorage.setItem(USER_NAME_KEY, nameToSave); setShowNameModal(false); posthog.capture('username_set'); };
-  const handleFeedbackSubmit = () => { if (!feedbackText.trim()) return; posthog.capture('user_feedback', { content: feedbackText, userId: getDeviceId() }); alert(lang === 'zh' ? '反馈已收到！' : 'Feedback received!'); setFeedbackText(""); setShowFeedbackModal(false); };
-  const handleInstall = () => { posthog.capture('feature_install_click'); setShowInstallModal(true); setShowMenu(false); };
-  const handleDonate = () => { posthog.capture('feature_donate_click'); setShowDonateModal(true); setShowMenu(false); }
+  const confirmLanguage = (l: LangType) => { 
+      setLang(l); 
+      localStorage.setItem(LANG_PREF_KEY, l); 
+      localStorage.setItem(LANGUAGE_KEY, 'true'); 
+      setShowLangSetup(false); 
+      setTimeout(() => setShowBriefing(true), 800);
+      const today = new Date().toISOString().split('T')[0];
+      localStorage.setItem('toughlove_briefing_date', today);
+  };
+  const saveUserName = () => { setUserName(tempName.trim()); localStorage.setItem(USER_NAME_KEY, tempName.trim()); setShowNameModal(false); };
+  const handleFeedbackSubmit = () => { if (!feedbackText.trim()) return; alert('Thanks!'); setFeedbackText(""); setShowFeedbackModal(false); };
+  const handleInstall = () => { setShowInstallModal(true); setShowMenu(false); };
+  const handleDonate = () => { setShowDonateModal(true); setShowMenu(false); }
   const goBMAC = () => { window.open('https://www.buymeacoffee.com/ldbrian', '_blank'); }
   const handleEditName = () => { setTempName(userName); setShowNameModal(true); setShowMenu(false); }
-  const dismissUpdate = () => { localStorage.setItem(CURRENT_VERSION_KEY, 'true'); setShowUpdateModal(false); };
-  // 🔥 修复：去掉跳转逻辑，原地停留
-  const handleTryNewFeature = () => { posthog.capture('update_click_try'); dismissUpdate(); }; 
+  
   const toggleLanguage = () => { const newLang = lang === 'zh' ? 'en' : 'zh'; setLang(newLang); localStorage.setItem(LANG_PREF_KEY, newLang); setShowMenu(false); };
   const backToSelection = () => { setView('selection'); setTick(tick + 1); };
 
@@ -332,10 +370,8 @@ export default function Home() {
       const newCount = interactionCount + 1;
       setInteractionCount(newCount);
       localStorage.setItem(getTrustKey(activePersona), newCount.toString());
-      if (newCount === 1 || newCount === 50 || newCount === 100) posthog.capture('trust_milestone', { persona: activePersona, level: newCount });
       const isAI = message.role === 'assistant';
       if (isAI) { if (CMD_REGEX.test(message.content)) setShowFocusOffer(true); if (RIN_CMD_REGEX.test(message.content)) triggerRinProtocol(); }
-      if (activePersona === 'Vee' && isAI) fetch('/api/event', { method: 'POST', body: JSON.stringify({ userId: getDeviceId(), type: 'interaction_vee', content: 'chat', persona: 'Vee' }) });
       const isLevel2 = newCount >= 50; 
       let shouldPlay = false;
       if (forceVoice) { if (isLevel2) shouldPlay = true; else if (voiceTrial > 0) { const left = voiceTrial - 1; setVoiceTrial(left); localStorage.setItem('toughlove_voice_trial', left.toString()); shouldPlay = true; if (left === 0) setForceVoice(false); } else { shouldPlay = false; setForceVoice(false); } } else { const isLucky = Math.random() < 0.3; const isShort = message.content.length < 120; if (isLevel2 && isLucky && isShort) shouldPlay = true; }
@@ -343,13 +379,59 @@ export default function Home() {
     }
   });
 
-  const selectPersona = async (persona: PersonaType) => { posthog.capture('persona_select', { persona: persona }); setForceVoice(false); setActivePersona(persona); setView('chat'); const localHistory = getMemory(persona); const localVoiceIds = getVoiceIds(persona); setMessages(localHistory); setVoiceMsgIds(new Set(localVoiceIds)); try { const res = await fetch(`/api/sync?userId=${getDeviceId()}&persona=${persona}`); const data = await res.json(); if (data.messages && data.messages.length > 0) { if (data.messages.length >= localHistory.length) { setMessages(data.messages); saveMemory(persona, data.messages); } } else if (localHistory.length === 0) { const p = PERSONAS[persona]; const greetings = p.greetings[lang]; const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)]; const welcomeMsg: Message = { id: Date.now().toString(), role: 'assistant', content: randomGreeting }; setMessages([welcomeMsg]); saveMemory(persona, [welcomeMsg]); } } catch (e) { if (localHistory.length === 0) { const p = PERSONAS[persona]; const greetings = p.greetings[lang]; const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)]; const welcomeMsg: Message = { id: Date.now().toString(), role: 'assistant', content: randomGreeting }; setMessages([welcomeMsg]); saveMemory(persona, [welcomeMsg]); } } };
-  const handleTriageSelection = (target: PersonaType) => { localStorage.setItem(VISITED_KEY, 'true'); setShowTriage(false); selectPersona(target); posthog.capture('triage_select', { target }); };
-  const handleReset = () => { if (confirm(ui.resetConfirm)) { posthog.capture('chat_reset', { persona: activePersona }); setMessages([]); saveMemory(activePersona, []); localStorage.removeItem(`toughlove_voice_ids_${activePersona}`); setVoiceMsgIds(new Set()); syncToCloud([]); setShowMenu(false); setInteractionCount(0); localStorage.setItem(getTrustKey(activePersona), '0'); const p = PERSONAS[activePersona]; const greetings = p.greetings[lang]; const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)]; setTimeout(() => { const welcomeMsg: Message = { id: Date.now().toString(), role: 'assistant', content: randomGreeting }; setMessages([welcomeMsg]); saveMemory(activePersona, [welcomeMsg]); syncToCloud([welcomeMsg]); }, 100); } };
-  const handleBribeSuccess = async () => { setShowDonateModal(false); localStorage.setItem('toughlove_is_patron', 'true'); const bribeMsg: Message = { id: Date.now().toString(), role: 'user', content: lang === 'zh' ? "☕️ (给你买了一杯热咖啡，请笑纳...)" : "☕️ (Bought you a coffee. Be nice...)" }; await append(bribeMsg); posthog.capture('user_bribed_ai', { persona: activePersona }); };
-  const handleOpenProfile = async () => { posthog.capture('feature_profile_open'); setShowMenu(false); setShowProfile(true); setIsProfileLoading(true); try { const res = await fetch('/api/profile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: getDeviceId(), language: lang }), }); const data = await res.json(); setProfileData(data); } catch (e) { console.error(e); } finally { setIsProfileLoading(false); } };
-  const handleExport = () => { posthog.capture('feature_export', { persona: activePersona }); if (messages.length === 0) return; const dateStr = new Date().toLocaleString(); const header = `================================\n${ui.exportFileName}\nDate: ${dateStr}\nPersona: ${currentP.name}\nUser: ${userName || 'Anonymous'}\n================================\n\n`; const body = messages.map(m => { const role = m.role === 'user' ? (userName || 'ME') : currentP.name.toUpperCase(); return `[${role}]:\n${m.content.replace(/\|\|\|/g, '\n')}\n`; }).join('\n--------------------------------\n\n'); const blob = new Blob([header + body], { type: 'text/plain;charset=utf-8' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${ui.exportFileName}_${activePersona}_${new Date().toISOString().split('T')[0]}.txt`; a.style.display = 'none'; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); setShowMenu(false); };
-  const onFormSubmit = (e: React.FormEvent) => { e.preventDefault(); posthog.capture('message_send', { persona: activePersona }); if (audioRef.current) { audioRef.current.src = SILENT_AUDIO; audioRef.current.play().catch(err => {}); } const timeData = getLocalTimeInfo(); const envInfo = { time: timeData.localTime, weekday: lang === 'zh' ? timeData.weekdayZH : timeData.weekdayEN, phase: timeData.lifePhase, weather: currentWeather }; handleSubmit(e, { options: { body: { persona: activePersona, language: lang, interactionCount, userName, envInfo, userId: getDeviceId() } } }); };
+  const selectPersona = async (persona: PersonaType) => { 
+      posthog.capture('persona_select', { persona: persona }); 
+      setForceVoice(false); 
+      setActivePersona(persona); 
+      setView('chat'); 
+      const localHistory = getMemory(persona); 
+      const localVoiceIds = getVoiceIds(persona); 
+      setMessages(localHistory); 
+      setVoiceMsgIds(new Set(localVoiceIds)); 
+      
+      try { 
+          const res = await fetch(`/api/sync?userId=${getDeviceId()}&persona=${persona}`); 
+          const data = await res.json(); 
+          if (data.messages && data.messages.length > 0) { 
+              if (data.messages.length >= localHistory.length) { 
+                  setMessages(data.messages); 
+                  saveMemory(persona, data.messages); 
+              } 
+          } else if (localHistory.length === 0) { 
+              const p = PERSONAS[persona]; 
+              const greetings = p.greetings[lang]; 
+              const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)]; 
+              const welcomeMsg: Message = { id: Date.now().toString(), role: 'assistant', content: randomGreeting }; 
+              setMessages([welcomeMsg]); 
+              saveMemory(persona, [welcomeMsg]); 
+          } 
+      } catch (e) { 
+          if (localHistory.length === 0) { 
+              const p = PERSONAS[persona]; 
+              const greetings = p.greetings[lang]; 
+              const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)]; 
+              const welcomeMsg: Message = { id: Date.now().toString(), role: 'assistant', content: randomGreeting }; 
+              setMessages([welcomeMsg]); 
+              saveMemory(persona, [welcomeMsg]); 
+          } 
+      } 
+  };
+
+  const handleTriageSelection = (target: PersonaType) => { localStorage.setItem(VISITED_KEY, 'true'); setShowTriage(false); selectPersona(target); };
+  const handleReset = () => { if (confirm(ui.resetConfirm)) { setMessages([]); saveMemory(activePersona, []); localStorage.removeItem(`toughlove_voice_ids_${activePersona}`); setVoiceMsgIds(new Set()); syncToCloud([]); setShowMenu(false); setInteractionCount(0); localStorage.setItem(getTrustKey(activePersona), '0'); const p = PERSONAS[activePersona]; const greetings = p.greetings[lang]; const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)]; setTimeout(() => { const welcomeMsg: Message = { id: Date.now().toString(), role: 'assistant', content: randomGreeting }; setMessages([welcomeMsg]); saveMemory(activePersona, [welcomeMsg]); syncToCloud([welcomeMsg]); }, 100); } };
+  const handleBribeSuccess = async () => { setShowDonateModal(false); localStorage.setItem('toughlove_is_patron', 'true'); const bribeMsg: Message = { id: Date.now().toString(), role: 'user', content: lang === 'zh' ? "☕️ (给你买了一杯热咖啡，请笑纳...)" : "☕️ (Bought you a coffee. Be nice...)" }; await append(bribeMsg); };
+  const handleOpenProfile = async () => { setShowMenu(false); setShowProfile(true); setIsProfileLoading(true); try { const res = await fetch('/api/profile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: getDeviceId(), language: lang }), }); const data = await res.json(); setProfileData(data); } catch (e) { console.error(e); } finally { setIsProfileLoading(false); } };
+  const handleExport = () => { if (messages.length === 0) return; const dateStr = new Date().toLocaleString(); const header = `================================\n${ui.exportFileName}\nDate: ${dateStr}\nPersona: ${currentP.name}\nUser: ${userName || 'Anonymous'}\n================================\n\n`; const body = messages.map(m => { const role = m.role === 'user' ? (userName || 'ME') : currentP.name.toUpperCase(); return `[${role}]:\n${m.content.replace(/\|\|\|/g, '\n')}\n`; }).join('\n--------------------------------\n\n'); const blob = new Blob([header + body], { type: 'text/plain;charset=utf-8' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${ui.exportFileName}_${activePersona}_${new Date().toISOString().split('T')[0]}.txt`; a.style.display = 'none'; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); setShowMenu(false); };
+  
+  const onFormSubmit = (e: React.FormEvent) => { 
+    e.preventDefault(); 
+    if (audioRef.current) { audioRef.current.src = SILENT_AUDIO; audioRef.current.play().catch(err => {}); } 
+    const timeData = getLocalTimeInfo(); 
+    const envInfo = { time: timeData.localTime, weekday: lang === 'zh' ? timeData.weekdayZH : timeData.weekdayEN, phase: timeData.lifePhase, weather: currentWeather }; 
+    const ashMood = localStorage.getItem('toughlove_ash_mood'); 
+    handleSubmit(e, { options: { body: { persona: activePersona, language: lang, interactionCount, userName, envInfo, userId: getDeviceId(), activeBuffs: ashMood === 'soft' ? ['ASH_MOOD_SOFT'] : [] } } }); 
+  };
+
   const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); };
 
   const prevLoadingRef = useRef(false);
@@ -357,9 +439,58 @@ export default function Home() {
   useEffect(() => { if (messages.length > 0 && view === 'chat') { const cleanMsgs = messages.map(m => ({ ...m, content: m.content.replace(CMD_REGEX, '').replace(RIN_CMD_REGEX, '') })); saveMemory(activePersona, cleanMsgs); } }, [messages, activePersona, view]);
   useEffect(() => { scrollToBottom(); }, [messages, isLoading, view]);
   useEffect(() => { if (messages.length > 0) { const lastMsg = messages[messages.length - 1]; if (lastMsg.role === 'assistant') { if (CMD_REGEX.test(lastMsg.content)) setShowFocusOffer(true); if (RIN_CMD_REGEX.test(lastMsg.content)) triggerRinProtocol(); } } }, [messages]);
-  useEffect(() => { setMounted(true); const savedLang = localStorage.getItem(LANG_PREF_KEY); if (savedLang) setLang(savedLang as LangType); const hasLangConfirmed = localStorage.getItem(LANGUAGE_KEY); if (!hasLangConfirmed) { if (!savedLang) { const browserLang = navigator.language.toLowerCase(); if (!browserLang.startsWith('zh')) { setLang('en'); } } setShowLangSetup(true); } else { const hasVisited = localStorage.getItem(VISITED_KEY); if (!hasVisited) setShowTriage(true); else { const hasSeenUpdate = localStorage.getItem(CURRENT_VERSION_KEY); if (!hasSeenUpdate) setTimeout(() => setShowUpdateModal(true), 500); } } const today = new Date().toISOString().split('T')[0]; const lastQuoteDate = localStorage.getItem(LAST_QUOTE_DATE_KEY); if (hasLangConfirmed && lastQuoteDate !== today) { setTimeout(() => { fetchDailyQuote(); localStorage.setItem(LAST_QUOTE_DATE_KEY, today); }, 1500); } const storedName = localStorage.getItem(USER_NAME_KEY); if (storedName) setUserName(storedName); const savedTrial = localStorage.getItem('toughlove_voice_trial'); if (savedTrial) setVoiceTrial(parseInt(savedTrial)); getSimpleWeather().then(w => setCurrentWeather(w)); posthog.capture('page_view', { lang: savedLang || lang }); const savedFocus = localStorage.getItem(FOCUS_ACTIVE_KEY); if (savedFocus === 'true') { const remaining = parseInt(localStorage.getItem(FOCUS_REMAINING_KEY) || '0'); if (!isNaN(remaining) && remaining > 0) { setIsFocusActive(true); setFocusRemaining(remaining); } else { endFocusMode(); } } const isRinActive = localStorage.getItem(RIN_ACTIVE_KEY); const savedTask = localStorage.getItem(RIN_TASK_KEY); if (isRinActive === 'true' && savedTask) { setCurrentStickyTask(savedTask); setShowStickyNote(true); } }, []);
   
-  // Sol Focus Logic Update: Record Success
+  useEffect(() => { 
+      setMounted(true); 
+      const savedLang = localStorage.getItem(LANG_PREF_KEY); 
+      if (savedLang) setLang(savedLang as LangType); 
+      const hasLangConfirmed = localStorage.getItem(LANGUAGE_KEY); 
+      
+      if (!hasLangConfirmed) { 
+          setShowLangSetup(true); 
+      } else { 
+          const today = new Date().toISOString().split('T')[0];
+          const lastBriefingDate = localStorage.getItem('toughlove_briefing_date');
+          
+          if (lastBriefingDate !== today && localStorage.getItem(VISITED_KEY)) {
+            setIsCheckingFate(true);
+            setTimeout(() => {
+                setShowBriefing(true);
+                setIsCheckingFate(false); 
+                localStorage.setItem('toughlove_briefing_date', today);
+            }, 800);
+        } else {
+            setIsCheckingFate(false);
+        }
+      }
+      
+      const storedName = localStorage.getItem(USER_NAME_KEY); 
+      if (storedName) setUserName(storedName); 
+      const savedTrial = localStorage.getItem('toughlove_voice_trial'); 
+      if (savedTrial) setVoiceTrial(parseInt(savedTrial)); 
+      getSimpleWeather().then(w => setCurrentWeather(w)); 
+      posthog.capture('page_view', { lang: savedLang || lang }); 
+      const savedFocus = localStorage.getItem(FOCUS_ACTIVE_KEY); 
+      if (savedFocus === 'true') { const remaining = parseInt(localStorage.getItem(FOCUS_REMAINING_KEY) || '0'); if (!isNaN(remaining) && remaining > 0) { setIsFocusActive(true); setFocusRemaining(remaining); } else { endFocusMode(); } } 
+      const isRinActive = localStorage.getItem(RIN_ACTIVE_KEY); const savedTask = localStorage.getItem(RIN_TASK_KEY); 
+      if (isRinActive === 'true' && savedTask) { setCurrentStickyTask(savedTask); setShowStickyNote(true); } 
+      
+      fetchWalletBalance();
+
+      try {
+        const savedMap = localStorage.getItem('toughlove_wallpapers_map');
+        if (savedMap) {
+          setWallpapers(JSON.parse(savedMap));
+        }
+      } catch (e) {
+        console.error("Load wallpapers failed", e);
+      }
+
+      const seenShop = localStorage.getItem('toughlove_has_seen_shop');
+      if (seenShop) setHasSeenShop(true);
+
+  }, []);
+  
   useEffect(() => {
     if (isFocusActive && focusRemaining <= 0) {
         fetch('/api/event', {
@@ -372,6 +503,7 @@ export default function Home() {
                 persona: 'Sol'
             })
         });
+        setUserRin(prev => prev + 100);
         endFocusMode();
     }
   }, [focusRemaining, isFocusActive]);
@@ -379,10 +511,13 @@ export default function Home() {
   useEffect(() => { let interval: NodeJS.Timeout; let tauntInterval: NodeJS.Timeout; const handleVisibilityChange = () => { if (document.hidden && isFocusActive) { setIsFocusPaused(true); document.title = "⚠️ SOL IS WATCHING"; } else if (!document.hidden && isFocusActive) { setIsFocusPaused(false); document.title = "ToughLove AI"; setFocusWarning(lang === 'zh' ? "⚠️ 监测到离开。计时暂停。别想逃。" : "⚠️ Absence detected. Timer paused."); setTimeout(() => setFocusWarning(null), 4000); } }; if (isFocusActive) { document.addEventListener("visibilitychange", handleVisibilityChange); interval = setInterval(() => { if (!isFocusPaused && !document.hidden) { setFocusRemaining(prev => { const next = prev - 1; localStorage.setItem(FOCUS_REMAINING_KEY, next.toString()); return next; }); } }, 1000); tauntInterval = setInterval(() => { setTauntIndex(prev => (prev + 1) % SOL_TAUNTS[lang].length); }, 4000); } return () => { clearInterval(interval); clearInterval(tauntInterval); document.removeEventListener("visibilitychange", handleVisibilityChange); }; }, [isFocusActive, isFocusPaused, lang]);
   useEffect(() => { if (mounted) { const ids = getVoiceIds(activePersona); setVoiceMsgIds(new Set(ids)); } }, [activePersona, mounted]);
 
-  if (!mounted) return <BootScreen />;
+  if (!mounted || isCheckingFate) return <BootScreen />;
 
   return (
-    <div className="relative flex flex-col h-[100dvh] bg-[#050505] text-gray-100 overflow-hidden font-sans selection:bg-[#7F5CFF] selection:text-white">
+    <div 
+        className="relative flex flex-col h-[100dvh] bg-[#050505] text-gray-100 overflow-hidden font-sans selection:bg-[#7F5CFF] selection:text-white transition-all duration-700"
+        style={currentBgStyle}
+    >
       <div className="absolute top-[-20%] left-0 right-0 h-[500px] bg-gradient-to-b from-[#7F5CFF]/10 to-transparent blur-[100px] pointer-events-none" />
       <audio ref={audioRef} className="hidden" playsInline />
 
@@ -390,12 +525,20 @@ export default function Home() {
       {showStickyNote && ( <StickyNoteOverlay task={currentStickyTask} lang={lang} onComplete={handleStickyComplete} onGiveUp={handleStickyGiveUp} /> )}
 
       <FocusOfferModal show={showFocusOffer} lang={lang} onStart={startFocusMode} onCancel={() => setShowFocusOffer(false)} />
-      <TriageModal show={showTriage} lang={lang} onSelect={handleTriageSelection} />
+      
       <LangSetupModal show={showLangSetup} lang={lang} onConfirm={confirmLanguage} />
       <NameModal show={showNameModal} onClose={() => setShowNameModal(false)} tempName={tempName} setTempName={setTempName} onSave={saveUserName} ui={ui} />
       <DonateModal show={showDonateModal} onClose={() => setShowDonateModal(false)} lang={lang} currentP={currentP} onBribe={handleBribeSuccess} onExternal={goBMAC} />
       <FeedbackModal show={showFeedbackModal} onClose={() => setShowFeedbackModal(false)} text={feedbackText} setText={setFeedbackText} onSubmit={handleFeedbackSubmit} lang={lang} />
-      <UpdateModal show={showUpdateModal} onClose={dismissUpdate} ui={ui} onTry={handleTryNewFeature} />
+      
+      <ShopModal show={showShop} onClose={() => setShowShop(false)} userRin={userRin} onBuy={handleBuyItem} lang={lang} isBuying={isBuying} />
+
+      <DailyBriefingModal 
+        show={showBriefing} 
+        onClose={() => setShowBriefing(false)} 
+        onJumpToChat={handleBriefingJump} 
+        lang={lang} 
+      />
 
       <div ref={quoteCardRef} className="contents"><DailyQuoteModal show={showQuote} onClose={() => setShowQuote(false)} data={quoteData} isLoading={isQuoteLoading} onDownload={() => downloadQuoteCard()} isGenerating={isGeneratingImg} ui={ui} activePersona={activePersona} /></div>
       <div ref={profileCardRef} className="contents"><ProfileModal show={showProfile} onClose={() => setShowProfile(false)} data={profileData} isLoading={isProfileLoading} onDownload={() => downloadProfileCard()} isGenerating={isGeneratingImg} ui={ui} mounted={mounted} deviceId={getDeviceId()} /></div>
@@ -406,8 +549,23 @@ export default function Home() {
 
       {view === 'selection' && (
         <div className="z-10 flex flex-col h-full w-full max-w-md mx-auto p-4 animate-[fadeIn_0.5s_ease-out]">
-          <div className="flex justify-between items-center mb-6 px-2"><h1 className="text-xl font-bold tracking-wider flex items-center gap-2"><MessageCircle size={20} className="text-[#7F5CFF]" /> Chats</h1><div className="flex gap-3"><button onClick={toggleLanguage} className="text-xs font-bold text-gray-400 hover:text-white uppercase border border-white/10 px-2 py-1 rounded-lg">{lang}</button></div></div>
-          <div className="flex flex-col gap-3 overflow-y-auto pb-20">
+          <div className="flex justify-between items-center mb-6 px-2">
+            <h1 className="text-xl font-bold tracking-wider flex items-center gap-2">
+              <MessageCircle size={20} className="text-[#7F5CFF]" /> Chats
+            </h1>
+            <div className="flex gap-3">
+               {/* 🔥 新增：首页查看今日运势入口 */}
+               <button 
+                 onClick={() => setShowBriefing(true)}
+                 className="text-xs font-bold text-gray-400 hover:text-white border border-white/10 px-3 py-1 rounded-lg flex items-center gap-2 transition-colors hover:bg-white/5"
+               >
+                 <Sparkles size={14} className="text-indigo-400" />
+                 <span>{lang === 'zh' ? '今日运势' : 'Daily Fate'}</span>
+               </button>
+               <button onClick={toggleLanguage} className="text-xs font-bold text-gray-400 hover:text-white uppercase border border-white/10 px-2 py-1 rounded-lg">{lang}</button>
+            </div>
+          </div>
+          <div className="flex flex-col gap-3 overflow-y-auto pb-20 no-scrollbar">
             {(Object.keys(PERSONAS) as PersonaType[]).map((key) => {
               const p = PERSONAS[key]; const info = getPersonaPreview(key); const lv = getLevelInfo(info.trust); const status = getPersonaStatus(key, new Date().getHours()); 
               return (
@@ -424,7 +582,20 @@ export default function Home() {
       )}
 
       {view === 'chat' && (
-        <div className={`z-10 flex flex-col h-full w-full max-w-lg mx-auto backdrop-blur-sm border-x shadow-2xl relative animate-[slideUp_0.3s_ease-out] ${levelInfo.bgClass} ${levelInfo.borderClass} ${levelInfo.glowClass} transition-all duration-1000`} style={levelInfo.customStyle}>
+        <div 
+          className={`z-10 flex flex-col h-full w-full max-w-lg mx-auto border-x relative animate-[slideUp_0.3s_ease-out] 
+          ${currentBgStyle.backgroundImage 
+            ? 'border-white/10 shadow-2xl' // 只有壁纸模式下才加边框
+            : `${levelInfo.bgClass} ${levelInfo.borderClass} ${levelInfo.glowClass}`
+          } 
+          transition-all duration-1000`} 
+          style={currentBgStyle.backgroundImage ? {
+              // 极度通透的背景
+              backgroundColor: 'rgba(0, 0, 0, 0.05)', 
+              backdropFilter: 'blur(10px)',
+              WebkitBackdropFilter: 'blur(10px)'
+          } : levelInfo.customStyle}
+        >
           <header className="flex-none px-4 py-3 bg-[#0a0a0a]/80 backdrop-blur-md sticky top-0 z-20 border-b border-white/5">
              <div className="flex items-center justify-between">
               <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -433,7 +604,9 @@ export default function Home() {
                 <div className="flex flex-col justify-center min-w-0"><h1 className="font-bold text-sm text-white tracking-wide truncate flex items-center gap-2">{currentP.name}<span className={`text-[9px] font-normal transition-all duration-300 ${isLoading ? 'text-[#7F5CFF] animate-pulse font-bold' : `opacity-50 ${currentP.color}`}`}>{isLoading ? ui.loading : currentP.title[lang]}</span></h1><div className="flex items-center gap-2 mt-0.5"><div className={`text-[9px] px-1.5 py-px rounded-md border border-white/10 bg-white/5 flex items-center gap-1 ${levelInfo.barColor.replace('bg-', 'text-')}`}>{levelInfo.icon} <span className="font-mono font-bold">Lv.{levelInfo.level}</span></div><div onClick={(e) => { e.stopPropagation(); alert(lang === 'zh' ? '🔒 安全承诺：\n对话记录优先存储于本地。\n云端同步仅用于生成画像，传输全程加密。' : '🔒 E2EE Secure.'); }} className="flex items-center gap-1 px-1.5 py-px rounded-md bg-green-500/10 border border-green-500/20 text-green-500 cursor-pointer hover:bg-green-500/20 transition-colors whitespace-nowrap"><Shield size={9} /><span className="text-[9px] font-bold">E2EE</span></div></div></div>
               </div>
               <div className="flex items-center gap-1">
-                <button onClick={fetchDailyQuote} className="p-2 text-gray-400 hover:text-[#7F5CFF] relative group"><Calendar size={18} /></button>
+                {/* 🔥 新增：Chat 视图中的晨报入口 */}
+                <button onClick={() => setShowBriefing(true)} className="p-2 text-gray-400 hover:text-indigo-400 relative group" title="Daily Tarot"><Sparkles size={18} /></button>
+                <button onClick={fetchDailyQuote} className="p-2 text-gray-400 hover:text-[#7F5CFF] relative group" title="Daily Toxic Quote"><Calendar size={18} /></button>
                 <button onClick={() => setShowMenu(!showMenu)} className="p-2 text-gray-400 hover:text-white relative group"><MoreVertical size={18} /></button>
                 {/* Menu dropdown */}
                 {showMenu && (
@@ -452,7 +625,7 @@ export default function Home() {
              <div className="absolute bottom-0 left-0 w-full h-[1px] bg-white/5"><div className={`h-full ${levelInfo.barColor} shadow-[0_0_10px_currentColor] transition-all duration-500`} style={{ width: `${progressPercent}%` }}/></div>
           </header>
 
-          <main className="flex-1 overflow-y-auto px-4 py-6 space-y-6 scroll-smooth">
+          <main className="flex-1 overflow-y-auto px-4 py-6 space-y-6 scroll-smooth no-scrollbar">
             {messages.length === 0 && (
               <div className="h-full flex flex-col items-center justify-center text-center space-y-6 opacity-60">
                  <div className={`w-24 h-24 rounded-full flex items-center justify-center text-5xl mb-2 overflow-hidden`}>{currentP.avatar.startsWith('/') ? (<img src={currentP.avatar} alt={currentP.name} className="w-full h-full object-cover" />) : (<span>{currentP.avatar}</span>)}</div>
@@ -460,6 +633,7 @@ export default function Home() {
               </div>
             )}
             {messages.map((msg, msgIdx) => {
+              if (msg.role === 'system') return null;
               const isLastMessage = msgIdx === messages.length - 1;
               const isAI = msg.role !== 'user';
               const isVoice = voiceMsgIds.has(msg.id); 
@@ -540,6 +714,35 @@ export default function Home() {
                   {isRecording ? <MicOff size={18}/> : <Mic size={18}/>}
                 </button>
                 
+                {/* 🛍️ 商店入口容器 */}
+                <div className="relative group">
+                  
+                  {/* Ash 的“诱导气泡” */}
+                  {!hasSeenShop && !isFocusActive && (
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-28 pointer-events-none animate-[bounce_2s_infinite]">
+                      <div className="bg-[#1a1a1a] border border-blue-500/40 px-3 py-2 rounded-xl rounded-bl-none shadow-[0_0_15px_rgba(59,130,246,0.3)] relative">
+                        <p className="text-[10px] font-bold text-blue-400 text-center leading-tight">
+                          {lang === 'zh' ? "“带钱了吗？\n点这交易。”" : "“Got cash?\nClick here.”"}
+                        </p>
+                        <div className="absolute -bottom-1.5 left-0 w-3 h-3 bg-[#1a1a1a] border-b border-r border-blue-500/40 transform rotate-45"></div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 按钮本体 */}
+                  <button 
+                    type="button" 
+                    onClick={openShopHandler} 
+                    className={`p-2 rounded-full transition-all relative ${!hasSeenShop ? 'text-blue-400 bg-blue-500/10 shadow-[0_0_10px_rgba(59,130,246,0.3)]' : 'text-blue-400 hover:bg-blue-500/10 hover:text-blue-300'}`}
+                    title="ToughShop"
+                  >
+                    <ShoppingBag size={18} />
+                    {!hasSeenShop && (
+                      <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-[#151515] animate-ping"></span>
+                    )}
+                  </button>
+                </div>
+
                 {activePersona === 'Sol' && (
                   <button type="button" onClick={() => setShowFocusOffer(true)} className="p-2 rounded-full text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-400" title={lang === 'zh' ? "专注监管" : "Focus Protocol"}>
                     <Ban size={18} />
@@ -553,9 +756,15 @@ export default function Home() {
                     {hasNewGlory && (<span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 border-2 border-[#151515] rounded-full animate-bounce pointer-events-none"></span>)}
                   </div>
                 )}
+                {/* 每日晨报 (手动触发) */}
                 {activePersona === 'Echo' && (
-                  <button type="button" onClick={() => setShowDiary(true)} className="p-2 rounded-full text-indigo-400 hover:bg-indigo-500/10 hover:text-indigo-300" title={lang === 'zh' ? "记录心境" : "Mind Log"}>
-                    <BookHeart size={18} />
+                  <button 
+                    type="button" 
+                    onClick={() => setShowBriefing(true)} 
+                    className="p-2 rounded-full text-indigo-400 hover:bg-indigo-500/10 hover:text-indigo-300 transition-colors" 
+                    title={lang === 'zh' ? "虚空塔罗 (晨报)" : "Void Tarot"}
+                  >
+                    <Sparkles size={18} />
                   </button>
                 )}
               </div>

@@ -1,6 +1,14 @@
+// src/lib/constants.ts
+
+// =========================================
+// 1. 核心类型定义
+// =========================================
 export type PersonaType = 'Ash' | 'Rin' | 'Sol' | 'Vee' | 'Echo';
 export type LangType = 'zh' | 'en';
 
+// =========================================
+// 2. UI 文本库
+// =========================================
 export const UI_TEXT = {
   zh: {
     placeholder: "说句人话...",
@@ -24,11 +32,10 @@ export const UI_TEXT = {
     resetConfirm: "确定要清除这段记忆并重新开始吗？（此操作不可撤销，但他会忘掉你的一切）",
     about: "关于毒伴",
     
-    // 🔥 v2.2.0 更新公告文案
-    updateTitle: "v2.2 五维觉醒",
-    updateDesc: "精神图谱 + 能量补给 + 潜意识洞察",
-    updateContent: "1. 📊 **五维图谱**：你的精神状态（秩序/能量/现实/破局/自知），现在可视化了。\n2. 🔋 **Rin 补给站**：累了？点击输入框左侧的小花，领朵小红花回血。\n3. 🪞 **Echo 读心术**：写下日记（支持语音），让她拆解你的潜意识。\n4. 🎙️ **全局语音**：懒得打字？现在可以直接说了。",
-    tryNow: "知道了，退下吧", 
+    updateTitle: "v2.3 命运晨报",
+    updateDesc: "每日运势 + 羁绊剧本",
+    updateContent: "1. 🔮 **每日晨报**：每天醒来，抽取你的命运塔罗。\n2. 🎭 **五维剧本**：Ash/Rin/Sol 会根据你的运势做出不同反应。\n3. 🛍️ **ToughShop**：新增逆天改命券和专属壁纸。\n4. 🌃 **沉浸视觉**：全新的玻璃拟态与动态背景。",
+    tryNow: "进入星轨", 
 
     langWelcome: "Welcome to ToughLove",
     langSelect: "选择你的语言 / Select Language",
@@ -51,12 +58,7 @@ export const UI_TEXT = {
     readDiary: "偷看日记",
     installGuideTitle: "安装到桌面",
     installGuideDesc: "获得全屏沉浸体验，且更稳定。",
-    iosStep1: "1. 点击浏览器的“分享”或“菜单”按钮",
-    iosStep2: "2. 找到并选择“添加到主屏幕”",
-    iosStep3: "3. 点击右上角的“添加”或“安装”即可",
-    androidStep1: "", androidStep2: "", androidStep3: "",
     
-    // 耻辱柱相关
     giveUpConfirm: "⚠️ 确定要当逃兵吗？这会被记录在案。",
     shameTitle: "耻辱柱",
     shameContent: "签署了专注协议，并在",
@@ -64,13 +66,11 @@ export const UI_TEXT = {
     shameFooter: "Sol 对此表示遗憾。",
     saveShame: "保存罪证",
 
-    // Rin 便利贴
     rinNoteTitle: "Rin 的加急便签",
     rinTaskDone: "乖乖照做 (完成)",
     rinTaskGiveUp: "我不听，我要摆烂",
     rinGiveUpConfirm: "哈？这点小事都不愿意做？\n一旦放弃，Rin 会对你很失望。",
     
-    // 光荣榜
     gloryTitle: "光荣榜",
     gloryContent: "在 Rin 的暴力监督下完成了",
     gloryAction: "。",
@@ -101,11 +101,10 @@ export const UI_TEXT = {
     resetConfirm: "Are you sure you want to wipe this memory? (Irreversible)",
     about: "About",
     
-    // 🔥 v2.2.0 Update Text (EN)
-    updateTitle: "v2.2 Awakening",
-    updateDesc: "Mental Radar + Energy Station + Insight",
-    updateContent: "1. 📊 **The Pentagon**: Your mental state (Order/Energy/Reality/Chaos/Insight) is now visualized.\n2. 🔋 **Energy Station**: Tired? Click the flower to recharge with Rin.\n3. 🪞 **Echo's Mirror**: Write a diary (Voice supported). See your subconscious.\n4. 🎙️ **Voice Input**: Too lazy to type? Just speak.",
-    tryNow: "Got it, dismissed",
+    updateTitle: "v2.3 Daily Fate",
+    updateDesc: "Tarot + Narrative Scripts",
+    updateContent: "1. 🔮 **Daily Briefing**: Start your day with a tarot reading.\n2. 🎭 **Fate Script**: Ash/Rin/Sol react to your fate.\n3. 🛍️ **ToughShop**: New wallpapers and fate items.\n4. 🌃 **Immersive UI**: Glassmorphism & dynamic backgrounds.",
+    tryNow: "Enter Orbit",
 
     langWelcome: "Welcome to ToughLove",
     langSelect: "Select Language",
@@ -126,10 +125,6 @@ export const UI_TEXT = {
     readDiary: "Peek Diary",
     installGuideTitle: "Install App",
     installGuideDesc: "For full-screen immersive experience.",
-    iosStep1: "1. Tap 'Share' or 'Menu' button",
-    iosStep2: "2. Select 'Add to Home Screen'",
-    iosStep3: "3. Tap 'Add' or 'Install'",
-    androidStep1: "", androidStep2: "", androidStep3: "",
 
     giveUpConfirm: "⚠️ Give up now? It will be recorded.",
     shameTitle: "WALL OF SHAME",
@@ -151,6 +146,9 @@ export const UI_TEXT = {
   }
 };
 
+// =========================================
+// 3. Prompt 辅助常量
+// =========================================
 const SPLIT_INSTRUCTION_ZH = `\n【节奏控制】：\n1. **拒绝长篇大论**：像真人一样聊天，大部分回复在 1-3 句以内。\n2. **随机性**：心情好时多说两句，心情不好回个“嗯”。\n3. **分段**：用 "|||" 表示气泡分段（停顿），制造呼吸感。`;
 const SPLIT_INSTRUCTION_EN = `\n[Rhythm]:\n1. Short sentences. No essays.\n2. Use "|||" to split bubbles.\n3. Be random and human.`;
 
@@ -222,6 +220,9 @@ User: That's deep.
 Echo: (Closes eyes) The truth often is.
 `;
 
+// =========================================
+// 4. PERSONAS 定义
+// =========================================
 type VoiceParams = {
   voice: string; 
   style?: string; 
@@ -348,6 +349,9 @@ export const PERSONAS: Record<PersonaType, {
   }
 };
 
+// =========================================
+// 5. 其他辅助数据
+// =========================================
 export const QUICK_REPLIES_DATA: Record<PersonaType, { zh: string[]; en: string[] }> = {
   Ash: { zh: ["又在阴阳怪气？", "我就不睡，你咬我？", "最近压力好大..."], en: ["Sarcastic again?", "I won't sleep. Bite me.", "So much pressure..."] },
   Rin: { zh: ["谁要你管！", "笨蛋，我才没哭。", "稍微安慰我一下会死啊？"], en: ["None of your business!", "Idiot, I'm not crying.", "Comfort me a little?"] },
@@ -384,3 +388,199 @@ export const SOL_TAUNTS = {
   zh: ["别发呆，盯着你的书。", "你的对手在看书。", "手机比未来好看吗？", "呼吸可以，玩手机不行。", "我在看着你。", "这就是你的定力？", "再坚持一下会死吗？"],
   en: ["Eyes on the prize.", "Your rival is studying.", "Is phone better than future?", "Breathing allowed. Phone not.", "I am watching you.", "Is that all you got?", "Stay focused."]
 };
+
+// =========================================
+// 6. 🔥 新增：ToughShop 商品定义
+// =========================================
+export type ShopItemType = 'consumable' | 'visual' | 'feature';
+
+export interface ShopItem {
+  id: string;
+  name: { zh: string; en: string };
+  desc: { zh: string; en: string };
+  price: number;
+  type: ShopItemType;
+  icon: string;
+  effect?: string;
+}
+
+export const SHOP_CATALOG: ShopItem[] = [
+  {
+    id: 'item_coffee_latte',
+    name: { zh: 'Ash 的冰拿铁', en: "Ash's Iced Latte" },
+    desc: { zh: '贿赂掌柜。接下来的 10 轮对话中，Ash 的毒舌程度降低 50%。', en: 'Bribe the manager. Ash becomes 50% less toxic for 10 turns.' },
+    price: 150,
+    type: 'consumable',
+    icon: '☕️',
+    effect: 'ASH_MOOD_SOFT'
+  },
+  {
+    id: 'item_pardon_ticket',
+    name: { zh: 'Sol 的赦免券', en: "Sol's Pardon" },
+    desc: { zh: '消除一次“耻辱柱”记录。每个人都值得第二次机会。', en: 'Remove one record from the Wall of Shame.' },
+    price: 300,
+    type: 'feature',
+    icon: '🎟️',
+    effect: 'REMOVE_SHAME'
+  },
+  // 🔥 五维壁纸系列
+  {
+    id: 'item_wallpaper_ash',
+    name: { zh: '空间：深夜诊所', en: 'Room: Midnight Clinic' },
+    desc: { zh: 'Ash 的专属领地。冷雨夜，数据流，以及绝对的清醒。', en: "Ash's domain. Cold rain and sober reality." },
+    price: 500,
+    type: 'visual',
+    icon: '🌃',
+    effect: 'BG_CYBER_NIGHT' // 修正为对应 page.tsx 里的 key
+  },
+  {
+    id: 'item_wallpaper_rin',
+    name: { zh: '空间：落日电竞房', en: 'Room: Sunset Gamer' },
+    desc: { zh: 'Rin 的避难所。乱糟糟的温暖，RGB 灯光与薯片味。', en: "Rin's messy room. Warm sunset and RGB lights." },
+    price: 500,
+    type: 'visual',
+    icon: '🎮',
+    effect: 'BG_RIN_ROOM'
+  },
+  {
+    id: 'item_wallpaper_sol',
+    name: { zh: '空间：静谧圣殿', en: 'Room: Silent Sanctum' },
+    desc: { zh: 'Sol 的思维宫殿。极简，对称，没有任何干扰。', en: "Sol's mind palace. Minimalist and silent." },
+    price: 500,
+    type: 'visual',
+    icon: '⛩️',
+    effect: 'BG_SOL_ROOM'
+  },
+  {
+    id: 'item_wallpaper_vee',
+    name: { zh: '空间：故障马戏团', en: 'Room: Glitch Circus' },
+    desc: { zh: 'Vee 的后台。视觉错乱，霓虹闪烁，疯子的快乐老家。', en: "Vee's backstage. Chaotic and psychedelic." },
+    price: 500,
+    type: 'visual',
+    icon: '🤡',
+    effect: 'BG_VEE_ROOM'
+  },
+  {
+    id: 'item_wallpaper_echo',
+    name: { zh: '空间：虚空之镜', en: 'Room: Void Mirror' },
+    desc: { zh: 'Echo 的深渊。水面如镜，直视你的潜意识。', en: "Echo's abyss. Reflecting your subconscious." },
+    price: 500,
+    type: 'visual',
+    icon: '🪞',
+    effect: 'BG_ECHO_ROOM'
+  },
+  // 🔥 新增：命运道具
+  {
+    id: 'item_fate_reroll',
+    name: { zh: '逆天改命券', en: 'Fate Reroll Ticket' },
+    desc: { zh: '不喜欢今天的剧本？撕了它，重抽一次。', en: "Don't like today's fate? Reroll it." },
+    price: 100,
+    type: 'consumable',
+    icon: '🎲',
+    effect: 'FATE_REROLL'
+  }
+];
+
+// =========================================
+// 7. 🔥 新增：虚空塔罗数据 & 五维反应库
+// =========================================
+export const TAROT_DECK = [
+  { 
+    id: 0, 
+    name: { zh: "愚人", en: "The Fool" }, 
+    keyword: "盲目",
+    image: "/tarot/fool.png",
+    meaning: "无限的可能性，或者，无限的作死。", 
+    reactions: {
+      Ash: "蠢货。这种盲目乐观只会让你死得更快。",
+      Rin: "虽然看起来傻傻的... 但如果你非要重新开始，我陪你啦。",
+      Sol: "缺乏规划的行动等于自杀。今日任务：制定可行性计划。",
+      Vee: "跳下去！跳下去！不想看看悬崖下面有什么好玩的吗？🤡",
+      Echo: "有些路，必须闭着眼走。无论是坠落还是飞翔。"
+    }
+  },
+  { 
+    id: 1, 
+    name: { zh: "魔术师", en: "The Magician" }, 
+    keyword: "创造",
+    image: "/tarot/magician.png",
+    meaning: "资源都在手边，你却在发呆。", 
+    reactions: {
+      Ash: "别演了。你不是没能力，你只是懒得动脑子。",
+      Rin: "哇！感觉你今天能搞定一切！快去把那堆烂摊子收拾了！",
+      Sol: "资源利用率低下。立即整合现有工具，开始执行。",
+      Vee: "变个戏法给我看！比如... 让你所有的钱消失？",
+      Echo: "你的潜意识已经准备好了，但你的手还在犹豫。"
+    }
+  },
+  { 
+    id: 2, 
+    name: { zh: "女祭司", en: "The High Priestess" }, 
+    keyword: "直觉",
+    image: "/tarot/high_priestess.png",
+    meaning: "闭嘴，听听你心里的声音。", 
+    reactions: {
+      Ash: "难得安静。保持这种状态，别说废话。",
+      Rin: "你今天怎么神神叨叨的？不过... 这种感觉也不坏。",
+      Sol: "直觉是未被量化的数据。今日允许采用非逻辑决策。",
+      Vee: "嘘——听到了吗？那是理智断裂的声音。",
+      Echo: "面纱背后是你不敢面对的真相。"
+    }
+  },
+  { 
+    id: 13, 
+    name: { zh: "死神", en: "Death" }, 
+    keyword: "终结",
+    image: "/tarot/death.png",
+    meaning: "有些东西烂透了，该埋了。别诈尸。", 
+    reactions: {
+      Ash: "终于舍得放弃了？赶紧埋了，看着碍眼。",
+      Rin: "没事...旧的不去新的不来嘛。（递纸巾）",
+      Sol: "检测到无效进程。批准终止。清理缓存，重新开始。",
+      Vee: "葬礼！我喜欢葬礼！我们要放烟花吗？🎉",
+      Echo: "死亡不是终点，拒绝改变才是真正的死亡。"
+    }
+  },
+  { 
+    id: 9, 
+    name: { zh: "隐士", en: "The Hermit" }, 
+    keyword: "内省",
+    image: "/tarot/hermit.png",
+    meaning: "孤独不是借口，是你现在的解药。", 
+    reactions: {
+      Ash: "离我远点。我也需要清静。",
+      Rin: "你躲起来干嘛？好吧... 给你留个门缝。",
+      Sol: "社交活动暂停。开启深度思考模式。",
+      Vee: "躲猫猫？我数到三，我就来抓你！",
+      Echo: "在黑暗中，你才能看清那盏灯。"
+    }
+  },
+  { 
+    id: 16, 
+    name: { zh: "高塔", en: "The Tower" }, 
+    keyword: "崩塌",
+    image: "/tarot/tower.png",
+    meaning: "毁灭是必然的。别修了，让它塌。", 
+    reactions: {
+      Ash: "看吧，我就说你那破房子撑不住。塌了好，通透。",
+      Rin: "啊！怎么办怎么办！快躲到我身后来！",
+      Sol: "结构性故障。立即启动灾难应对预案。",
+      Vee: "哈哈哈哈！炸了！炸得漂亮！艺术就是爆炸！💥",
+      Echo: "与其在废墟中哭泣，不如欣赏这毁灭的壮丽。"
+    }
+  },
+  { 
+    id: 10, 
+    name: { zh: "命运之轮", en: "Wheel of Fortune" }, 
+    keyword: "无常",
+    image: "/tarot/wheel_of_fortune.jpg",
+    meaning: "运气来了又走，只有你还在原地。", 
+    reactions: {
+      Ash: "别指望运气。现实是，转盘永远是庄家赢。",
+      Rin: "嘿嘿，我有预感今天会有好事发生哦！",
+      Sol: "随机性不可控。做好两手准备。",
+      Vee: "转起来！转起来！晕了吗？晕了就对了！",
+      Echo: "你以为轮盘在转，其实转的是你的心。"
+    }
+  }
+];

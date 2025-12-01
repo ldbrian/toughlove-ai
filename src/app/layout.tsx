@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { CSPostHogProvider } from './providers'; // 👈 引入组件
+import { ServiceWorkerRegister } from '@/components/ServiceWorkerRegister';
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -40,6 +41,7 @@ export default function RootLayout({
       {/* 👇 包裹 CSPostHogProvider */}
       <CSPostHogProvider>
         <body className="antialiased bg-[#050505] text-gray-100">
+          <ServiceWorkerRegister />
           {children}
         </body>
       </CSPostHogProvider>
