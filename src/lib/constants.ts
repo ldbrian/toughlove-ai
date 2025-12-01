@@ -489,7 +489,7 @@ export const TAROT_DECK = [
     id: 0, 
     name: { zh: "愚人", en: "The Fool" }, 
     keyword: "盲目",
-    image: "/tarot/fool.png",
+    image: "/tarot/fool.jpg",
     meaning: "无限的可能性，或者，无限的作死。", 
     reactions: {
       Ash: "蠢货。这种盲目乐观只会让你死得更快。",
@@ -503,7 +503,7 @@ export const TAROT_DECK = [
     id: 1, 
     name: { zh: "魔术师", en: "The Magician" }, 
     keyword: "创造",
-    image: "/tarot/magician.png",
+    image: "/tarot/magician.jpg",
     meaning: "资源都在手边，你却在发呆。", 
     reactions: {
       Ash: "别演了。你不是没能力，你只是懒得动脑子。",
@@ -517,7 +517,7 @@ export const TAROT_DECK = [
     id: 2, 
     name: { zh: "女祭司", en: "The High Priestess" }, 
     keyword: "直觉",
-    image: "/tarot/high_priestess.png",
+    image: "/tarot/high_priestess.jpg",
     meaning: "闭嘴，听听你心里的声音。", 
     reactions: {
       Ash: "难得安静。保持这种状态，别说废话。",
@@ -531,7 +531,7 @@ export const TAROT_DECK = [
     id: 13, 
     name: { zh: "死神", en: "Death" }, 
     keyword: "终结",
-    image: "/tarot/death.png",
+    image: "/tarot/death.jpg",
     meaning: "有些东西烂透了，该埋了。别诈尸。", 
     reactions: {
       Ash: "终于舍得放弃了？赶紧埋了，看着碍眼。",
@@ -545,7 +545,7 @@ export const TAROT_DECK = [
     id: 9, 
     name: { zh: "隐士", en: "The Hermit" }, 
     keyword: "内省",
-    image: "/tarot/hermit.png",
+    image: "/tarot/hermit.jpg",
     meaning: "孤独不是借口，是你现在的解药。", 
     reactions: {
       Ash: "离我远点。我也需要清静。",
@@ -559,7 +559,7 @@ export const TAROT_DECK = [
     id: 16, 
     name: { zh: "高塔", en: "The Tower" }, 
     keyword: "崩塌",
-    image: "/tarot/tower.png",
+    image: "/tarot/tower.jpg",
     meaning: "毁灭是必然的。别修了，让它塌。", 
     reactions: {
       Ash: "看吧，我就说你那破房子撑不住。塌了好，通透。",
