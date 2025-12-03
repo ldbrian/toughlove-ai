@@ -73,7 +73,7 @@ export const InitializationModal = ({ show, onComplete, lang }: InitializationMo
               {currentQ.options.map((opt, idx) => (
                 <button
                   key={idx}
-                  onClick={() => handleOption(opt.dimension, opt.value)}
+                  onClick={() => handleOption(opt.dimension, opt.score)}
                   className="w-full p-5 text-left rounded-xl bg-[#111] border border-white/10 hover:bg-[#222] hover:border-white/30 transition-all group"
                 >
                   <div className="flex justify-between items-center">
