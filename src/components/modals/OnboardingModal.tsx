@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Fingerprint, ArrowRight, Activity, ScanFace, Brain, CheckCircle, Zap, AlertTriangle } from 'lucide-react';
 import { ONBOARDING_QUESTIONS, DEEP_QUESTIONS, PERSONAS, PersonaType } from '@/lib/constants';
-const [randomId, setRandomId] = useState("000000"); // 初始值必须固定
+
+// 🔥 [FIXED] Deleted the global useState call that was crashing the build
 
 interface OnboardingModalProps {
   show: boolean;
@@ -32,7 +33,8 @@ export const OnboardingModal = ({ show, onFinish, lang }: OnboardingModalProps) 
   const [scores, setScores] = useState<Record<string, number>>({ reality: 50, ego: 50, empathy: 50, will: 50, chaos: 50 });
   const [resultProfile, setResultProfile] = useState<any>(null);
   
-  // 🔥 [FIX] 解决 Hydration Error: ID 必须在客户端生成
+  // 🔥 [FIXED] Correctly placed useState inside the component
+  // ID MUST be generated on client-side to match server-rendered HTML initially (avoid hydration mismatch)
   const [randomId, setRandomId] = useState("000000");
   useEffect(() => {
     setRandomId(Math.floor(Math.random() * 100000).toString().padStart(6, '0'));
@@ -102,7 +104,7 @@ export const OnboardingModal = ({ show, onFinish, lang }: OnboardingModalProps) 
                     <h2 className="text-2xl font-black text-white italic">
                         {lang === 'zh' ? "精神诊断书" : "PSYCHE REPORT"}
                     </h2>
-                    {/* 🔥 使用安全的 randomId */}
+                    {/* 🔥 使用安全的 randomId (Client Side Only) */}
                     <p className="text-xs text-gray-500 font-mono mt-1">ID: {randomId}</p>
                 </div>
 
