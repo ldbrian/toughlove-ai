@@ -1,9 +1,6 @@
-
-
-import { useState, useRef } from 'react';
-import { Fingerprint, Brain, Tag, Sparkles, Share2, ArrowRight } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Fingerprint, ArrowRight, Activity, Brain, Zap, ScanFace } from 'lucide-react';
 import { ONBOARDING_QUESTIONS, PERSONAS, PersonaType } from '@/lib/constants';
-import html2canvas from 'html2canvas';
 
 interface OnboardingModalProps {
   show: boolean;
@@ -11,210 +8,156 @@ interface OnboardingModalProps {
   lang: 'zh' | 'en';
 }
 
-const getPersonaForDimension = (dim: string): PersonaType => {
-  const map: Record<string, PersonaType> = { 'order': 'Sol', 'chaos': 'Vee', 'energy': 'Rin', 'reality': 'Ash', 'insight': 'Echo' };
-  return map[dim] || 'Ash';
-};
-
-export function OnboardingModal({ show, onFinish, lang }: OnboardingModalProps) {
-  const [step, setStep] = useState<'intro' | 'question' | 'analyzing' | 'result'>('intro');
-  const [currentQIndex, setCurrentQIndex] = useState(0);
-  const [scores, setScores] = useState<Record<string, number>>({ order: 0, chaos: 0, energy: 0, reality: 0, insight: 0 });
-  const [resultTag, setResultTag] = useState<{ label: string, desc: string, persona: PersonaType } | null>(null);
+export const OnboardingModal = ({ show, onFinish, lang }: OnboardingModalProps) => {
+  const [step, setStep] = useState(0);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   
-  const resultRef = useRef<HTMLDivElement>(null); // 用于截图
-
-  const noiseBg = `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E")`;
+  // 初始五维分数 (50分基准)
+  const [scores, setScores] = useState<Record<string, number>>({
+    reality: 50, 
+    ego: 50, 
+    empathy: 50, 
+    will: 50, 
+    chaos: 50
+  });
 
   if (!show) return null;
 
-  const handleStart = () => setStep('question');
+  const currentQ = ONBOARDING_QUESTIONS[step];
 
-  const handleAnswer = (dimension: string, value: number) => {
-    const newScores = { ...scores, [dimension]: scores[dimension] + value };
-    setScores(newScores);
-    if (currentQIndex < ONBOARDING_QUESTIONS.length - 1) {
-      setCurrentQIndex(prev => prev + 1);
+  // 🔥 核心修复：这里接收的第二个参数改为 number 类型 (score)
+  const handleAnswer = (dimension: string, score: number) => {
+    // 1. 实时计算分数偏移
+    setScores(prev => ({
+      ...prev,
+      // 算法：原分数 + (新分数 - 50) * 0.8 的权重
+      [dimension]: Math.min(100, Math.max(0, (prev[dimension] || 50) + (score - 50) * 0.8))
+    }));
+
+    // 2. 切换题目或结束
+    if (step < ONBOARDING_QUESTIONS.length - 1) {
+      setStep(step + 1);
     } else {
-      calculateResult(newScores);
+      finishAssessment();
     }
   };
 
-  const calculateResult = (finalScores: Record<string, number>) => {
-    setStep('analyzing');
-    let maxDim = 'reality';
-    let maxVal = 0;
-    Object.entries(finalScores).forEach(([dim, val]) => { if (val > maxVal) { maxVal = val; maxDim = dim; } });
+  const finishAssessment = () => {
+    setIsAnalyzing(true);
+    
+    // 模拟分析过程 (1.5秒延迟，增加仪式感)
+    setTimeout(() => {
+      // 简单的性格计算逻辑：找出分数最高的一个维度作为主导人格
+      const dominantDim = Object.keys(scores).reduce((a, b) => scores[a] > scores[b] ? a : b);
+      
+      // 维度 -> 人格映射表
+      const dimToPersona: Record<string, PersonaType> = {
+        reality: 'Rin',   // 绝对理性 -> Rin
+        ego: 'Ash',       // 极度自我 -> Ash
+        empathy: 'Echo',  // 高共情/敏感 -> Echo
+        will: 'Sol',      // 强意志 -> Sol
+        chaos: 'Vee'      // 混乱/乐子 -> Vee
+      };
 
-    const mapping: Record<string, { p: PersonaType, zh: string, en: string, descZh: string, descEn: string }> = {
-        order: { p: 'Sol', zh: '绝对秩序者', en: 'THE RULER', descZh: '你的世界容不下混乱，效率就是生命。', descEn: 'Efficiency is your religion.' },
-        chaos: { p: 'Vee', zh: '混乱乐子人', en: 'CHAOS AGENT', descZh: '严肃是无聊的墓志铭，你也一样。', descEn: 'Why so serious?' },
-        energy: { p: 'Rin', zh: '热血笨蛋', en: 'PROTAGONIST', descZh: '虽然容易冲动，但你的生命力令人嫉妒。', descEn: 'Impulsive but alive.' },
-        reality: { p: 'Ash', zh: '人间清醒', en: 'THE REALIST', descZh: '你早已看透了生活的本质，并选择冷眼旁观。', descEn: 'Sober and cynical.' },
-        insight: { p: 'Echo', zh: '深渊凝视者', en: 'THE OBSERVER', descZh: '你喜欢探究冰山之下的东西。', descEn: 'Silence speaks to you.' }
-    };
+      const finalProfile = {
+        radar: [scores.reality, scores.ego, scores.empathy, scores.will, scores.chaos],
+        tags: [lang === 'zh' ? "初次觉醒" : "Awakened"],
+        diagnosis: lang === 'zh' ? "扫描完成。检测到强烈的精神波动。" : "Scan complete. High mental activity detected.",
+        dominant: dimToPersona[dominantDim] || 'Ash'
+      };
 
-    const res = mapping[maxDim] || mapping['reality'];
-    setResultTag({ label: lang === 'zh' ? res.zh : res.en, desc: lang === 'zh' ? res.descZh : res.descEn, persona: res.p });
-    setTimeout(() => { setStep('result'); }, 2000);
+      onFinish(finalProfile);
+    }, 1500);
   };
 
-  const finalize = () => {
-      const profile = { scores, tag: resultTag?.label, desc: resultTag?.desc, dominant: resultTag?.persona, date: new Date().toISOString() };
-      onFinish(profile);
+  // 辅助：获取某个维度对应的人格头像（用于装饰选项）
+  const getPersonaForDimension = (dim: string): PersonaType => {
+     switch(dim) {
+         case 'reality': return 'Rin';
+         case 'ego': return 'Ash';
+         case 'empathy': return 'Echo';
+         case 'will': return 'Sol';
+         case 'chaos': return 'Vee';
+         default: return 'Ash';
+     }
   };
-
-  const handleSaveResult = async () => {
-    if (!resultRef.current) return;
-    try {
-      const canvas = await html2canvas(resultRef.current, { backgroundColor: '#000', scale: 3, useCORS: true } as any);
-      const url = canvas.toDataURL("image/png");
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `ToughLove_Diagnosis.png`;
-      a.click();
-    } catch (e) { console.error(e); }
-  };
-
-  const currentQ = ONBOARDING_QUESTIONS[currentQIndex];
 
   return (
-    <div className="fixed inset-0 z-[999] bg-black text-white font-sans flex items-center justify-center p-0 overflow-hidden">
-      <div className="absolute inset-0 opacity-20 pointer-events-none" style={{ backgroundImage: noiseBg }}></div>
+    <div className="fixed inset-0 z-[300] bg-black flex items-center justify-center p-4">
+      {/* 背景动态噪点 */}
+      <div className="absolute inset-0 bg-[url('/noise.png')] opacity-20 pointer-events-none mix-blend-overlay"></div>
       
-      {/* 阶段 1: Intro */}
-      {step === 'intro' && (
-        <div className="max-w-md w-full p-6 space-y-10 text-center animate-[fadeIn_1s_ease-out] relative z-10">
-            <div className="relative w-32 h-32 mx-auto flex items-center justify-center">
-                <div className="absolute inset-0 border border-white/20 rounded-full animate-[spin_10s_linear_infinite]"></div>
-                <div className="absolute inset-2 border border-dashed border-[#7F5CFF]/50 rounded-full animate-[spin_15s_linear_infinite_reverse]"></div>
-                <Fingerprint size={48} className="text-[#7F5CFF] drop-shadow-[0_0_15px_rgba(127,92,255,0.5)]" />
-            </div>
-            <div>
-                <h1 className="text-5xl font-black tracking-tighter mb-4 text-white">SOUL INIT</h1>
-                <p className="text-gray-400 text-sm tracking-widest uppercase">
-                    {lang === 'zh' ? '建立精神连接...' : 'ESTABLISHING CONNECTION...'}
-                </p>
-            </div>
-            <button onClick={handleStart} className="w-full py-5 bg-white text-black hover:bg-[#7F5CFF] hover:text-white font-black tracking-[0.2em] uppercase transition-all clip-path-polygon">
-                {lang === 'zh' ? '开始扫描' : 'START SCAN'}
-            </button>
+      <div className="w-full max-w-md relative z-10 animate-[fadeIn_0.5s_ease-out]">
+        
+        {/* Header: 进度条与标题 */}
+        <div className="mb-8">
+           <div className="flex justify-between items-end mb-4">
+              <div className="flex items-center gap-2 text-[#7F5CFF]">
+                 <ScanFace className="animate-pulse" />
+                 <span className="font-mono text-xs tracking-widest font-bold">
+                    {isAnalyzing ? "ANALYZING..." : `SCANNING: ${step + 1}/${ONBOARDING_QUESTIONS.length}`}
+                 </span>
+              </div>
+              <span className="text-[10px] text-gray-500 font-mono">v2.3.0</span>
+           </div>
+           
+           {/* 进度条 */}
+           <div className="w-full h-1 bg-gray-800 rounded-full overflow-hidden mb-6">
+              <div 
+                className="h-full bg-[#7F5CFF] transition-all duration-500 ease-out shadow-[0_0_10px_#7F5CFF]" 
+                style={{ width: `${((step + 1) / ONBOARDING_QUESTIONS.length) * 100}%` }}
+              ></div>
+           </div>
+
+           {!isAnalyzing ? (
+               <h2 className="text-2xl font-bold text-white leading-tight animate-[slideUp_0.3s_ease-out]">
+                 {lang === 'zh' ? currentQ.text.zh : currentQ.text.en}
+               </h2>
+           ) : (
+               <div className="text-center py-10 space-y-4">
+                   <Activity size={48} className="text-[#7F5CFF] mx-auto animate-bounce" />
+                   <h2 className="text-2xl font-bold text-white animate-pulse">
+                       {lang === 'zh' ? "正在生成精神镜像..." : "Generating Psyche Mirror..."}
+                   </h2>
+               </div>
+           )}
         </div>
-      )}
 
-      {/* 阶段 2: Questions */}
-      {step === 'question' && (
-        <div className="max-w-md w-full p-6 space-y-8 animate-[slideUp_0.3s_ease-out] relative z-10">
-            <div className="w-full h-1 bg-white/10 mb-4 rounded-full overflow-hidden">
-                <div className="h-full bg-[#7F5CFF] transition-all duration-500" style={{ width: `${((currentQIndex + 1) / ONBOARDING_QUESTIONS.length) * 100}%` }}></div>
-            </div>
-            
-            <h2 className="text-2xl font-bold leading-relaxed text-center min-h-[80px] flex items-center justify-center">
-                {lang === 'zh' ? currentQ.text.zh : currentQ.text.en}
-            </h2>
-
+        {/* Options List */}
+        {!isAnalyzing && (
             <div className="space-y-4">
-                {currentQ.options.map((opt, idx) => {
-                    const pKey = getPersonaForDimension(opt.dimension);
-                    return (
-                        <button key={idx} onClick={() => handleAnswer(opt.dimension, opt.value)} className="w-full p-5 flex items-center gap-5 bg-[#111] border border-white/10 hover:bg-[#1a1a1a] hover:border-[#7F5CFF] transition-all rounded-xl group text-left relative overflow-hidden">
-                            <div className="absolute inset-0 bg-gradient-to-r from-[#7F5CFF]/0 to-[#7F5CFF]/10 translate-x-[-100%] group-hover:translate-x-0 transition-transform duration-500"></div>
-                            <div className="w-10 h-10 rounded-full overflow-hidden border border-white/20 flex-shrink-0 group-hover:scale-110 transition-transform relative z-10">
-                                <img src={PERSONAS[pKey].avatar} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" />
-                            </div>
-                            <span className="text-sm font-medium text-gray-300 group-hover:text-white transition-colors relative z-10">
-                                {lang === 'zh' ? opt.text.zh : opt.text.en}
-                            </span>
-                        </button>
-                    );
-                })}
+              {currentQ.options.map((opt: any, idx: number) => {
+                const pKey = getPersonaForDimension(opt.dimension);
+                return (
+                    <button
+                      key={idx}
+                      // 🔥 [FIX] 这里就是修复点：传入 opt.score (数字) 而不是 opt.value
+                      onClick={() => handleAnswer(opt.dimension, opt.score)}
+                      className="w-full p-5 flex items-center gap-5 bg-[#111] border border-white/10 hover:bg-[#1a1a1a] hover:border-[#7F5CFF] transition-all rounded-xl group text-left relative overflow-hidden"
+                    >
+                      {/* 悬停时的光效背景 */}
+                      <div className="absolute inset-0 bg-gradient-to-r from-[#7F5CFF]/0 to-[#7F5CFF]/10 translate-x-[-100%] group-hover:translate-x-0 transition-transform duration-500"></div>
+                      
+                      {/* 左侧：人格头像暗示 */}
+                      <div className="w-10 h-10 rounded-full overflow-hidden border border-white/20 flex-shrink-0 group-hover:scale-110 transition-transform relative z-10 grayscale group-hover:grayscale-0">
+                          <img src={PERSONAS[pKey].avatar} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" />
+                      </div>
+
+                      {/* 右侧：文案 */}
+                      <div className="flex-1 relative z-10">
+                        <span className="text-gray-300 font-medium group-hover:text-white transition-colors text-sm">
+                          {lang === 'zh' ? opt.text.zh : opt.text.en}
+                        </span>
+                      </div>
+
+                      <ArrowRight size={16} className="text-[#7F5CFF] opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all relative z-10" />
+                    </button>
+                );
+              })}
             </div>
-        </div>
-      )}
+        )}
 
-      {/* 阶段 3: Analyzing */}
-      {step === 'analyzing' && (
-        <div className="text-center relative z-10">
-            <div className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-gray-600 animate-pulse">
-                ANALYZING
-            </div>
-            <div className="mt-4 flex justify-center gap-1">
-                {[...Array(5)].map((_, i) => (
-                    <div key={i} className="w-2 h-8 bg-[#7F5CFF] animate-[bounce_1s_infinite]" style={{ animationDelay: `${i * 0.1}s` }}></div>
-                ))}
-            </div>
-        </div>
-      )}
-
-      {/* 阶段 4: Result (视觉暴击版) */}
-      {step === 'result' && resultTag && (
-        <div className="relative w-full h-full flex flex-col items-center justify-center">
-            {/* 这里的 div 是用来截图的，包含了所有视觉元素 */}
-            <div ref={resultRef} className="relative w-full max-w-sm aspect-[9/16] bg-black border border-white/10 flex flex-col overflow-hidden shadow-2xl">
-                {/* 动态背景 */}
-                <div className={`absolute inset-0 bg-gradient-to-b ${PERSONAS[resultTag.persona].color.replace('text-', 'from-')}/20 via-black to-black opacity-60`}></div>
-                <div className="absolute inset-0 bg-[url('/noise.png')] opacity-30 mix-blend-overlay"></div>
-                
-                {/* 顶部 ID */}
-                <div className="relative z-10 p-6 flex justify-between items-start border-b border-white/10">
-                    <div>
-                        <p className="text-[10px] text-[#7F5CFF] font-bold tracking-[0.3em] uppercase">TOUGHLOVE.AI</p>
-                        <p className="text-[10px] text-gray-500 font-mono mt-1">SOUL_ID: {Math.floor(Math.random() * 999999)}</p>
-                    </div>
-                    <Brain size={20} className="text-white/50" />
-                </div>
-
-                {/* 核心视觉：巨大标签 + 艺术化头像 */}
-                <div className="relative z-10 flex-1 flex flex-col items-center justify-center p-6 text-center">
-                    
-                    {/* 标签 (Heavy Ink) */}
-                    <div className="relative mb-8">
-                        <h2 className="text-5xl font-black text-white italic tracking-tighter uppercase drop-shadow-[0_0_15px_rgba(255,255,255,0.5)] transform -skew-x-6">
-                            {resultTag.label}
-                        </h2>
-                        <div className={`absolute -bottom-2 left-0 w-full h-3 ${PERSONAS[resultTag.persona].color.replace('text-', 'bg-')} opacity-80 transform skew-x-12 mix-blend-color-dodge`}></div>
-                    </div>
-
-                    {/* 头像 */}
-                    <div className="relative w-48 h-48 mb-8 group">
-                        <div className={`absolute inset-0 rounded-full border-2 border-dashed ${PERSONAS[resultTag.persona].color} opacity-30 animate-[spin_20s_linear_infinite]`}></div>
-                        <div className="w-full h-full rounded-full overflow-hidden border-4 border-white/10 grayscale group-hover:grayscale-0 transition-all duration-700">
-                            <img src={PERSONAS[resultTag.persona].avatar} className="w-full h-full object-cover" />
-                        </div>
-                        <div className="absolute bottom-0 right-0 bg-white text-black text-[10px] font-bold px-2 py-1 uppercase tracking-wider">
-                            Match: {resultTag.persona}
-                        </div>
-                    </div>
-
-                    {/* 判词 */}
-                    <p className="text-sm font-medium text-gray-300 max-w-[260px] leading-relaxed font-serif">
-                        “{resultTag.desc}”
-                    </p>
-                </div>
-
-                {/* 底部：二维码 */}
-                <div className="relative z-10 bg-white text-black p-5 flex justify-between items-center">
-                    <div className="flex flex-col">
-                        <span className="text-xl font-black uppercase italic">DIAGNOSIS</span>
-                        <span className="text-[10px] text-gray-500 uppercase tracking-wider">Scan to analyze yours</span>
-                    </div>
-                    <div className="w-14 h-14 bg-black p-1">
-                        <img src="/qrcode.png" className="w-full h-full object-contain" />
-                    </div>
-                </div>
-            </div>
-
-            {/* 操作区：浮在截图区域下方 */}
-            <div className="absolute bottom-8 w-full px-6 flex gap-4 max-w-sm z-50">
-                <button onClick={handleSaveResult} className="flex-1 py-4 bg-white/10 backdrop-blur-md border border-white/20 text-white font-bold rounded-full flex items-center justify-center gap-2 hover:bg-white/20 transition-all">
-                    <Share2 size={18} /> {lang === 'zh' ? '保存诊断' : 'Save'}
-                </button>
-                <button onClick={finalize} className="flex-[2] py-4 bg-[#7F5CFF] text-white font-bold rounded-full flex items-center justify-center gap-2 hover:bg-[#6b4bd6] transition-all shadow-lg shadow-indigo-500/30">
-                    {lang === 'zh' ? '进入诊所' : 'ENTER'} <ArrowRight size={18} />
-                </button>
-            </div>
-        </div>
-      )}
+      </div>
     </div>
   );
-}
+};
