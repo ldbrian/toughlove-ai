@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Fingerprint, ArrowRight, Activity, ScanFace, Brain, CheckCircle, Zap, AlertTriangle } from 'lucide-react';
 import { ONBOARDING_QUESTIONS, DEEP_QUESTIONS, PERSONAS, PersonaType } from '@/lib/constants';
 
@@ -30,13 +30,18 @@ export const OnboardingModal = ({ show, onFinish, lang }: OnboardingModalProps) 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [scores, setScores] = useState<Record<string, number>>({ reality: 50, ego: 50, empathy: 50, will: 50, chaos: 50 });
   const [resultProfile, setResultProfile] = useState<any>(null);
+  
+  // 🔥 [FIX] 解决 Hydration Error: ID 必须在客户端生成
+  const [randomId, setRandomId] = useState("000000");
+  useEffect(() => {
+    setRandomId(Math.floor(Math.random() * 100000).toString().padStart(6, '0'));
+  }, []);
 
   if (!show) return null;
 
   const currentQuestions = stage === 'L0' ? ONBOARDING_QUESTIONS : DEEP_QUESTIONS;
   const currentQ = currentQuestions[step];
 
-  // 🔥 辅助函数：安全获取双语文本
   const getText = (content: any) => {
     if (typeof content === 'string') return content;
     return lang === 'zh' ? content.zh : content.en;
@@ -84,14 +89,45 @@ export const OnboardingModal = ({ show, onFinish, lang }: OnboardingModalProps) 
       const p = PERSONAS[resultProfile.dominant as PersonaType];
       return (
         <div className="fixed inset-0 z-[300] bg-[#050505] flex items-center justify-center p-4 animate-[fadeIn_0.5s_ease-out]">
-            <div className="w-full max-w-sm bg-[#111] border border-white/10 rounded-2xl p-6 shadow-2xl relative">
-                <div className="text-center mb-6"><h2 className="text-2xl font-black text-white italic">DIAGNOSIS COMPLETE</h2></div>
-                <div className="bg-black/40 rounded-xl border border-white/5 p-4 mb-6"><RadarChart data={resultProfile.radar} /></div>
-                <div className="flex items-center gap-4 bg-white/5 p-4 rounded-xl border border-white/10 mb-6">
-                    <div className="w-12 h-12 rounded-full border-2 border-[#7F5CFF] overflow-hidden"><img src={p.avatar} className="w-full h-full object-cover" /></div>
-                    <div><div className="text-lg font-bold text-white">{p.name}</div><div className="text-[10px] text-gray-400">MATCHED</div></div>
+            <div className="absolute inset-0 bg-[url('/noise.png')] opacity-10 pointer-events-none mix-blend-overlay"></div>
+            
+            <div className="w-full max-w-sm bg-[#111] border border-white/10 rounded-2xl p-6 shadow-2xl relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-[#7F5CFF] to-transparent opacity-50"></div>
+                
+                <div className="text-center mb-6">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#7F5CFF]/10 border border-[#7F5CFF]/20 text-[#7F5CFF] text-[10px] font-bold tracking-widest mb-4">
+                        <CheckCircle size={12} /> DIAGNOSIS COMPLETE
+                    </div>
+                    <h2 className="text-2xl font-black text-white italic">
+                        {lang === 'zh' ? "精神诊断书" : "PSYCHE REPORT"}
+                    </h2>
+                    {/* 🔥 使用安全的 randomId */}
+                    <p className="text-xs text-gray-500 font-mono mt-1">ID: {randomId}</p>
                 </div>
-                <button onClick={() => onFinish(resultProfile)} className="w-full py-4 bg-white text-black font-black rounded-xl hover:bg-gray-200 transition-all">{lang === 'zh' ? "接受并接入" : "ACCEPT"}</button>
+
+                <div className="bg-black/40 rounded-xl border border-white/5 p-4 mb-6 relative">
+                    <RadarChart data={resultProfile.radar} />
+                    <div className="absolute bottom-2 right-2 text-[9px] text-gray-600 font-mono">SYNC: 100%</div>
+                </div>
+
+                <div className="flex items-center gap-4 bg-white/5 p-4 rounded-xl border border-white/10 mb-6">
+                    <div className="w-12 h-12 rounded-full border-2 border-[#7F5CFF]/50 overflow-hidden shrink-0">
+                        <img src={p.avatar} className="w-full h-full object-cover" />
+                    </div>
+                    <div>
+                        <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-0.5">Recommended Link</div>
+                        <div className="text-lg font-bold text-white flex items-center gap-2">
+                            {p.name} <span className="text-[10px] bg-[#7F5CFF] text-white px-1.5 py-0.5 rounded">MATCH</span>
+                        </div>
+                    </div>
+                </div>
+
+                <p className="text-xs text-gray-400 text-center mb-8 leading-relaxed px-4">"{resultProfile.diagnosis}"</p>
+
+                <button onClick={() => onFinish(resultProfile)} className="w-full py-4 bg-white text-black font-black rounded-xl hover:bg-gray-200 transition-all active:scale-95 shadow-[0_0_20px_rgba(255,255,255,0.2)] flex items-center justify-center gap-2">
+                    <Zap size={18} className="fill-current" />
+                    {lang === 'zh' ? "接受诊断并接入" : "ACCEPT & INITIALIZE"}
+                </button>
             </div>
         </div>
       );
@@ -100,32 +136,72 @@ export const OnboardingModal = ({ show, onFinish, lang }: OnboardingModalProps) 
   if (stage === 'PROMPT') {
       return (
         <div className="fixed inset-0 z-[300] bg-black flex items-center justify-center p-4 animate-[fadeIn_0.5s_ease-out]">
-           <div className="w-full max-w-sm bg-[#111] border border-yellow-500/30 rounded-2xl p-6 text-center">
-              <AlertTriangle className="mx-auto text-yellow-500 mb-4" size={32} />
-              <h2 className="text-xl font-black text-white mb-2">{lang === 'zh' ? "诊断模糊" : "FUZZY DIAGNOSIS"}</h2>
-              <p className="text-xs text-gray-400 mb-6">Need more data for precise sync.</p>
-              <button onClick={() => { setStep(0); setStage('L1'); }} className="w-full py-3 bg-[#7F5CFF] text-white font-bold rounded-xl mb-3">{lang === 'zh' ? "深度同步 (+5题)" : "Deep Sync"}</button>
-              <button onClick={() => finishAssessment(false)} className="w-full py-3 text-gray-500 text-xs font-bold">{lang === 'zh' ? "就这样" : "Skip"}</button>
+           <div className="w-full max-w-sm bg-[#111] border border-yellow-500/30 rounded-2xl p-6 relative">
+              <div className="text-center mb-6">
+                 <AlertTriangle className="mx-auto text-yellow-500 mb-2 animate-pulse" size={32} />
+                 <h2 className="text-xl font-black text-white">{lang === 'zh' ? "诊断模糊警告" : "DIAGNOSIS FUZZY"}</h2>
+                 <p className="text-xs text-gray-400 mt-2 leading-relaxed">
+                    {lang === 'zh' ? "系统无法生成精确画像。" : "System implies high ambiguity."}
+                 </p>
+              </div>
+              <div className="space-y-3">
+                 <button onClick={() => { setStep(0); setStage('L1'); }} className="w-full py-3.5 bg-[#7F5CFF] text-white font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-[#6b4bd6] transition-all">
+                    <Brain size={16} />
+                    {lang === 'zh' ? "申请深度同步 (+5题)" : "Deep Sync (+5 Qs)"}
+                 </button>
+                 <button onClick={() => finishAssessment(false)} className="w-full py-3 bg-transparent text-gray-500 text-xs font-bold hover:text-white transition-colors">
+                    {lang === 'zh' ? "就这样，我不关心真相" : "Accept Vague Result"}
+                 </button>
+              </div>
            </div>
         </div>
-      );
+      )
   }
 
   return (
     <div className="fixed inset-0 z-[300] bg-black flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-[url('/noise.png')] opacity-20 pointer-events-none mix-blend-overlay"></div>
       <div className="w-full max-w-md relative z-10 animate-[fadeIn_0.5s_ease-out]">
         <div className="mb-8">
-           <div className="flex justify-between items-end mb-4"><span className="font-mono text-xs text-[#7F5CFF] font-bold">{isAnalyzing ? "ANALYZING..." : `SCANNING: ${step + 1}/${currentQuestions.length}`}</span></div>
-           <div className="w-full h-1 bg-gray-800 rounded-full mb-6"><div className="h-full bg-[#7F5CFF] transition-all duration-300" style={{ width: `${((step + 1) / currentQuestions.length) * 100}%` }}></div></div>
-           {!isAnalyzing ? <h2 className="text-xl font-bold text-white">{getText(currentQ.text)}</h2> : <div className="text-center py-10"><Activity className="text-[#7F5CFF] mx-auto animate-bounce" /></div>}
+           <div className="flex justify-between items-end mb-4">
+              <div className="flex items-center gap-2 text-[#7F5CFF]">
+                 <ScanFace className="animate-pulse" />
+                 <span className="font-mono text-xs tracking-widest font-bold">
+                    {isAnalyzing ? "ANALYZING..." : `${stage === 'L1' ? 'DEEP SYNC' : 'SCANNING'}: ${step + 1}/${currentQuestions.length}`}
+                 </span>
+              </div>
+              <span className="text-[10px] text-gray-500 font-mono">v2.3.0</span>
+           </div>
+           <div className="w-full h-1 bg-gray-800 rounded-full overflow-hidden mb-6">
+              <div className="h-full bg-[#7F5CFF] transition-all duration-500 ease-out shadow-[0_0_10px_#7F5CFF]" style={{ width: `${((step + 1) / currentQuestions.length) * 100}%` }}></div>
+           </div>
+           {!isAnalyzing ? (
+               <h2 className="text-xl font-bold text-white leading-snug animate-[slideUp_0.3s_ease-out]">{getText(currentQ.text)}</h2>
+           ) : (
+               <div className="text-center py-10 space-y-4">
+                   <Activity size={48} className="text-[#7F5CFF] mx-auto animate-bounce" />
+                   <h2 className="text-xl font-bold text-white animate-pulse">{lang === 'zh' ? "正在尝试连接神经元..." : "Connecting Neurons..."}</h2>
+               </div>
+           )}
         </div>
         {!isAnalyzing && (
             <div className="space-y-4">
               {currentQ.options.map((opt: any, idx: number) => {
-                const pKey = "Ash"; // Simplified for brevity
+                const pKey = "Ash"; 
                 return (
-                    <button key={idx} onClick={() => handleAnswer(opt.dimension, opt.score || 50)} className="w-full p-5 bg-[#111] border border-white/10 hover:border-[#7F5CFF] rounded-xl text-left">
-                      <span className="text-gray-300 font-medium text-sm">{getText(opt.text)}</span>
+                    <button
+                      key={idx}
+                      onClick={() => handleAnswer(opt.dimension, opt.score || 50)}
+                      className="w-full p-5 flex items-center gap-5 bg-[#111] border border-white/10 hover:bg-[#1a1a1a] hover:border-[#7F5CFF] transition-all rounded-xl group text-left relative overflow-hidden"
+                    >
+                      <div className="absolute inset-0 bg-gradient-to-r from-[#7F5CFF]/0 to-[#7F5CFF]/10 translate-x-[-100%] group-hover:translate-x-0 transition-transform duration-500"></div>
+                      <div className="w-10 h-10 rounded-full overflow-hidden border border-white/20 flex-shrink-0 group-hover:scale-110 transition-transform relative z-10 grayscale group-hover:grayscale-0">
+                          <img src={PERSONAS[pKey].avatar} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                      <div className="flex-1 relative z-10">
+                        <span className="text-gray-300 font-medium group-hover:text-white transition-colors text-sm">{getText(opt.text)}</span>
+                      </div>
+                      <ArrowRight size={16} className="text-[#7F5CFF] opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all relative z-10" />
                     </button>
                 );
               })}

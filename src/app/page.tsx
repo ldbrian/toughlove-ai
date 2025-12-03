@@ -62,12 +62,16 @@ type ViewState = 'selection' | 'chat';
 interface QuickReply { id: string; label: string; payload: string; icon?: React.ReactNode; }
 
 export default function Home() {
+  // ----------------------------------------------------------------
+  // 1. State Declaration
+  // ----------------------------------------------------------------
   const [mounted, setMounted] = useState(false);
   const [isCheckingFate, setIsCheckingFate] = useState(false); 
   const [view, setView] = useState<ViewState>('selection');
   const [activePersona, setActivePersona] = useState<PersonaType>('Ash');
   const [lang, setLang] = useState<LangType>('zh');
   
+  // Modals State
   const [showLangSetup, setShowLangSetup] = useState(false);
   const [showAnnouncement, setShowAnnouncement] = useState(false);
   const [showBriefing, setShowBriefing] = useState(false);
@@ -86,6 +90,7 @@ export default function Home() {
   const [showShop, setShowShop] = useState(false);
   const [showFocusOffer, setShowFocusOffer] = useState(false);
 
+  // Features State
   const [userRin, setUserRin] = useState(0); 
   const [isBuying, setIsBuying] = useState(false);
   const [inventory, setInventory] = useState<string[]>([]);
@@ -108,6 +113,7 @@ export default function Home() {
   
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
+  // Data State
   const [quoteData, setQuoteData] = useState<DailyQuote | null>(null);
   const [briefingData, setBriefingData] = useState<any>(null);
   const [profileData, setProfileData] = useState<{tags: string[], diagnosis: string, radar?: number[], achievements?: any[]} | null>(null);
@@ -116,6 +122,7 @@ export default function Home() {
   const [hasNewGlory, setHasNewGlory] = useState(false); 
   const [gloryUpdateTrigger, setGloryUpdateTrigger] = useState(0);
 
+  // Inputs
   const [feedbackText, setFeedbackText] = useState("");
   const [userName, setUserName] = useState("");
   const [tempName, setTempName] = useState("");
@@ -127,11 +134,13 @@ export default function Home() {
   const [isGeneratingImg, setIsGeneratingImg] = useState(false);
   const [isProfileLoading, setIsProfileLoading] = useState(false);
   
+  // Audio & Voice
   const [playingMsgId, setPlayingMsgId] = useState<string | null>(null);
   const [voiceMsgIds, setVoiceMsgIds] = useState<Set<string>>(new Set()); 
   const [forceVoice, setForceVoice] = useState(false);
   const [voiceTrial, setVoiceTrial] = useState(3);
 
+  // Refs
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const quoteCardRef = useRef<HTMLDivElement>(null);
   const viralPosterRef = useRef<HTMLDivElement>(null); 
@@ -141,7 +150,9 @@ export default function Home() {
   const ui = UI_TEXT[lang];
   const currentP = PERSONAS[activePersona];
 
-  // Helpers
+  // ==========================================
+  // 2. Helper Functions
+  // ==========================================
   const getTrustKey = (p: string) => `toughlove_trust_${p}`;
   const getLevelInfo = (count: number) => {
     if (count < 50) return { level: 1, icon: <Shield size={12} />, bgClass: 'bg-[#0a0a0a]', borderClass: 'border-white/5', barColor: 'bg-gray-500', glowClass: '' };
@@ -152,6 +163,10 @@ export default function Home() {
   const levelInfo = getLevelInfo(interactionCount);
   const progressPercent = Math.min(100, (interactionCount / 50) * 100);
 
+  // ==========================================
+  // 3. Action Handlers (Defined before usage)
+  // ==========================================
+  
   const handlePlayAudio = async (text: string, msgId: string) => { 
     if (playingMsgId === msgId) { if (audioRef.current) audioRef.current.pause(); setPlayingMsgId(null); return; }
     if (audioRef.current) audioRef.current.pause();
@@ -171,8 +186,48 @@ export default function Home() {
 
   const triggerRinProtocol = () => { if (isFocusActive) return; const tasks = RIN_TASKS[lang] || RIN_TASKS['zh']; const randomTask = tasks[Math.floor(Math.random() * tasks.length)]; setCurrentStickyTask(randomTask); setShowStickyNote(true); if (typeof window !== 'undefined') { localStorage.setItem(RIN_ACTIVE_KEY, 'true'); localStorage.setItem(RIN_TASK_KEY, randomTask); } };
 
+  // 🔥 Fix: Define openShopHandler early
+  const openShopHandler = () => { setShowShop(true); setHasSeenShop(true); localStorage.setItem('toughlove_has_seen_shop', 'true'); };
+
   // ----------------------------------------------------------------
-  // Handlers (Fixed Order)
+  // Core Hooks
+  // ----------------------------------------------------------------
+  const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages, setInput, append } = useChat({
+    api: '/api/chat',
+    onError: (err) => console.error("Stream Error:", err),
+    onFinish: (message) => {
+      const newCount = interactionCount + 1;
+      setInteractionCount(newCount);
+      localStorage.setItem(getTrustKey(activePersona), newCount.toString());
+      
+      // 🔥 Fix: Define isAI explicitly here for local usage
+      const isAI = message.role === 'assistant';
+
+      if (isAI) { 
+          if (CMD_REGEX.test(message.content)) setShowFocusOffer(true); 
+          if (RIN_CMD_REGEX.test(message.content)) triggerRinProtocol(); 
+      }
+      
+      // Voice Logic
+      const isLevel2 = newCount >= 50; 
+      let shouldPlay = false;
+      if (forceVoice) { 
+          if (isLevel2) shouldPlay = true; 
+          else if (voiceTrial > 0) { const left = voiceTrial - 1; setVoiceTrial(left); localStorage.setItem('toughlove_voice_trial', left.toString()); shouldPlay = true; if (left === 0) setForceVoice(false); } else { shouldPlay = false; setForceVoice(false); } 
+      } else { 
+          const isLucky = Math.random() < 0.3; const isShort = message.content.length < 120; if (isLevel2 && isLucky && isShort) shouldPlay = true; 
+      }
+      
+      if (isAI && shouldPlay) { 
+          setVoiceMsgIds(prev => { const n = new Set(prev).add(message.id); saveVoiceIds(activePersona, Array.from(n)); return n; }); 
+          const cleanText = message.content.replace(CMD_REGEX, '').replace(RIN_CMD_REGEX, ''); 
+          handlePlayAudio(cleanText, message.id); 
+      }
+    }
+  });
+
+  // ----------------------------------------------------------------
+  // More Handlers (Sorted)
   // ----------------------------------------------------------------
   const switchLang = (l: LangType) => { setLang(l); localStorage.setItem(LANG_PREF_KEY, l); };
   const confirmLanguage = (l: LangType) => { setLang(l); localStorage.setItem(LANG_PREF_KEY, l); localStorage.setItem(LANGUAGE_KEY, 'true'); setShowLangSetup(false); };
@@ -219,38 +274,7 @@ export default function Home() {
   const downloadCard = async (ref: any, name: string) => { if (!ref.current) return; setIsGeneratingImg(true); try { const c = await html2canvas(ref.current, { backgroundColor: '#000', scale: 3, useCORS: true, allowTaint: true } as any); const url = c.toDataURL("image/png"); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); } catch (e) { console.error(e); } finally { setIsGeneratingImg(false); } };
 
   const handleOpenProfile = async () => { setShowMenu(false); setShowProfile(true); setIsProfileLoading(true); try { const res = await fetch('/api/profile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: getDeviceId(), language: lang }), }); let data = await res.json(); if (!data.radar || data.radar.length === 0) { const base = Math.min(80, interactionCount + 30); data.radar = Array(5).fill(0).map(() => base + Math.random() * 20 - 10); } if (!data.tags || data.tags.length === 0) { data.tags = [lang === 'zh' ? "神秘访客" : "Unknown Visitor"]; } setProfileData(data); } catch (e) { console.error(e); setProfileData({ tags: ["System Error"], diagnosis: "无法连接至精神网络。", radar: [50, 50, 50, 50, 50] }); } finally { setIsProfileLoading(false); } };
-  const openShopHandler = () => { setShowShop(true); setHasSeenShop(true); localStorage.setItem('toughlove_has_seen_shop', 'true'); };
   
-  // Core Chat Handlers
-  const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages, setInput, append } = useChat({
-    api: '/api/chat',
-    onError: (err) => console.error("Stream Error:", err),
-    onFinish: (message) => {
-      const newCount = interactionCount + 1;
-      setInteractionCount(newCount);
-      localStorage.setItem(getTrustKey(activePersona), newCount.toString());
-      // 🔥 [FIX] Define isAI here locally, as this is a callback scope
-      const isAI = message.role === 'assistant';
-      if (isAI) { if (CMD_REGEX.test(message.content)) setShowFocusOffer(true); if (RIN_CMD_REGEX.test(message.content)) triggerRinProtocol(); }
-      
-      // Voice Logic
-      const isLevel2 = newCount >= 50; 
-      let shouldPlay = false;
-      if (forceVoice) { 
-          if (isLevel2) shouldPlay = true; 
-          else if (voiceTrial > 0) { const left = voiceTrial - 1; setVoiceTrial(left); localStorage.setItem('toughlove_voice_trial', left.toString()); shouldPlay = true; if (left === 0) setForceVoice(false); } else { shouldPlay = false; setForceVoice(false); } 
-      } else { 
-          const isLucky = Math.random() < 0.3; const isShort = message.content.length < 120; if (isLevel2 && isLucky && isShort) shouldPlay = true; 
-      }
-      
-      if (isAI && shouldPlay) { 
-          setVoiceMsgIds(prev => { const n = new Set(prev).add(message.id); saveVoiceIds(activePersona, Array.from(n)); return n; }); 
-          const cleanText = message.content.replace(CMD_REGEX, '').replace(RIN_CMD_REGEX, ''); 
-          handlePlayAudio(cleanText, message.id); 
-      }
-    }
-  });
-
   const startVoiceInput = () => { const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition; if (!SpeechRecognition) { alert("Browser does not support voice."); return; } const recognition = new SpeechRecognition(); recognition.lang = lang === 'zh' ? 'zh-CN' : 'en-US'; recognition.onstart = () => setIsRecording(true); recognition.onend = () => setIsRecording(false); recognition.onresult = (event: any) => { const transcript = event.results[0][0].transcript; if (showDiary) alert(`Voice: ${transcript}`); else setInput(prev => prev + transcript); }; recognition.start(); };
   const handleQuickReply = async (reply: QuickReply) => { if (audioRef.current) { audioRef.current.src = SILENT_AUDIO; audioRef.current.play().catch(err => {}); } await append({ id: Date.now().toString(), role: 'user', content: reply.payload }); };
   const onFormSubmit = (e: React.FormEvent) => { e.preventDefault(); if (audioRef.current) { audioRef.current.src = SILENT_AUDIO; audioRef.current.play().catch(err => {}); } const timeData = getLocalTimeInfo(); const envInfo = { time: timeData.localTime, weekday: lang === 'zh' ? timeData.weekdayZH : timeData.weekdayEN, phase: timeData.lifePhase, weather: currentWeather }; const ashMood = localStorage.getItem('toughlove_ash_mood'); handleSubmit(e, { options: { body: { persona: activePersona, language: lang, interactionCount, userName, envInfo, userId: getDeviceId(), activeBuffs: ashMood === 'soft' ? ['ASH_MOOD_SOFT'] : [] } } }); };
@@ -266,7 +290,7 @@ export default function Home() {
   const getPersonaPreview = (pKey: PersonaType) => { if (!mounted) return { isChatted: false, lastMsg: "", trust: 0, time: "" }; const history = getMemory(pKey); const trust = parseInt(localStorage.getItem(getTrustKey(pKey)) || '0'); if (history.length > 0) { const last = history[history.length - 1]; const visibleMsgs = history.filter(m => m.role !== 'system'); const lastVisible = visibleMsgs[visibleMsgs.length - 1]; return { isChatted: true, lastMsg: lastVisible ? ((lastVisible.role === 'user' ? 'You: ' : '') + lastVisible.content.split('|||')[0]) : "...", trust, time: "Active" }; } return { isChatted: false, lastMsg: PERSONAS[pKey].greetings[lang][0], trust, time: "New" }; };
 
   // ==========================================
-  // Effects
+  // 4. Effects
   // ==========================================
   const quickReplies = useMemo<QuickReply[]>(() => {
     const base: QuickReply[] = [
@@ -288,6 +312,7 @@ export default function Home() {
 
   useEffect(() => { 
     setMounted(true); 
+    
     window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); setDeferredPrompt(e); });
 
     let currentLang: LangType = 'zh';
@@ -321,34 +346,20 @@ export default function Home() {
     const seenShop = localStorage.getItem('toughlove_has_seen_shop'); if (seenShop) setHasSeenShop(true);
   }, [initStartupSequence]);
 
-  useEffect(() => { if (isFocusActive && focusRemaining <= 0) { fetch('/api/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: getDeviceId(), type: 'focus_success_sol', content: `${FOCUS_TOTAL_TIME / 60} min`, persona: 'Sol' }) }); setUserRin(prev => prev + 100); endFocusMode(); } }, [focusRemaining, isFocusActive]);
-  useEffect(() => { 
-      let interval: NodeJS.Timeout; 
-      let tauntInterval: NodeJS.Timeout; 
-      const handleVisibilityChange = () => { if (document.hidden && isFocusActive) { setIsFocusPaused(true); document.title = "⚠️ SOL IS WATCHING"; } else if (!document.hidden && isFocusActive) { setIsFocusPaused(false); document.title = "ToughLove AI"; setFocusWarning(lang === 'zh' ? "⚠️ 监测到离开。计时暂停。别想逃。" : "⚠️ Absence detected. Timer paused."); setTimeout(() => setFocusWarning(null), 4000); } }; 
-      if (isFocusActive) { document.addEventListener("visibilitychange", handleVisibilityChange); interval = setInterval(() => { if (!isFocusPaused && !document.hidden) { setFocusRemaining(prev => { const next = prev - 1; localStorage.setItem(FOCUS_REMAINING_KEY, next.toString()); return next; }); } }, 1000); tauntInterval = setInterval(() => { setTauntIndex(prev => (prev + 1) % SOL_TAUNTS[lang].length); }, 4000); } 
-      return () => { clearInterval(interval); clearInterval(tauntInterval); document.removeEventListener("visibilitychange", handleVisibilityChange); }; 
-  }, [isFocusActive, isFocusPaused, lang]);
-
-  const prevLoadingRef = useRef(false);
-  useEffect(() => { const wasLoading = prevLoadingRef.current; if (wasLoading && !isLoading && messages.length > 0) { const cleanMsgs = messages.map(m => ({ ...m, content: m.content.replace(CMD_REGEX, '').replace(RIN_CMD_REGEX, '') })); syncToCloud(cleanMsgs); } prevLoadingRef.current = isLoading; }, [isLoading, messages]);
-  useEffect(() => { if (messages.length > 0 && view === 'chat') { const cleanMsgs = messages.map(m => ({ ...m, content: m.content.replace(CMD_REGEX, '').replace(RIN_CMD_REGEX, '') })); saveMemory(activePersona, cleanMsgs); } }, [messages, activePersona, view]);
-  useEffect(() => { scrollToBottom(); }, [messages, isLoading, view]);
-  useEffect(() => { if (messages.length > 0) { const lastMsg = messages[messages.length - 1]; if (lastMsg.role === 'assistant') { if (CMD_REGEX.test(lastMsg.content)) setShowFocusOffer(true); if (RIN_CMD_REGEX.test(lastMsg.content)) triggerRinProtocol(); } } }, [messages]);
-  useEffect(() => { if (mounted) { const ids = getVoiceIds(activePersona); setVoiceMsgIds(new Set(ids)); } }, [activePersona, mounted]);
-
   // ==========================================
-  // 6. Render
+  // 5. Render
   // ==========================================
   const renderGlobalMenu = () => (
     <div className="absolute top-12 right-0 mt-2 w-48 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl z-50 flex flex-col p-1 animate-[fadeIn_0.1s_ease-out]">
       <button onClick={handleEditName} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-white/5 rounded-xl transition-colors text-left">
         <UserPen size={16} /> {userName || ui.editName}
       </button>
+      
       <div className="flex px-2 py-1 gap-2">
          <button onClick={() => switchLang('zh')} className={`flex-1 py-2 text-xs font-bold rounded-lg border transition-all ${lang === 'zh' ? 'bg-white text-black border-white' : 'text-gray-500 border-white/10 hover:border-white/30'}`}>CN</button>
          <button onClick={() => switchLang('en')} className={`flex-1 py-2 text-xs font-bold rounded-lg border transition-all ${lang === 'en' ? 'bg-white text-black border-white' : 'text-gray-500 border-white/10 hover:border-white/30'}`}>EN</button>
       </div>
+
       <button onClick={handleInstall} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-white/5 rounded-xl transition-colors text-left">
         <Download size={16} /> {ui.install}
       </button>
@@ -358,6 +369,7 @@ export default function Home() {
       <button onClick={() => setShowFeedbackModal(true)} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-white/5 rounded-xl transition-colors text-left">
         <Bug size={16} /> {ui.feedback}
       </button>
+      
       {view === 'chat' && (
         <>
           <div className="h-px bg-white/5 my-1" />
@@ -376,7 +388,17 @@ export default function Home() {
       <div className="absolute top-[-20%] left-0 right-0 h-[500px] bg-gradient-to-b from-[#7F5CFF]/10 to-transparent blur-[100px] pointer-events-none" />
       <audio ref={audioRef} className="hidden" playsInline />
 
-      {isFocusActive && <FocusOverlay isFocusPaused={isFocusPaused} focusRemaining={focusRemaining} focusWarning={focusWarning} tauntIndex={tauntIndex} lang={lang} onGiveUp={giveUpFocus} />}
+      {isFocusActive && (
+        <FocusOverlay 
+          isFocusPaused={isFocusPaused} 
+          focusRemaining={focusRemaining} 
+          focusWarning={focusWarning} 
+          tauntIndex={tauntIndex} 
+          lang={lang} 
+          onGiveUp={giveUpFocus} 
+        />
+      )}
+      
       {showStickyNote && ( <StickyNoteOverlay task={currentStickyTask} lang={lang} onComplete={handleStickyComplete} onGiveUp={handleStickyGiveUp} /> )}
 
       <FocusOfferModal show={showFocusOffer} lang={lang} onStart={startFocusMode} onCancel={() => setShowFocusOffer(false)} />
@@ -572,6 +594,15 @@ const ViralPoster = ({ data, persona, lang, forwardedRef }: { data: any, persona
   let heroQuote = safeData.share_quote || safeData.content || "";
   if (!heroQuote || heroQuote.length > 80) { heroQuote = safeData.meaning || (lang === 'zh' ? "命运在洗牌，但出牌的是你。" : "Fate shuffles the cards, but you play them."); }
 
+  // 🔥 [FIX] 解决 Hydration Error
+  // 我们直接使用今天的日期作为种子，或者在 useEffect 里生成。
+  // 为了简单且不报错，我们这里可以使用 mounted state，或者直接显示一个固定的占位符，因为海报是截图用的，用户看不见渲染过程。
+  // 但最稳妥的是：
+  const [posterId, setPosterId] = useState("00000");
+  useEffect(() => {
+      setPosterId(Math.floor(Math.random() * 99999).toString());
+  }, []);
+
   return (
     <div ref={forwardedRef} className="fixed left-[-9999px] top-0 w-[375px] h-[667px] overflow-hidden bg-black font-sans flex flex-col">
       <div className="absolute inset-0 z-0">
@@ -580,7 +611,11 @@ const ViralPoster = ({ data, persona, lang, forwardedRef }: { data: any, persona
          <div className="absolute inset-0 bg-[url('/noise.png')] opacity-30 mix-blend-overlay" />
       </div>
       <div className="relative z-10 p-6 flex justify-between items-center border-b border-white/10">
-          <div className="flex flex-col"><span className="text-[9px] tracking-[0.3em] text-white/80 font-bold uppercase">TOUGHLOVE.AI</span><span className="text-[9px] text-gray-400 font-mono mt-1">FATE_ID: {Math.floor(Math.random() * 99999)} // {new Date().toLocaleDateString()}</span></div>
+          <div className="flex flex-col">
+             <span className="text-[9px] tracking-[0.3em] text-white/80 font-bold uppercase">TOUGHLOVE.AI</span>
+             {/* 🔥 替换这里 */}
+             <span className="text-[9px] text-gray-400 font-mono mt-1">FATE_ID: {posterId} // {new Date().toLocaleDateString()}</span>
+          </div>
           <div className={`w-8 h-8 rounded-full border border-white/30 overflow-hidden`}><img src={p.avatar} crossOrigin="anonymous" className="w-full h-full object-cover" /></div>
       </div>
       <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-6 gap-6">
