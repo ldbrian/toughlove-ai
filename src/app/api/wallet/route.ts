@@ -3,14 +3,10 @@ import { NextResponse } from 'next/server';
 export async function POST(req: Request) {
   try {
     const { userId, amount, reason } = await req.json();
-    
-    // 这里应该是数据库操作：
-    // await db.wallet.update({ where: { userId }, data: { balance: { increment: amount } } });
-    
-    // 模拟成功返回
+    // 模拟 DB 操作
     return NextResponse.json({ 
       success: true, 
-      newBalance: 100 + amount, // 假装余额增加了
+      newBalance: 100 + amount, 
       message: "Sync success" 
     });
   } catch (e) {
@@ -18,8 +14,6 @@ export async function POST(req: Request) {
   }
 }
 
-// 获取余额
 export async function GET(req: Request) {
-    // 模拟返回一个初始余额
     return NextResponse.json({ balance: 100 }); 
 }

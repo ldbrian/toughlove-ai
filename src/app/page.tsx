@@ -8,11 +8,10 @@ import html2canvas from 'html2canvas';
 
 import { 
   Send, ChevronLeft, MoreVertical, RotateCcw, 
-  UserPen, Brain, Book, Lock, Sparkles, Shield, 
-  Volume2, Loader2, Headphones, Ban, ArrowUpRight, 
+  UserPen, Brain, Lock, Sparkles, Shield, 
+  Volume2, Loader2, Ban, ArrowUpRight, 
   MessageCircle, Bug, Zap, Heart, Globe, Download, Coffee,
-  Mic, MicOff, BookHeart, Flower2, ShoppingBag, 
-  Keyboard, Wand2 
+  Mic, MicOff, ShoppingBag, Keyboard, Wand2, Flower2 
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
@@ -28,7 +27,6 @@ import { FocusOverlay } from '@/components/features/FocusOverlay';
 import { StickyNoteOverlay } from '@/components/features/StickyNoteOverlay';
 
 import { AnnouncementModal } from '@/components/modals/AnnouncementModal';
-// 🔥 引入 InstallModal
 import { FocusOfferModal, DonateModal, LangSetupModal, NameModal, FeedbackModal, InstallModal } from '@/components/modals/SystemModals';
 import { DailyQuoteModal, DiaryModal, ShameModal, GloryModal, EnergyModal } from '@/components/modals/ContentModals';
 import { ProfileModal } from '@/components/modals/ProfileModal'; 
@@ -75,7 +73,7 @@ export default function Home() {
   const [showBriefing, setShowBriefing] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false); 
   const [showQuote, setShowQuote] = useState(false);
-  const [showInstallModal, setShowInstallModal] = useState(false); // ❌ 废弃原变量名？不，我们复用这个变量名来做引导弹窗
+  const [showInstallModal, setShowInstallModal] = useState(false); 
   const [showMenu, setShowMenu] = useState(false);
   const [showDonateModal, setShowDonateModal] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -108,7 +106,6 @@ export default function Home() {
   const [lastBriefingResult, setLastBriefingResult] = useState<any>(null);
   const [tempBriefingIntro, setTempBriefingIntro] = useState<string | null>(null);
   
-  // 🔥 PWA State
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
   const [quoteData, setQuoteData] = useState<DailyQuote | null>(null);
@@ -144,9 +141,7 @@ export default function Home() {
   const ui = UI_TEXT[lang];
   const currentP = PERSONAS[activePersona];
 
-  // ==========================================
-  // Logic Helpers
-  // ==========================================
+  // Helpers
   const getTrustKey = (p: string) => `toughlove_trust_${p}`;
   const getLevelInfo = (count: number) => {
     if (count < 50) return { level: 1, icon: <Shield size={12} />, bgClass: 'bg-[#0a0a0a]', borderClass: 'border-white/5', barColor: 'bg-gray-500', glowClass: '' };
@@ -176,13 +171,18 @@ export default function Home() {
 
   const triggerRinProtocol = () => { if (isFocusActive) return; const tasks = RIN_TASKS[lang] || RIN_TASKS['zh']; const randomTask = tasks[Math.floor(Math.random() * tasks.length)]; setCurrentStickyTask(randomTask); setShowStickyNote(true); if (typeof window !== 'undefined') { localStorage.setItem(RIN_ACTIVE_KEY, 'true'); localStorage.setItem(RIN_TASK_KEY, randomTask); } };
 
-  // ==========================================
-  // Definitions
-  // ==========================================
+  // ----------------------------------------------------------------
+  // Handlers (Fixed Order)
+  // ----------------------------------------------------------------
   const switchLang = (l: LangType) => { setLang(l); localStorage.setItem(LANG_PREF_KEY, l); };
   const confirmLanguage = (l: LangType) => { setLang(l); localStorage.setItem(LANG_PREF_KEY, l); localStorage.setItem(LANGUAGE_KEY, 'true'); setShowLangSetup(false); };
   const saveUserName = () => { setUserName(tempName.trim()); localStorage.setItem(USER_NAME_KEY, tempName.trim()); setShowNameModal(false); };
-  
+  const goBMAC = () => { window.open('https://www.buymeacoffee.com/ldbrian', '_blank'); };
+  const handleEditName = () => { setTempName(userName); setShowNameModal(true); setShowMenu(false); };
+  const handleDonate = () => { setShowDonateModal(true); setShowMenu(false); };
+  const handleFeedbackSubmit = () => { if (!feedbackText.trim()) return; alert('Thanks!'); setFeedbackText(""); setShowFeedbackModal(false); };
+  const handleInstall = () => { setShowMenu(false); if (deferredPrompt) { deferredPrompt.prompt(); deferredPrompt.userChoice.then((choiceResult: any) => { setDeferredPrompt(null); }); } else { setShowInstallModal(true); } };
+
   const selectPersona = async (persona: PersonaType) => { 
       setForceVoice(false); 
       setActivePersona(persona); 
@@ -193,95 +193,64 @@ export default function Home() {
       setMessages(localHistory); 
       setVoiceMsgIds(new Set(localVoiceIds)); 
   };
+  const backToSelection = () => { setView('selection'); setShowMenu(false); setTick(tick + 1); };
 
-  const backToSelection = () => { 
-      setView('selection'); 
-      setShowMenu(false); 
-      setTick(tick + 1); 
-  };
-
-  const handleClaimSalary = async (amount: number) => {
-    if (amount <= 0) return;
-    setUserRin(prev => prev + amount);
-    try {
-        const currentBalance = parseInt(localStorage.getItem('toughlove_rin_balance') || '0');
-        localStorage.setItem('toughlove_rin_balance', (currentBalance + amount).toString());
-        await fetch('/api/wallet/add', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: getDeviceId(), amount: amount, reason: 'daily_briefing' })
-        });
-    } catch (e) { console.warn("Salary sync failed"); }
-  };
-
-  const handleBuyItem = async (item: ShopItem) => {
-    setIsBuying(true);
-    try {
-      const res = await fetch('/api/shop/buy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: getDeviceId(), itemId: item.id }) });
-      let newBalance = userRin;
-      if (res.ok) {
-          const data = await res.json();
-          newBalance = data.newBalance;
-      } else {
-          if (userRin >= item.price) {
-              newBalance = userRin - item.price;
-              localStorage.setItem('toughlove_rin_balance', newBalance.toString());
-          } else {
-              throw new Error('Insufficient funds (Local)');
-          }
-      }
-      setUserRin(newBalance); 
-      setInventory(prev => [...prev, item.id]); 
-      if (item.effect === 'ASH_MOOD_SOFT') { localStorage.setItem('toughlove_ash_mood', 'soft'); alert(lang === 'zh' ? 'Ash 喝了咖啡，心情变好了。' : 'Ash drank the latte.'); } 
-      else if (item.type === 'visual' && item.effect && WALLPAPER_PRESETS[item.effect]) { setWallpapers(prev => { const newMap = { ...prev, [activePersona]: item.effect! }; localStorage.setItem('toughlove_wallpapers_map', JSON.stringify(newMap)); return newMap; }); alert(lang === 'zh' ? `已应用专属背景：${item.name.zh}` : `Applied background: ${item.name.en}`); } else if (item.effect === 'REMOVE_SHAME') { alert(lang === 'zh' ? 'Sol 的赦免生效。耻辱记录已清除。' : 'Pardon granted. Shame cleared.'); }
-      setShowShop(false);
-    } catch (e) { alert(lang === 'zh' ? '交易失败：余额不足' : 'Transaction Failed'); } finally { setIsBuying(false); }
-  };
-
-  const handleOpenProfile = async () => { setShowMenu(false); setShowProfile(true); setIsProfileLoading(true); try { const res = await fetch('/api/profile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: getDeviceId(), language: lang }), }); let data = await res.json(); if (!data.radar || data.radar.length === 0) { const base = Math.min(80, interactionCount + 30); data.radar = Array(5).fill(0).map(() => base + Math.random() * 20 - 10); } if (!data.tags || data.tags.length === 0) { data.tags = [lang === 'zh' ? "神秘访客" : "Unknown Visitor"]; } setProfileData(data); } catch (e) { console.error(e); setProfileData({ tags: ["System Error"], diagnosis: "无法连接至精神网络。", radar: [50, 50, 50, 50, 50] }); } finally { setIsProfileLoading(false); } };
   const checkDailyBriefing = useCallback(() => { const today = new Date().toISOString().split('T')[0]; const lastBriefingDate = localStorage.getItem('toughlove_briefing_date'); const hasVisited = localStorage.getItem(VISITED_KEY); if (lastBriefingDate !== today && hasVisited) { setIsCheckingFate(true); setTimeout(() => { setShowBriefing(true); setIsCheckingFate(false); localStorage.setItem('toughlove_briefing_date', today); }, 1000); } }, []);
   const initStartupSequence = useCallback(() => { const hasSeenUpdate = localStorage.getItem(UPDATE_SEEN_KEY); if (!hasSeenUpdate) { setTimeout(() => setShowAnnouncement(true), 500); } else { checkDailyBriefing(); } }, [checkDailyBriefing]);
   const handleAnnouncementClose = () => { setShowAnnouncement(false); localStorage.setItem(UPDATE_SEEN_KEY, 'true'); localStorage.setItem('toughlove_broadcast_closed_v2.3', 'true'); setTimeout(() => checkDailyBriefing(), 300); };
-  const handleFeedbackSubmit = () => { if (!feedbackText.trim()) return; alert('Thanks!'); setFeedbackText(""); setShowFeedbackModal(false); };
+
   const handleOnboardingFinish = (profile: any) => { localStorage.setItem('toughlove_user_profile', JSON.stringify(profile)); localStorage.setItem(VISITED_KEY, 'true'); localStorage.setItem(UPDATE_SEEN_KEY, 'true'); setForcedBriefingSpeaker(profile.dominant); setShowOnboarding(false); setTimeout(() => { setShowBriefing(true); }, 500); };
+
   const syncToCloud = async (currentMessages: any[]) => { try { await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: getDeviceId(), persona: activePersona, messages: currentMessages }) }); } catch (e) {} };
   const handleReset = () => { if (confirm(ui.resetConfirm)) { setMessages([]); saveMemory(activePersona, []); localStorage.removeItem(`toughlove_voice_ids_${activePersona}`); setVoiceMsgIds(new Set()); syncToCloud([]); setShowMenu(false); setInteractionCount(0); localStorage.setItem(getTrustKey(activePersona), '0'); const p = PERSONAS[activePersona]; const greetings = p.greetings[lang]; const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)]; setTimeout(() => { const welcomeMsg: Message = { id: Date.now().toString(), role: 'assistant', content: randomGreeting }; setMessages([welcomeMsg]); saveMemory(activePersona, [welcomeMsg]); syncToCloud([welcomeMsg]); }, 100); } };
   const handleExport = () => { if (messages.length === 0) return; const dateStr = new Date().toLocaleString(); const header = `================================\n${ui.exportFileName}\nDate: ${dateStr}\nPersona: ${currentP.name}\nUser: ${userName || 'Anonymous'}\n================================\n\n`; const body = messages.map(m => { const role = m.role === 'user' ? (userName || 'ME') : currentP.name.toUpperCase(); return `[${role}]:\n${m.content.replace(/\|\|\|/g, '\n')}\n`; }).join('\n--------------------------------\n\n'); const blob = new Blob([header + body], { type: 'text/plain;charset=utf-8' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${ui.exportFileName}_${activePersona}_${new Date().toISOString().split('T')[0]}.txt`; a.click(); URL.revokeObjectURL(url); setShowMenu(false); };
+
+  const handleClaimSalary = async (amount: number) => { if (amount <= 0) return; setUserRin(prev => prev + amount); try { const currentBalance = parseInt(localStorage.getItem('toughlove_rin_balance') || '0'); localStorage.setItem('toughlove_rin_balance', (currentBalance + amount).toString()); await fetch('/api/wallet/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: getDeviceId(), amount: amount, reason: 'daily_briefing' }) }); } catch (e) { console.warn("Salary sync failed"); } };
   const handleBriefingDataLoaded = useCallback((data: any) => { setBriefingData((prev: any) => { if (JSON.stringify(prev) === JSON.stringify(data)) return prev; return data; }); }, []);
   const handleBriefingJump = (payload: any) => { const { persona, systemContext, visibleReaction, archetype } = payload; const history = getMemory(persona); history.push({ id: Date.now().toString(), role: 'system', content: systemContext } as any); saveMemory(persona, history); selectPersona(persona); setTempBriefingIntro(visibleReaction); setChatInputMode('guided'); setLastBriefingResult({ persona, archetype }); };
   const handleBribeSuccess = async () => { setShowDonateModal(false); localStorage.setItem('toughlove_is_patron', 'true'); const bribeMsg: Message = { id: Date.now().toString(), role: 'user', content: lang === 'zh' ? "☕️ (给你买了一杯热咖啡，请笑纳...)" : "☕️ (Bought you a coffee. Be nice...)" }; await append(bribeMsg); };
+  
+  const handleBuyItem = async (item: ShopItem) => { setIsBuying(true); try { const res = await fetch('/api/shop/buy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: getDeviceId(), itemId: item.id }) }); let newBalance = userRin; if (res.ok) { const data = await res.json(); newBalance = data.newBalance; } else { if (userRin >= item.price) { newBalance = userRin - item.price; localStorage.setItem('toughlove_rin_balance', newBalance.toString()); } else { throw new Error('Insufficient funds (Local)'); } } setUserRin(newBalance); setInventory(prev => [...prev, item.id]); if (item.effect === 'ASH_MOOD_SOFT') { localStorage.setItem('toughlove_ash_mood', 'soft'); alert(lang === 'zh' ? 'Ash 喝了咖啡，心情变好了。' : 'Ash drank the latte.'); } else if (item.type === 'visual' && item.effect && WALLPAPER_PRESETS[item.effect]) { setWallpapers(prev => { const newMap = { ...prev, [activePersona]: item.effect! }; localStorage.setItem('toughlove_wallpapers_map', JSON.stringify(newMap)); return newMap; }); alert(lang === 'zh' ? `已应用专属背景：${item.name.zh}` : `Applied background: ${item.name.en}`); } else if (item.effect === 'REMOVE_SHAME') { alert(lang === 'zh' ? 'Sol 的赦免生效。耻辱记录已清除。' : 'Pardon granted. Shame cleared.'); } setShowShop(false); } catch (e) { alert(lang === 'zh' ? '交易失败：余额不足' : 'Transaction Failed'); } finally { setIsBuying(false); } };
+  
   const downloadPoster = async () => { if (!viralPosterRef.current) return; setIsGeneratingImg(true); try { const c = await html2canvas(viralPosterRef.current, { backgroundColor: '#000', scale: 3, useCORS: true, allowTaint: true, logging: true } as any); const url = c.toDataURL("image/png"); const a = document.createElement('a'); a.href = url; a.download = `ToughLove_Fate_${new Date().toISOString().slice(0,10)}.png`; a.click(); } catch (e) { console.error("Save failed:", e); alert("保存失败 (CORS Error)"); } finally { setIsGeneratingImg(false); } };
   const downloadProfileCard = () => downloadCard(profileCardRef, `ToughLove_Profile.png`);
   const downloadShameCard = (ref: any) => downloadCard(ref, `ToughLove_Shame.png`);
   const downloadGloryCard = (ref: any) => downloadCard(ref, `ToughLove_Glory.png`);
   const downloadCard = async (ref: any, name: string) => { if (!ref.current) return; setIsGeneratingImg(true); try { const c = await html2canvas(ref.current, { backgroundColor: '#000', scale: 3, useCORS: true, allowTaint: true } as any); const url = c.toDataURL("image/png"); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); } catch (e) { console.error(e); } finally { setIsGeneratingImg(false); } };
-  const goBMAC = () => { window.open('https://www.buymeacoffee.com/ldbrian', '_blank'); };
-  const handleEditName = () => { setTempName(userName); setShowNameModal(true); setShowMenu(false); };
-  
-  // 🔥 [PWA FIX] PWA Install Logic
-  const handleInstall = () => { 
-      setShowMenu(false);
-      // 1. 如果有 deferredPrompt (Android/Desktop)
-      if (deferredPrompt) {
-          deferredPrompt.prompt();
-          deferredPrompt.userChoice.then((choiceResult: any) => {
-              if (choiceResult.outcome === 'accepted') {
-                  console.log('User accepted the install prompt');
-              }
-              setDeferredPrompt(null);
-          });
-      } else {
-          // 2. 否则显示引导模态框 (iOS 或已安装)
-          setShowInstallModal(true);
-      }
-  };
 
-  const handleDonate = () => { setShowDonateModal(true); setShowMenu(false); };
-  
-  // 移除毒签
-  const fetchDailyQuote = async () => { /* Removed */ };
-  
+  const handleOpenProfile = async () => { setShowMenu(false); setShowProfile(true); setIsProfileLoading(true); try { const res = await fetch('/api/profile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: getDeviceId(), language: lang }), }); let data = await res.json(); if (!data.radar || data.radar.length === 0) { const base = Math.min(80, interactionCount + 30); data.radar = Array(5).fill(0).map(() => base + Math.random() * 20 - 10); } if (!data.tags || data.tags.length === 0) { data.tags = [lang === 'zh' ? "神秘访客" : "Unknown Visitor"]; } setProfileData(data); } catch (e) { console.error(e); setProfileData({ tags: ["System Error"], diagnosis: "无法连接至精神网络。", radar: [50, 50, 50, 50, 50] }); } finally { setIsProfileLoading(false); } };
   const openShopHandler = () => { setShowShop(true); setHasSeenShop(true); localStorage.setItem('toughlove_has_seen_shop', 'true'); };
+  
+  // Core Chat Handlers
+  const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages, setInput, append } = useChat({
+    api: '/api/chat',
+    onError: (err) => console.error("Stream Error:", err),
+    onFinish: (message) => {
+      const newCount = interactionCount + 1;
+      setInteractionCount(newCount);
+      localStorage.setItem(getTrustKey(activePersona), newCount.toString());
+      // 🔥 [FIX] Define isAI here locally, as this is a callback scope
+      const isAI = message.role === 'assistant';
+      if (isAI) { if (CMD_REGEX.test(message.content)) setShowFocusOffer(true); if (RIN_CMD_REGEX.test(message.content)) triggerRinProtocol(); }
+      
+      // Voice Logic
+      const isLevel2 = newCount >= 50; 
+      let shouldPlay = false;
+      if (forceVoice) { 
+          if (isLevel2) shouldPlay = true; 
+          else if (voiceTrial > 0) { const left = voiceTrial - 1; setVoiceTrial(left); localStorage.setItem('toughlove_voice_trial', left.toString()); shouldPlay = true; if (left === 0) setForceVoice(false); } else { shouldPlay = false; setForceVoice(false); } 
+      } else { 
+          const isLucky = Math.random() < 0.3; const isShort = message.content.length < 120; if (isLevel2 && isLucky && isShort) shouldPlay = true; 
+      }
+      
+      if (isAI && shouldPlay) { 
+          setVoiceMsgIds(prev => { const n = new Set(prev).add(message.id); saveVoiceIds(activePersona, Array.from(n)); return n; }); 
+          const cleanText = message.content.replace(CMD_REGEX, '').replace(RIN_CMD_REGEX, ''); 
+          handlePlayAudio(cleanText, message.id); 
+      }
+    }
+  });
+
   const startVoiceInput = () => { const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition; if (!SpeechRecognition) { alert("Browser does not support voice."); return; } const recognition = new SpeechRecognition(); recognition.lang = lang === 'zh' ? 'zh-CN' : 'en-US'; recognition.onstart = () => setIsRecording(true); recognition.onend = () => setIsRecording(false); recognition.onresult = (event: any) => { const transcript = event.results[0][0].transcript; if (showDiary) alert(`Voice: ${transcript}`); else setInput(prev => prev + transcript); }; recognition.start(); };
   const handleQuickReply = async (reply: QuickReply) => { if (audioRef.current) { audioRef.current.src = SILENT_AUDIO; audioRef.current.play().catch(err => {}); } await append({ id: Date.now().toString(), role: 'user', content: reply.payload }); };
   const onFormSubmit = (e: React.FormEvent) => { e.preventDefault(); if (audioRef.current) { audioRef.current.src = SILENT_AUDIO; audioRef.current.play().catch(err => {}); } const timeData = getLocalTimeInfo(); const envInfo = { time: timeData.localTime, weekday: lang === 'zh' ? timeData.weekdayZH : timeData.weekdayEN, phase: timeData.lifePhase, weather: currentWeather }; const ashMood = localStorage.getItem('toughlove_ash_mood'); handleSubmit(e, { options: { body: { persona: activePersona, language: lang, interactionCount, userName, envInfo, userId: getDeviceId(), activeBuffs: ashMood === 'soft' ? ['ASH_MOOD_SOFT'] : [] } } }); };
@@ -296,17 +265,9 @@ export default function Home() {
   const formatMentions = (text: string) => text.replace(/\b(Ash|Rin|Sol|Vee|Echo)\b/g, (match) => `[${match}](#trigger-${match})`);
   const getPersonaPreview = (pKey: PersonaType) => { if (!mounted) return { isChatted: false, lastMsg: "", trust: 0, time: "" }; const history = getMemory(pKey); const trust = parseInt(localStorage.getItem(getTrustKey(pKey)) || '0'); if (history.length > 0) { const last = history[history.length - 1]; const visibleMsgs = history.filter(m => m.role !== 'system'); const lastVisible = visibleMsgs[visibleMsgs.length - 1]; return { isChatted: true, lastMsg: lastVisible ? ((lastVisible.role === 'user' ? 'You: ' : '') + lastVisible.content.split('|||')[0]) : "...", trust, time: "Active" }; } return { isChatted: false, lastMsg: PERSONAS[pKey].greetings[lang][0], trust, time: "New" }; };
 
-  const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages, setInput, append } = useChat({
-    api: '/api/chat',
-    onError: (err) => console.error("Stream Error:", err),
-    onFinish: (message) => {
-      const newCount = interactionCount + 1;
-      setInteractionCount(newCount);
-      localStorage.setItem(getTrustKey(activePersona), newCount.toString());
-      if (message.role === 'assistant') { if (CMD_REGEX.test(message.content)) setShowFocusOffer(true); if (RIN_CMD_REGEX.test(message.content)) triggerRinProtocol(); }
-    }
-  });
-
+  // ==========================================
+  // Effects
+  // ==========================================
   const quickReplies = useMemo<QuickReply[]>(() => {
     const base: QuickReply[] = [
       { id: 'tired', label: lang === 'zh' ? '😪 累了' : '😪 Tired', payload: lang === 'zh' ? '我累了，求放过。' : 'I am tired, give me a break.' },
@@ -325,15 +286,9 @@ export default function Home() {
 
   useEffect(() => { if (isLoading && tempBriefingIntro) { setTempBriefingIntro(null); } }, [isLoading, tempBriefingIntro]);
 
-  // Init Effects
   useEffect(() => { 
     setMounted(true); 
-    
-    // 🔥 PWA Listener
-    window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault();
-        setDeferredPrompt(e);
-    });
+    window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); setDeferredPrompt(e); });
 
     let currentLang: LangType = 'zh';
     const savedLang = localStorage.getItem(LANG_PREF_KEY); 
@@ -352,7 +307,7 @@ export default function Home() {
         const localBalance = localStorage.getItem('toughlove_rin_balance');
         if (localBalance) setUserRin(parseInt(localBalance));
         try { 
-            const res = await fetch(`/api/wallet/balance?userId=${getDeviceId()}`); 
+            const res = await fetch(`/api/wallet?userId=${getDeviceId()}`); 
             if(res.ok) { 
                 const d = await res.json(); 
                 setUserRin(d.balance); 
@@ -366,18 +321,34 @@ export default function Home() {
     const seenShop = localStorage.getItem('toughlove_has_seen_shop'); if (seenShop) setHasSeenShop(true);
   }, [initStartupSequence]);
 
-  // 🔥 渲染菜单逻辑
+  useEffect(() => { if (isFocusActive && focusRemaining <= 0) { fetch('/api/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: getDeviceId(), type: 'focus_success_sol', content: `${FOCUS_TOTAL_TIME / 60} min`, persona: 'Sol' }) }); setUserRin(prev => prev + 100); endFocusMode(); } }, [focusRemaining, isFocusActive]);
+  useEffect(() => { 
+      let interval: NodeJS.Timeout; 
+      let tauntInterval: NodeJS.Timeout; 
+      const handleVisibilityChange = () => { if (document.hidden && isFocusActive) { setIsFocusPaused(true); document.title = "⚠️ SOL IS WATCHING"; } else if (!document.hidden && isFocusActive) { setIsFocusPaused(false); document.title = "ToughLove AI"; setFocusWarning(lang === 'zh' ? "⚠️ 监测到离开。计时暂停。别想逃。" : "⚠️ Absence detected. Timer paused."); setTimeout(() => setFocusWarning(null), 4000); } }; 
+      if (isFocusActive) { document.addEventListener("visibilitychange", handleVisibilityChange); interval = setInterval(() => { if (!isFocusPaused && !document.hidden) { setFocusRemaining(prev => { const next = prev - 1; localStorage.setItem(FOCUS_REMAINING_KEY, next.toString()); return next; }); } }, 1000); tauntInterval = setInterval(() => { setTauntIndex(prev => (prev + 1) % SOL_TAUNTS[lang].length); }, 4000); } 
+      return () => { clearInterval(interval); clearInterval(tauntInterval); document.removeEventListener("visibilitychange", handleVisibilityChange); }; 
+  }, [isFocusActive, isFocusPaused, lang]);
+
+  const prevLoadingRef = useRef(false);
+  useEffect(() => { const wasLoading = prevLoadingRef.current; if (wasLoading && !isLoading && messages.length > 0) { const cleanMsgs = messages.map(m => ({ ...m, content: m.content.replace(CMD_REGEX, '').replace(RIN_CMD_REGEX, '') })); syncToCloud(cleanMsgs); } prevLoadingRef.current = isLoading; }, [isLoading, messages]);
+  useEffect(() => { if (messages.length > 0 && view === 'chat') { const cleanMsgs = messages.map(m => ({ ...m, content: m.content.replace(CMD_REGEX, '').replace(RIN_CMD_REGEX, '') })); saveMemory(activePersona, cleanMsgs); } }, [messages, activePersona, view]);
+  useEffect(() => { scrollToBottom(); }, [messages, isLoading, view]);
+  useEffect(() => { if (messages.length > 0) { const lastMsg = messages[messages.length - 1]; if (lastMsg.role === 'assistant') { if (CMD_REGEX.test(lastMsg.content)) setShowFocusOffer(true); if (RIN_CMD_REGEX.test(lastMsg.content)) triggerRinProtocol(); } } }, [messages]);
+  useEffect(() => { if (mounted) { const ids = getVoiceIds(activePersona); setVoiceMsgIds(new Set(ids)); } }, [activePersona, mounted]);
+
+  // ==========================================
+  // 6. Render
+  // ==========================================
   const renderGlobalMenu = () => (
     <div className="absolute top-12 right-0 mt-2 w-48 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl z-50 flex flex-col p-1 animate-[fadeIn_0.1s_ease-out]">
       <button onClick={handleEditName} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-white/5 rounded-xl transition-colors text-left">
         <UserPen size={16} /> {userName || ui.editName}
       </button>
-      
       <div className="flex px-2 py-1 gap-2">
          <button onClick={() => switchLang('zh')} className={`flex-1 py-2 text-xs font-bold rounded-lg border transition-all ${lang === 'zh' ? 'bg-white text-black border-white' : 'text-gray-500 border-white/10 hover:border-white/30'}`}>CN</button>
          <button onClick={() => switchLang('en')} className={`flex-1 py-2 text-xs font-bold rounded-lg border transition-all ${lang === 'en' ? 'bg-white text-black border-white' : 'text-gray-500 border-white/10 hover:border-white/30'}`}>EN</button>
       </div>
-
       <button onClick={handleInstall} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-white/5 rounded-xl transition-colors text-left">
         <Download size={16} /> {ui.install}
       </button>
@@ -387,7 +358,6 @@ export default function Home() {
       <button onClick={() => setShowFeedbackModal(true)} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-white/5 rounded-xl transition-colors text-left">
         <Bug size={16} /> {ui.feedback}
       </button>
-      
       {view === 'chat' && (
         <>
           <div className="h-px bg-white/5 my-1" />
@@ -402,10 +372,7 @@ export default function Home() {
   if (!mounted || isCheckingFate) return <BootScreen />;
 
   return (
-    <div 
-        className="relative flex flex-col h-screen supports-[height:100dvh]:h-[100dvh] max-h-[100dvh] bg-[#050505] text-gray-100 overflow-hidden font-sans selection:bg-[#7F5CFF] selection:text-white transition-all duration-700"
-        style={currentBgStyle}
-    >
+    <div className="relative flex flex-col h-screen supports-[height:100dvh]:h-[100dvh] max-h-[100dvh] bg-[#050505] text-gray-100 overflow-hidden font-sans selection:bg-[#7F5CFF] selection:text-white transition-all duration-700" style={currentBgStyle}>
       <div className="absolute top-[-20%] left-0 right-0 h-[500px] bg-gradient-to-b from-[#7F5CFF]/10 to-transparent blur-[100px] pointer-events-none" />
       <audio ref={audioRef} className="hidden" playsInline />
 
@@ -419,7 +386,6 @@ export default function Home() {
       <FeedbackModal show={showFeedbackModal} onClose={() => setShowFeedbackModal(false)} text={feedbackText} setText={setFeedbackText} onSubmit={handleFeedbackSubmit} lang={lang} />
       <ShopModal show={showShop} onClose={() => setShowShop(false)} userRin={userRin} onBuy={handleBuyItem} lang={lang} isBuying={isBuying} />
       
-      {/* 🔥 [NEW] Install Modal */}
       <InstallModal show={showInstallModal} onClose={() => setShowInstallModal(false)} lang={lang} />
 
       <DailyBriefingModal 
@@ -456,7 +422,6 @@ export default function Home() {
       <OnboardingModal show={showOnboarding} onFinish={handleOnboardingFinish} lang={lang} />
       <ViralPoster forwardedRef={viralPosterRef} data={briefingData || quoteData} persona={activePersona} lang={lang} />
 
-      {/* ❌ 移除了 BroadcastBar (横幅公告) */}
       <AnnouncementModal show={showAnnouncement} onClose={handleAnnouncementClose} lang={lang} />
 
       {view === 'selection' && (
@@ -470,7 +435,6 @@ export default function Home() {
                  <Sparkles size={14} className="text-indigo-400" />
                  <span>{lang === 'zh' ? '今日运势' : 'Daily Fate'}</span>
                </button>
-               {/* Global Menu */}
                <div className="relative">
                  <button onClick={() => setShowMenu(!showMenu)} className="p-2 text-gray-400 hover:text-white border border-white/10 rounded-xl hover:bg-white/5 transition-colors">
                     <MoreVertical size={18} />
@@ -485,7 +449,9 @@ export default function Home() {
               return (
                 <div key={key} onClick={() => selectPersona(key)} className={`group relative p-4 rounded-2xl transition-all duration-200 cursor-pointer flex items-center gap-4 border shadow-sm ${info.isChatted ? 'bg-[#111] hover:bg-[#1a1a1a] border-white/5 hover:border-[#7F5CFF]/30' : 'bg-gradient-to-r from-[#151515] to-[#111] border-white/10 hover:border-white/30'}`}>
                   <div className="relative flex-shrink-0"><div className={`w-14 h-14 rounded-full flex items-center justify-center text-3xl border-2 overflow-hidden ${info.isChatted ? (info.trust >= 50 ? (info.trust >= 100 ? 'border-[#7F5CFF]' : 'border-blue-500') : 'border-gray-700') : 'border-white/10'}`}>{p.avatar.startsWith('/') ? (<img src={p.avatar} alt={p.name} className="w-full h-full object-cover" />) : (<span>{p.avatar}</span>)}</div>{info.isChatted && (<div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] border-2 border-[#111] ${lv.barColor.replace('bg-', 'text-white bg-')}`}>{lv.level}</div>)}</div>
-                  <div className="flex-1 min-w-0"><div className="flex justify-between items-baseline mb-1"><h3 className="font-bold text-white text-base">{p.name}</h3><span className="text-[10px] text-gray-500">{info.isChatted ? info.time : 'New'}</span></div><div className="flex flex-wrap gap-1 mb-1">{p.tags[lang].slice(0, 2).map(tag => (<span key={tag} className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-gray-400 border border-white/5 whitespace-nowrap">{tag}</span>))}</div><div className="text-[10px] text-gray-500 mb-1 flex items-center gap-1 truncate">{status}</div><p className={`text-xs truncate transition-colors ${info.isChatted ? 'text-gray-400 group-hover:text-gray-300' : 'text-gray-500 italic'}`}>{info.isChatted ? info.lastMsg : p.slogan[lang]}</p></div>
+                  <div className="flex-1 min-w-0"><div className="flex justify-between items-baseline mb-1"><h3 className="font-bold text-white text-base">{p.name}</h3><span className="text-[10px] text-gray-500">{info.isChatted ? info.time : 'New'}</span></div><div className="flex flex-wrap gap-1 mb-1">
+                  {/* 🔥 Fix: Explicitly type 'tag' */}
+                  {p.tags[lang].slice(0, 2).map((tag: string) => (<span key={tag} className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-gray-400 border border-white/5 whitespace-nowrap">{tag}</span>))}</div><div className="text-[10px] text-gray-500 mb-1 flex items-center gap-1 truncate">{status}</div><p className={`text-xs truncate transition-colors ${info.isChatted ? 'text-gray-400 group-hover:text-gray-300' : 'text-gray-500 italic'}`}>{info.isChatted ? info.lastMsg : p.slogan[lang]}</p></div>
                 </div>
               );
             })}
@@ -506,7 +472,6 @@ export default function Home() {
               </div>
               <div className="flex items-center gap-1">
                 <button onClick={() => setShowBriefing(true)} className="p-2 text-gray-400 hover:text-indigo-400 relative group" title="Daily Tarot"><Sparkles size={18} /></button>
-                {/* ❌ 移除了日历毒签按钮 */}
                 {/* Global Menu */}
                 <div className="relative group">
                     <button onClick={() => setShowMenu(!showMenu)} className="p-2 text-gray-400 hover:text-white relative group">
@@ -528,6 +493,7 @@ export default function Home() {
             )}
             {messages.map((msg, msgIdx) => {
               if (msg.role === 'system') return null;
+              // 🔥 [FIXED] Define isAI locally in the map callback
               const isAI = msg.role !== 'user';
               const isVoice = voiceMsgIds.has(msg.id); 
               const contentDisplay = msg.content.replace(CMD_REGEX, '').replace(RIN_CMD_REGEX, '').trim();
