@@ -777,7 +777,7 @@ export const UI_TEXT = {
     // 🔥 [FIX] 补全 Rin 便利贴的所有文案
     rinGiveUpConfirm: "确定要放弃 Rin 布置的任务吗？虽然不算逃兵，但她会失望的。",
     rinNoteTitle: "Rin 的便利贴",
-    rinTaskComplete: "完成任务",
+    rinTaskDone: "完成任务",
     rinTaskGiveUp: "我不行了"
   },
   en: {
@@ -800,7 +800,7 @@ export const UI_TEXT = {
     // 🔥 [FIX] 补全 Rin 便利贴的所有文案
     rinGiveUpConfirm: "Give up Rin's task? She will be disappointed.",
     rinNoteTitle: "Rin's Note",
-    rinTaskComplete: "Task Done",
+    rinTaskDone: "Task Done",
     rinTaskGiveUp: "I Give Up"
   }
 };
