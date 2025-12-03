@@ -21,9 +21,9 @@ export const metadata: Metadata = {
   description: "人间清醒的赛博棱镜",
   manifest: "/manifest.json", // 👈 指向第二步创建的文件
   icons: {
-    icon: "/favicon.ico",
-    shortcut: "/favicon.ico",
-    apple: "/icons/apple-touch-icon.png", // 👈 iOS 桌面图标
+    icon: "/icons/icon-512.png",
+    shortcut: "/icons/icon-512.png",
+    apple: "/icons/icon-512.png", // 👈 iOS 桌面图标
   },
   appleWebApp: {
     capable: true,
