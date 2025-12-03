@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Fingerprint, ArrowRight, Activity, ScanFace, Brain, CheckCircle, Zap, AlertTriangle } from 'lucide-react';
 import { ONBOARDING_QUESTIONS, DEEP_QUESTIONS, PERSONAS, PersonaType } from '@/lib/constants';
+const [randomId, setRandomId] = useState("000000"); // 初始值必须固定
 
 interface OnboardingModalProps {
   show: boolean;

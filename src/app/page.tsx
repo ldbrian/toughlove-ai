@@ -587,21 +587,28 @@ export default function Home() {
   );
 }
 
+// ----------------------------------------------------------------
+// 🔥 [FINAL FIX] 彻底修复 Hydration Error 的海报组件
+// ----------------------------------------------------------------
 const ViralPoster = ({ data, persona, lang, forwardedRef }: { data: any, persona: PersonaType, lang: LangType, forwardedRef: any }) => {
-  const safeData = data || { content: "System Error", date: new Date().toLocaleDateString() };
+  // 1. 定义 State 来存随机值，初始值为空或占位符
+  const [posterId, setPosterId] = useState("000000");
+  const [dateStr, setDateStr] = useState("");
+
+  // 2. 在 useEffect 里生成随机数和日期（仅在客户端执行）
+  useEffect(() => {
+    setPosterId(Math.floor(Math.random() * 99999).toString().padStart(5, '0'));
+    setDateStr(new Date().toLocaleDateString());
+  }, []);
+
+  const safeData = data || { content: "System Error" }; // 移除这里的 date，用 state 里的
   const p = PERSONAS[persona];
   const heroImage = safeData.image || p.avatar;
   let heroQuote = safeData.share_quote || safeData.content || "";
-  if (!heroQuote || heroQuote.length > 80) { heroQuote = safeData.meaning || (lang === 'zh' ? "命运在洗牌，但出牌的是你。" : "Fate shuffles the cards, but you play them."); }
-
-  // 🔥 [FIX] 解决 Hydration Error
-  // 我们直接使用今天的日期作为种子，或者在 useEffect 里生成。
-  // 为了简单且不报错，我们这里可以使用 mounted state，或者直接显示一个固定的占位符，因为海报是截图用的，用户看不见渲染过程。
-  // 但最稳妥的是：
-  const [posterId, setPosterId] = useState("00000");
-  useEffect(() => {
-      setPosterId(Math.floor(Math.random() * 99999).toString());
-  }, []);
+  
+  if (!heroQuote || heroQuote.length > 80) { 
+    heroQuote = safeData.meaning || (lang === 'zh' ? "命运在洗牌，但出牌的是你。" : "Fate shuffles the cards, but you play them."); 
+  }
 
   return (
     <div ref={forwardedRef} className="fixed left-[-9999px] top-0 w-[375px] h-[667px] overflow-hidden bg-black font-sans flex flex-col">
@@ -613,8 +620,8 @@ const ViralPoster = ({ data, persona, lang, forwardedRef }: { data: any, persona
       <div className="relative z-10 p-6 flex justify-between items-center border-b border-white/10">
           <div className="flex flex-col">
              <span className="text-[9px] tracking-[0.3em] text-white/80 font-bold uppercase">TOUGHLOVE.AI</span>
-             {/* 🔥 替换这里 */}
-             <span className="text-[9px] text-gray-400 font-mono mt-1">FATE_ID: {posterId} // {new Date().toLocaleDateString()}</span>
+             {/* 🔥 使用 state 里的变量，而不是直接调用 Math.random() */}
+             <span className="text-[9px] text-gray-400 font-mono mt-1">FATE_ID: {posterId} // {dateStr}</span>
           </div>
           <div className={`w-8 h-8 rounded-full border border-white/30 overflow-hidden`}><img src={p.avatar} crossOrigin="anonymous" className="w-full h-full object-cover" /></div>
       </div>
