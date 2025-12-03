@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Fingerprint, ArrowRight, Activity, ScanFace, Brain, CheckCircle, Zap, AlertTriangle } from 'lucide-react';
+import { Fingerprint, ArrowRight, Activity, ScanFace, Brain, CheckCircle, Zap, AlertTriangle, Lock, Download } from 'lucide-react';
 import { ONBOARDING_QUESTIONS, DEEP_QUESTIONS, PERSONAS, PersonaType } from '@/lib/constants';
 
-// 🔥 [FIXED] Deleted the global useState call that was crashing the build
+// 🔥 [FIXED] Global state removed to prevent hydration error
 
 interface OnboardingModalProps {
   show: boolean;
@@ -10,7 +10,7 @@ interface OnboardingModalProps {
   lang: 'zh' | 'en';
 }
 
-const RadarChart = ({ data }: { data: number[] }) => {
+const RadarChart = ({ data, color = "#7F5CFF", opacity = 0.4 }: { data: number[], color?: string, opacity?: number }) => {
   const points = data.map((val, i) => {
     const angle = i * (Math.PI * 2 / 5) - Math.PI / 2;
     const r = (val / 100) * 60;
@@ -20,7 +20,7 @@ const RadarChart = ({ data }: { data: number[] }) => {
     <div className="relative w-[160px] h-[160px] mx-auto my-4">
       <svg width="160" height="160" className="overflow-visible">
         <polygon points="80,20 137,62 115,130 45,130 23,62" fill="none" stroke="#333" strokeWidth="1" />
-        <polygon points={points} fill="rgba(127, 92, 255, 0.4)" stroke="#7F5CFF" strokeWidth="2" />
+        <polygon points={points} fill={color} fillOpacity={opacity} stroke={color} strokeWidth="2" />
       </svg>
     </div>
   );
@@ -34,7 +34,6 @@ export const OnboardingModal = ({ show, onFinish, lang }: OnboardingModalProps) 
   const [resultProfile, setResultProfile] = useState<any>(null);
   
   // 🔥 [FIXED] Correctly placed useState inside the component
-  // ID MUST be generated on client-side to match server-rendered HTML initially (avoid hydration mismatch)
   const [randomId, setRandomId] = useState("000000");
   useEffect(() => {
     setRandomId(Math.floor(Math.random() * 100000).toString().padStart(6, '0'));
@@ -104,13 +103,14 @@ export const OnboardingModal = ({ show, onFinish, lang }: OnboardingModalProps) 
                     <h2 className="text-2xl font-black text-white italic">
                         {lang === 'zh' ? "精神诊断书" : "PSYCHE REPORT"}
                     </h2>
-                    {/* 🔥 使用安全的 randomId (Client Side Only) */}
-                    <p className="text-xs text-gray-500 font-mono mt-1">ID: {randomId}</p>
+                    <p className="text-xs text-gray-500 font-mono mt-1">ID: {randomId} // {resultProfile.isDeep ? 'DEEP_SCAN' : 'L0_SCAN'}</p>
                 </div>
 
                 <div className="bg-black/40 rounded-xl border border-white/5 p-4 mb-6 relative">
                     <RadarChart data={resultProfile.radar} />
-                    <div className="absolute bottom-2 right-2 text-[9px] text-gray-600 font-mono">SYNC: 100%</div>
+                    <div className="absolute bottom-2 right-2 text-[9px] text-[#7F5CFF] font-mono font-bold">
+                        SYNC: {resultProfile.isDeep ? '100%' : '35% (FUZZY)'}
+                    </div>
                 </div>
 
                 <div className="flex items-center gap-4 bg-white/5 p-4 rounded-xl border border-white/10 mb-6">
@@ -136,24 +136,77 @@ export const OnboardingModal = ({ show, onFinish, lang }: OnboardingModalProps) 
       );
   }
 
+  // 🔥 [REVISED] The "Fuzzy" Prompt Stage
   if (stage === 'PROMPT') {
+      const currentRadar = [scores.reality, scores.ego, scores.empathy, scores.will, scores.chaos];
+      
       return (
         <div className="fixed inset-0 z-[300] bg-black flex items-center justify-center p-4 animate-[fadeIn_0.5s_ease-out]">
-           <div className="w-full max-w-sm bg-[#111] border border-yellow-500/30 rounded-2xl p-6 relative">
+           <div className="absolute inset-0 bg-[url('/noise.png')] opacity-10 pointer-events-none mix-blend-overlay"></div>
+
+           <div className="w-full max-w-sm bg-[#0a0a0a] border border-yellow-500/20 rounded-2xl p-6 relative overflow-hidden shadow-[0_0_50px_rgba(234,179,8,0.1)]">
+              {/* Header */}
+              <div className="flex items-center justify-between mb-6">
+                 <div className="flex items-center gap-2 text-yellow-500 animate-pulse">
+                    <AlertTriangle size={16} />
+                    <span className="font-mono text-xs font-bold tracking-widest">WARNING: LOW RES</span>
+                 </div>
+                 <div className="px-2 py-0.5 bg-red-500/10 border border-red-500/20 rounded text-[9px] text-red-500 font-bold">
+                    UNSTABLE
+                 </div>
+              </div>
+
+              {/* Fuzzy Portrait Visualization */}
+              <div className="relative bg-black/50 rounded-xl p-4 border border-white/5 mb-6 overflow-hidden group">
+                  {/* The blurred/glitched chart */}
+                  <div className="opacity-30 blur-sm grayscale group-hover:blur-[2px] transition-all duration-500">
+                      <RadarChart data={currentRadar} color="#eab308" opacity={0.2} />
+                  </div>
+                  
+                  {/* Glitch Overlay */}
+                  <div className="absolute inset-0 bg-[url('/noise.png')] opacity-30 pointer-events-none mix-blend-overlay"></div>
+                  
+                  {/* Sync Progress Overlay */}
+                  <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
+                      <div className="text-4xl font-black text-white mb-1 drop-shadow-md">15<span className="text-lg">%</span></div>
+                      <div className="text-[9px] text-gray-400 uppercase tracking-[0.2em] mb-3">Sync Progress</div>
+                      <div className="w-32 h-1.5 bg-gray-800 rounded-full overflow-hidden border border-white/5">
+                          <div className="h-full bg-red-500 w-[15%] shadow-[0_0_10px_#ef4444]"></div>
+                      </div>
+                      <div className="mt-3 px-3 py-1 bg-black/60 backdrop-blur-md rounded border border-white/10 flex items-center gap-1.5">
+                          <Lock size={10} className="text-gray-500" />
+                          <span className="text-[10px] text-gray-400 font-mono">PORTRAIT LOCKED</span>
+                      </div>
+                  </div>
+              </div>
+
               <div className="text-center mb-6">
-                 <AlertTriangle className="mx-auto text-yellow-500 mb-2 animate-pulse" size={32} />
-                 <h2 className="text-xl font-black text-white">{lang === 'zh' ? "诊断模糊警告" : "DIAGNOSIS FUZZY"}</h2>
-                 <p className="text-xs text-gray-400 mt-2 leading-relaxed">
-                    {lang === 'zh' ? "系统无法生成精确画像。" : "System implies high ambiguity."}
+                 <h2 className="text-lg font-bold text-white leading-tight mb-2">
+                    {lang === 'zh' ? "画像生成失败" : "GENERATION FAILED"}
+                 </h2>
+                 <p className="text-xs text-gray-400 leading-relaxed px-2">
+                    {lang === 'zh' 
+                        ? "当前样本量不足 (5/10)，系统无法通过模糊数据看清你的真实面目。" 
+                        : "Sample size insufficient (5/10). System cannot verify identity from vague data."}
                  </p>
               </div>
+
               <div className="space-y-3">
-                 <button onClick={() => { setStep(0); setStage('L1'); }} className="w-full py-3.5 bg-[#7F5CFF] text-white font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-[#6b4bd6] transition-all">
+                 <button 
+                    onClick={() => { setStep(0); setStage('L1'); }} 
+                    className="w-full py-4 bg-gradient-to-r from-[#7F5CFF] to-[#6242db] text-white font-bold rounded-xl flex items-center justify-center gap-2 hover:brightness-110 transition-all shadow-[0_0_20px_rgba(127,92,255,0.3)] relative overflow-hidden group"
+                 >
+                    <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
                     <Brain size={16} />
-                    {lang === 'zh' ? "申请深度同步 (+5题)" : "Deep Sync (+5 Qs)"}
+                    <span>{lang === 'zh' ? "申请深度同步 (+5题)" : "Deep Sync (Get 100%)"}</span>
                  </button>
-                 <button onClick={() => finishAssessment(false)} className="w-full py-3 bg-transparent text-gray-500 text-xs font-bold hover:text-white transition-colors">
-                    {lang === 'zh' ? "就这样，我不关心真相" : "Accept Vague Result"}
+                 
+                 <button 
+                    onClick={() => finishAssessment(false)} 
+                    className="w-full py-3 bg-transparent border border-white/5 text-gray-500 text-xs font-bold rounded-xl hover:bg-white/5 hover:text-gray-300 transition-colors flex items-center justify-center gap-2"
+                 >
+                    {lang === 'zh' ? "就这样，给我个大概的" : "Accept Vague Result"}
+                    <ArrowRight size={12} />
                  </button>
               </div>
            </div>
