@@ -825,12 +825,14 @@ export const ONBOARDING_QUESTIONS = [
       { 
         text: { zh: "低电量模式：只想躺平，别跟我说话", en: "Low Power: Just want to rot. Leave me alone." }, 
         value: "low_energy", 
-        dimension: "will" 
+        dimension: "will",
+        score: 10 // 🔥 新增：意志力低
       },
       { 
         text: { zh: "电压不稳：焦虑得像个漏电的插座", en: "Unstable: Anxious like a short-circuit." }, 
         value: "high_anxiety", 
-        dimension: "chaos" 
+        dimension: "chaos",
+        score: 80 // 🔥 新增：混乱度高
       }
     ]
   },
@@ -844,12 +846,14 @@ export const ONBOARDING_QUESTIONS = [
       { 
         text: { zh: "透明人：自带隐身力场，拒绝产生交互", en: "Ghost: Invisible field active. No interaction." }, 
         value: "invisible", 
-        dimension: "ego" 
+        dimension: "ego",
+        score: 20 // 🔥 新增：自我存在感低
       },
       { 
         text: { zh: "假笑机器：虽然想死，但还得维持体面", en: "Mask On: Dying inside, smiling outside." }, 
         value: "mask", 
-        dimension: "reality" 
+        dimension: "reality",
+        score: 90 // 🔥 新增：过度迎合现实
       }
     ]
   },
@@ -863,12 +867,14 @@ export const ONBOARDING_QUESTIONS = [
       { 
         text: { zh: "地狱模式：全是 Bug，策划（老天）是傻X", en: "Hell Mode: Full of bugs. Devs are idiots." }, 
         value: "hard", 
-        dimension: "chaos" 
+        dimension: "chaos",
+        score: 90 // 🔥 新增：认为世界极其混乱
       },
       { 
         text: { zh: "无聊模式：剧情平淡，NPC 全是复读机", en: "Boring Mode: Flat plot. NPCs are bots." }, 
         value: "boring", 
-        dimension: "passion" 
+        dimension: "passion", // 注意：这里可能需要映射到标准维度，比如 'will'
+        score: 10 
       }
     ]
   },
@@ -882,12 +888,14 @@ export const ONBOARDING_QUESTIONS = [
       { 
         text: { zh: "“都会好起来的”：好起来个鬼啊", en: "'It will get better': No it won't." }, 
         value: "fake_hope", 
-        dimension: "truth" 
+        dimension: "reality",
+        score: 80 // 🔥 新增：看透现实
       },
       { 
         text: { zh: "“你要从自己身上找原因”：找你大爷", en: "'Look at yourself': Look at you." }, 
         value: "blame", 
-        dimension: "empathy" 
+        dimension: "empathy",
+        score: 10 // 🔥 新增：拒绝共情
       }
     ]
   },
@@ -901,16 +909,19 @@ export const ONBOARDING_QUESTIONS = [
       { 
         text: { zh: "来吧，别跟我客气：我就是来找虐的", en: "Hit me: I'm here for the pain." }, 
         value: "ready", 
-        dimension: "courage" 
+        dimension: "will",
+        score: 90 // 🔥 新增：意志力强
       },
       { 
         text: { zh: "轻点下手：我玻璃心，但也想试试", en: "Be gentle: I'm fragile but curious." }, 
         value: "hesitant", 
-        dimension: "vulnerability" 
+        dimension: "ego",
+        score: 40 // 🔥 新增：自我较脆弱
       }
     ]
   }
 ];
+
 export const TRIAGE_TEXT = {
   zh: {
     title: "精神分诊台",
