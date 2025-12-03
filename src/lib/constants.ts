@@ -771,11 +771,14 @@ export const UI_TEXT = {
     feedback: "反馈 Bug",
     profile: "精神档案",
     defaultName: "旅行者",
-    confirm: "确认", // 补全 NameModal 可能用到的
-    share: "导出档案", // 补全 ProfileModal 可能用到的
+    confirm: "确认",
+    share: "导出档案",
     giveUpConfirm: "确定要放弃专注吗？这会被记录在耻辱柱上。",
-    // 🔥 [FIX] 补上报错的字段
+    // 🔥 [FIX] 补全 Rin 便利贴的所有文案
     rinGiveUpConfirm: "确定要放弃 Rin 布置的任务吗？虽然不算逃兵，但她会失望的。",
+    rinNoteTitle: "Rin 的便利贴",
+    rinTaskComplete: "完成任务",
+    rinTaskGiveUp: "我不行了"
   },
   en: {
     placeholder: "Type...",
@@ -794,8 +797,11 @@ export const UI_TEXT = {
     confirm: "Confirm",
     share: "Export Data",
     giveUpConfirm: "Give up focus? This will be recorded in the Hall of Shame.",
-    // 🔥 [FIX] 补上报错的字段
+    // 🔥 [FIX] 补全 Rin 便利贴的所有文案
     rinGiveUpConfirm: "Give up Rin's task? She will be disappointed.",
+    rinNoteTitle: "Rin's Note",
+    rinTaskComplete: "Task Done",
+    rinTaskGiveUp: "I Give Up"
   }
 };
 
