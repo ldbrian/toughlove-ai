@@ -402,7 +402,10 @@ export default function Home() {
   if (!mounted || isCheckingFate) return <BootScreen />;
 
   return (
-    <div className="relative flex flex-col h-[100dvh] bg-[#050505] text-gray-100 overflow-hidden font-sans selection:bg-[#7F5CFF] selection:text-white transition-all duration-700" style={currentBgStyle}>
+    <div 
+        className="relative flex flex-col h-screen supports-[height:100dvh]:h-[100dvh] max-h-[100dvh] bg-[#050505] text-gray-100 overflow-hidden font-sans selection:bg-[#7F5CFF] selection:text-white transition-all duration-700"
+        style={currentBgStyle}
+    >
       <div className="absolute top-[-20%] left-0 right-0 h-[500px] bg-gradient-to-b from-[#7F5CFF]/10 to-transparent blur-[100px] pointer-events-none" />
       <audio ref={audioRef} className="hidden" playsInline />
 
