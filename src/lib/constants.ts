@@ -63,7 +63,7 @@ export const ONBOARDING_QUESTIONS = [
   }
 ];
 
-// L1: 深挖 (Deep Sync) - 🔥 已修复结构，与 L0 保持一致
+// L1: 深挖 (Deep Sync) - 🔥 已修复结构，确保 text 为双语对象
 export const DEEP_QUESTIONS = [
   {
     id: 'dq_1',
@@ -689,11 +689,11 @@ export const TAROT_DECK = [
 // 4. Personas & UI
 // ==========================================
 export const PERSONAS: Record<PersonaType, any> = {
-  Ash: { name: "Ash", avatar: "/avatars/ash.jpg", color: "text-blue-400", title: {zh:"批判者", en:"Critic"}, slogan: {zh:"别废话", en:"No BS"}, greetings: {zh:["说。"], en:["Speak."]}, prompts: {zh:"", en:""}, voiceConfig: {zh:{}, en:{}} },
-  Rin: { name: "Rin", avatar: "/avatars/rin.jpg", color: "text-pink-400", title: {zh:"分析师", en:"Analyst"}, slogan: {zh:"数据说话", en:"Data Only"}, greetings: {zh:["加载中..."], en:["Loading..."]}, prompts: {zh:"", en:""}, voiceConfig: {zh:{}, en:{}} },
-  Sol: { name: "Sol", avatar: "/avatars/sol.jpg", color: "text-emerald-400", title: {zh:"发光体", en:"The Sun"}, slogan: {zh:"燃起来！", en:"Burn!"}, greetings: {zh:["嗨！"], en:["Hi!"]}, prompts: {zh:"", en:""}, voiceConfig: {zh:{}, en:{}} },
-  Vee: { name: "Vee", avatar: "/avatars/vee.jpg", color: "text-purple-400", title: {zh:"黑客", en:"Hacker"}, slogan: {zh:"玩坏它", en:"Hack it"}, greetings: {zh:["嘿嘿"], en:["Hehe"]}, prompts: {zh:"", en:""}, voiceConfig: {zh:{}, en:{}} },
-  Echo: { name: "Echo", avatar: "/avatars/echo.jpg", color: "text-gray-400", title: {zh:"镜像", en:"Mirror"}, slogan: {zh:"我是你", en:"I am you"}, greetings: {zh:["..."], en:["..."]}, prompts: {zh:"", en:""}, voiceConfig: {zh:{}, en:{}} },
+  Ash: { name: "Ash", avatar: "/avatars/ash.jpg", color: "text-blue-400", title: {zh:"批判者", en:"Critic"}, slogan: {zh:"别废话", en:"No BS"}, greetings: {zh:["说。"], en:["Speak."]}, prompts: {zh:"", en:""}, voiceConfig: {zh:{}, en:{}}, tags: { zh: ["毒舌", "真相"], en: ["Toxic", "Truth"] } },
+  Rin: { name: "Rin", avatar: "/avatars/rin.jpg", color: "text-pink-400", title: {zh:"分析师", en:"Analyst"}, slogan: {zh:"数据说话", en:"Data Only"}, greetings: {zh:["加载中..."], en:["Loading..."]}, prompts: {zh:"", en:""}, voiceConfig: {zh:{}, en:{}}, tags: { zh: ["冷静", "数据"], en: ["Calm", "Data"] } },
+  Sol: { name: "Sol", avatar: "/avatars/sol.jpg", color: "text-emerald-400", title: {zh:"发光体", en:"The Sun"}, slogan: {zh:"燃起来！", en:"Burn!"}, greetings: {zh:["嗨！"], en:["Hi!"]}, prompts: {zh:"", en:""}, voiceConfig: {zh:{}, en:{}}, tags: { zh: ["热情", "鸡血"], en: ["Hot", "Hype"] } },
+  Vee: { name: "Vee", avatar: "/avatars/vee.jpg", color: "text-purple-400", title: {zh:"黑客", en:"Hacker"}, slogan: {zh:"玩坏它", en:"Hack it"}, greetings: {zh:["嘿嘿"], en:["Hehe"]}, prompts: {zh:"", en:""}, voiceConfig: {zh:{}, en:{}}, tags: { zh: ["混乱", "乐子"], en: ["Chaos", "Fun"] } },
+  Echo: { name: "Echo", avatar: "/avatars/echo.jpg", color: "text-gray-400", title: {zh:"镜像", en:"Mirror"}, slogan: {zh:"我是你", en:"I am you"}, greetings: {zh:["..."], en:["..."]}, prompts: {zh:"", en:""}, voiceConfig: {zh:{}, en:{}}, tags: { zh: ["神秘", "回声"], en: ["Mystic", "Echo"] } },
 };
 
 export const UI_TEXT = {
@@ -714,7 +714,7 @@ export const UI_TEXT = {
 };
 
 export const RIN_TASKS = { zh: ["深呼吸"], en: ["Breathe"] };
-export const SOL_TAUNTS = { zh: ["别偷懒"], en: ["Focus"] };
+export const SOL_TAUNTS = { zh: ["别偷懒"], en: [ "Focus" ] };
 export const TRIAGE_TEXT = { zh: { title: "分诊", subtitle: "...", options: [], submit: "GO" }, en: { title: "Triage", subtitle: "...", options: [], submit: "GO" } };
 
 // 🔥 [FIX] 补全商店数据，解决 ShopModal 报错

@@ -151,22 +151,17 @@ export default function Home() {
   const currentP = PERSONAS[activePersona];
 
   // ==========================================
-  // 2. Helper Functions
+  // 2. Helper Functions & Action Handlers
+  // 🔥 [FIX] Moved before useChat to prevent ReferenceErrors
   // ==========================================
+  
   const getTrustKey = (p: string) => `toughlove_trust_${p}`;
   const getLevelInfo = (count: number) => {
     if (count < 50) return { level: 1, icon: <Shield size={12} />, bgClass: 'bg-[#0a0a0a]', borderClass: 'border-white/5', barColor: 'bg-gray-500', glowClass: '' };
     if (count < 100) return { level: 2, icon: <Zap size={12} />, bgClass: 'bg-gradient-to-b from-[#0f172a] to-[#0a0a0a]', borderClass: 'border-blue-500/30', barColor: 'bg-blue-500', glowClass: 'shadow-[0_0_30px_rgba(59,130,246,0.1)]' };
     return { level: 3, icon: <Heart size={12} />, bgClass: 'bg-[url("/grid.svg")] bg-fixed bg-[length:50px_50px] bg-[#0a0a0a]', customStyle: { background: 'radial-gradient(circle at 50% -20%, #1e1b4b 0%, #0a0a0a 60%)' }, borderClass: 'border-[#7F5CFF]/40', barColor: 'bg-[#7F5CFF]', glowClass: 'shadow-[0_0_40px_rgba(127,92,255,0.15)]' };
   };
-  const currentBgStyle = (view === 'chat' && wallpapers[activePersona] && WALLPAPER_PRESETS[wallpapers[activePersona]]) ? WALLPAPER_PRESETS[wallpapers[activePersona]] : {};
-  const levelInfo = getLevelInfo(interactionCount);
-  const progressPercent = Math.min(100, (interactionCount / 50) * 100);
 
-  // ==========================================
-  // 3. Action Handlers (Defined before usage)
-  // ==========================================
-  
   const handlePlayAudio = async (text: string, msgId: string) => { 
     if (playingMsgId === msgId) { if (audioRef.current) audioRef.current.pause(); setPlayingMsgId(null); return; }
     if (audioRef.current) audioRef.current.pause();
@@ -184,13 +179,30 @@ export default function Home() {
     } catch (e) { console.error("Audio Play Error:", e); setPlayingMsgId(null); }
   };
 
-  const triggerRinProtocol = () => { if (isFocusActive) return; const tasks = RIN_TASKS[lang] || RIN_TASKS['zh']; const randomTask = tasks[Math.floor(Math.random() * tasks.length)]; setCurrentStickyTask(randomTask); setShowStickyNote(true); if (typeof window !== 'undefined') { localStorage.setItem(RIN_ACTIVE_KEY, 'true'); localStorage.setItem(RIN_TASK_KEY, randomTask); } };
+  const triggerRinProtocol = () => { 
+    if (isFocusActive) return; 
+    const tasks = RIN_TASKS[lang] || RIN_TASKS['zh']; 
+    const randomTask = tasks[Math.floor(Math.random() * tasks.length)]; 
+    setCurrentStickyTask(randomTask); 
+    setShowStickyNote(true); 
+    if (typeof window !== 'undefined') { 
+      localStorage.setItem(RIN_ACTIVE_KEY, 'true'); 
+      localStorage.setItem(RIN_TASK_KEY, randomTask); 
+    } 
+  };
 
-  // 🔥 Fix: Define openShopHandler early
-  const openShopHandler = () => { setShowShop(true); setHasSeenShop(true); localStorage.setItem('toughlove_has_seen_shop', 'true'); };
+  const openShopHandler = () => { 
+    setShowShop(true); 
+    setHasSeenShop(true); 
+    localStorage.setItem('toughlove_has_seen_shop', 'true'); 
+  };
+
+  const currentBgStyle = (view === 'chat' && wallpapers[activePersona] && WALLPAPER_PRESETS[wallpapers[activePersona]]) ? WALLPAPER_PRESETS[wallpapers[activePersona]] : {};
+  const levelInfo = getLevelInfo(interactionCount);
+  const progressPercent = Math.min(100, (interactionCount / 50) * 100);
 
   // ----------------------------------------------------------------
-  // Core Hooks
+  // 3. Core Hooks (useChat)
   // ----------------------------------------------------------------
   const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages, setInput, append } = useChat({
     api: '/api/chat',
@@ -200,7 +212,7 @@ export default function Home() {
       setInteractionCount(newCount);
       localStorage.setItem(getTrustKey(activePersona), newCount.toString());
       
-      // 🔥 Fix: Define isAI explicitly here for local usage
+      // 🔥 [FIX] Defined isAI explicitly
       const isAI = message.role === 'assistant';
 
       if (isAI) { 
@@ -227,7 +239,7 @@ export default function Home() {
   });
 
   // ----------------------------------------------------------------
-  // More Handlers (Sorted)
+  // 4. Other Handlers
   // ----------------------------------------------------------------
   const switchLang = (l: LangType) => { setLang(l); localStorage.setItem(LANG_PREF_KEY, l); };
   const confirmLanguage = (l: LangType) => { setLang(l); localStorage.setItem(LANG_PREF_KEY, l); localStorage.setItem(LANGUAGE_KEY, 'true'); setShowLangSetup(false); };
@@ -290,7 +302,7 @@ export default function Home() {
   const getPersonaPreview = (pKey: PersonaType) => { if (!mounted) return { isChatted: false, lastMsg: "", trust: 0, time: "" }; const history = getMemory(pKey); const trust = parseInt(localStorage.getItem(getTrustKey(pKey)) || '0'); if (history.length > 0) { const last = history[history.length - 1]; const visibleMsgs = history.filter(m => m.role !== 'system'); const lastVisible = visibleMsgs[visibleMsgs.length - 1]; return { isChatted: true, lastMsg: lastVisible ? ((lastVisible.role === 'user' ? 'You: ' : '') + lastVisible.content.split('|||')[0]) : "...", trust, time: "Active" }; } return { isChatted: false, lastMsg: PERSONAS[pKey].greetings[lang][0], trust, time: "New" }; };
 
   // ==========================================
-  // 4. Effects
+  // 5. Effects
   // ==========================================
   const quickReplies = useMemo<QuickReply[]>(() => {
     const base: QuickReply[] = [
@@ -347,7 +359,7 @@ export default function Home() {
   }, [initStartupSequence]);
 
   // ==========================================
-  // 5. Render
+  // 6. Render
   // ==========================================
   const renderGlobalMenu = () => (
     <div className="absolute top-12 right-0 mt-2 w-48 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl z-50 flex flex-col p-1 animate-[fadeIn_0.1s_ease-out]">
@@ -472,7 +484,6 @@ export default function Home() {
                 <div key={key} onClick={() => selectPersona(key)} className={`group relative p-4 rounded-2xl transition-all duration-200 cursor-pointer flex items-center gap-4 border shadow-sm ${info.isChatted ? 'bg-[#111] hover:bg-[#1a1a1a] border-white/5 hover:border-[#7F5CFF]/30' : 'bg-gradient-to-r from-[#151515] to-[#111] border-white/10 hover:border-white/30'}`}>
                   <div className="relative flex-shrink-0"><div className={`w-14 h-14 rounded-full flex items-center justify-center text-3xl border-2 overflow-hidden ${info.isChatted ? (info.trust >= 50 ? (info.trust >= 100 ? 'border-[#7F5CFF]' : 'border-blue-500') : 'border-gray-700') : 'border-white/10'}`}>{p.avatar.startsWith('/') ? (<img src={p.avatar} alt={p.name} className="w-full h-full object-cover" />) : (<span>{p.avatar}</span>)}</div>{info.isChatted && (<div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] border-2 border-[#111] ${lv.barColor.replace('bg-', 'text-white bg-')}`}>{lv.level}</div>)}</div>
                   <div className="flex-1 min-w-0"><div className="flex justify-between items-baseline mb-1"><h3 className="font-bold text-white text-base">{p.name}</h3><span className="text-[10px] text-gray-500">{info.isChatted ? info.time : 'New'}</span></div><div className="flex flex-wrap gap-1 mb-1">
-                  {/* 🔥 Fix: Explicitly type 'tag' */}
                   {p.tags[lang].slice(0, 2).map((tag: string) => (<span key={tag} className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-gray-400 border border-white/5 whitespace-nowrap">{tag}</span>))}</div><div className="text-[10px] text-gray-500 mb-1 flex items-center gap-1 truncate">{status}</div><p className={`text-xs truncate transition-colors ${info.isChatted ? 'text-gray-400 group-hover:text-gray-300' : 'text-gray-500 italic'}`}>{info.isChatted ? info.lastMsg : p.slogan[lang]}</p></div>
                 </div>
               );
@@ -601,7 +612,7 @@ const ViralPoster = ({ data, persona, lang, forwardedRef }: { data: any, persona
     setDateStr(new Date().toLocaleDateString());
   }, []);
 
-  const safeData = data || { content: "System Error" }; // 移除这里的 date，用 state 里的
+  const safeData = data || { content: "System Error" }; 
   const p = PERSONAS[persona];
   const heroImage = safeData.image || p.avatar;
   let heroQuote = safeData.share_quote || safeData.content || "";
