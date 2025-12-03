@@ -152,7 +152,6 @@ export default function Home() {
 
   // ==========================================
   // 2. Helper Functions & Action Handlers
-  // 🔥 [FIX] Moved before useChat to prevent ReferenceErrors
   // ==========================================
   
   const getTrustKey = (p: string) => `toughlove_trust_${p}`;
@@ -212,7 +211,6 @@ export default function Home() {
       setInteractionCount(newCount);
       localStorage.setItem(getTrustKey(activePersona), newCount.toString());
       
-      // 🔥 [FIX] Defined isAI explicitly
       const isAI = message.role === 'assistant';
 
       if (isAI) { 
@@ -266,7 +264,16 @@ export default function Home() {
   const initStartupSequence = useCallback(() => { const hasSeenUpdate = localStorage.getItem(UPDATE_SEEN_KEY); if (!hasSeenUpdate) { setTimeout(() => setShowAnnouncement(true), 500); } else { checkDailyBriefing(); } }, [checkDailyBriefing]);
   const handleAnnouncementClose = () => { setShowAnnouncement(false); localStorage.setItem(UPDATE_SEEN_KEY, 'true'); localStorage.setItem('toughlove_broadcast_closed_v2.3', 'true'); setTimeout(() => checkDailyBriefing(), 300); };
 
-  const handleOnboardingFinish = (profile: any) => { localStorage.setItem('toughlove_user_profile', JSON.stringify(profile)); localStorage.setItem(VISITED_KEY, 'true'); localStorage.setItem(UPDATE_SEEN_KEY, 'true'); setForcedBriefingSpeaker(profile.dominant); setShowOnboarding(false); setTimeout(() => { setShowBriefing(true); }, 500); };
+  // 🔥 [FIX] 修复 Onboarding 后的竞态条件
+  const handleOnboardingFinish = (profile: any) => { 
+      localStorage.setItem('toughlove_user_profile', JSON.stringify(profile)); 
+      localStorage.setItem(VISITED_KEY, 'true'); 
+      localStorage.setItem(UPDATE_SEEN_KEY, 'true'); 
+      setForcedBriefingSpeaker(profile.dominant); 
+      setShowOnboarding(false); 
+      // 增加延迟，防止两个全屏 Modal 冲突
+      setTimeout(() => { setShowBriefing(true); }, 800); 
+  };
 
   const syncToCloud = async (currentMessages: any[]) => { try { await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: getDeviceId(), persona: activePersona, messages: currentMessages }) }); } catch (e) {} };
   const handleReset = () => { if (confirm(ui.resetConfirm)) { setMessages([]); saveMemory(activePersona, []); localStorage.removeItem(`toughlove_voice_ids_${activePersona}`); setVoiceMsgIds(new Set()); syncToCloud([]); setShowMenu(false); setInteractionCount(0); localStorage.setItem(getTrustKey(activePersona), '0'); const p = PERSONAS[activePersona]; const greetings = p.greetings[lang]; const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)]; setTimeout(() => { const welcomeMsg: Message = { id: Date.now().toString(), role: 'assistant', content: randomGreeting }; setMessages([welcomeMsg]); saveMemory(activePersona, [welcomeMsg]); syncToCloud([welcomeMsg]); }, 100); } };
@@ -289,14 +296,59 @@ export default function Home() {
   
   const startVoiceInput = () => { const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition; if (!SpeechRecognition) { alert("Browser does not support voice."); return; } const recognition = new SpeechRecognition(); recognition.lang = lang === 'zh' ? 'zh-CN' : 'en-US'; recognition.onstart = () => setIsRecording(true); recognition.onend = () => setIsRecording(false); recognition.onresult = (event: any) => { const transcript = event.results[0][0].transcript; if (showDiary) alert(`Voice: ${transcript}`); else setInput(prev => prev + transcript); }; recognition.start(); };
   const handleQuickReply = async (reply: QuickReply) => { if (audioRef.current) { audioRef.current.src = SILENT_AUDIO; audioRef.current.play().catch(err => {}); } await append({ id: Date.now().toString(), role: 'user', content: reply.payload }); };
-  const onFormSubmit = (e: React.FormEvent) => { e.preventDefault(); if (audioRef.current) { audioRef.current.src = SILENT_AUDIO; audioRef.current.play().catch(err => {}); } const timeData = getLocalTimeInfo(); const envInfo = { time: timeData.localTime, weekday: lang === 'zh' ? timeData.weekdayZH : timeData.weekdayEN, phase: timeData.lifePhase, weather: currentWeather }; const ashMood = localStorage.getItem('toughlove_ash_mood'); handleSubmit(e, { options: { body: { persona: activePersona, language: lang, interactionCount, userName, envInfo, userId: getDeviceId(), activeBuffs: ashMood === 'soft' ? ['ASH_MOOD_SOFT'] : [] } } }); };
+  
+  // 🔥 [FIX] 拦截用户输入，触发特定功能
+  const onFormSubmit = (e: React.FormEvent) => { 
+      e.preventDefault(); 
+      if (!input.trim()) return;
+
+      const lowerInput = input.toLowerCase();
+      
+      // Sol: 触发专注模式
+      if (activePersona === 'Sol' && (lowerInput.includes('focus') || lowerInput.includes('专注'))) {
+         setShowFocusOffer(true);
+         setInput('');
+         return;
+      }
+      
+      // Rin: 触发便利贴
+      if (activePersona === 'Rin' && (lowerInput.includes('task') || lowerInput.includes('便利贴'))) {
+         triggerRinProtocol();
+         setInput('');
+         return;
+      }
+      
+      if (audioRef.current) { audioRef.current.src = SILENT_AUDIO; audioRef.current.play().catch(err => {}); } 
+      const timeData = getLocalTimeInfo(); 
+      const envInfo = { time: timeData.localTime, weekday: lang === 'zh' ? timeData.weekdayZH : timeData.weekdayEN, phase: timeData.lifePhase, weather: currentWeather }; 
+      const ashMood = localStorage.getItem('toughlove_ash_mood'); 
+      handleSubmit(e, { options: { body: { persona: activePersona, language: lang, interactionCount, userName, envInfo, userId: getDeviceId(), activeBuffs: ashMood === 'soft' ? ['ASH_MOOD_SOFT'] : [] } } }); 
+  };
+  
   const endFocusMode = () => { if (typeof window !== 'undefined') { localStorage.removeItem(FOCUS_ACTIVE_KEY); localStorage.removeItem(FOCUS_REMAINING_KEY); } setIsFocusActive(false); setIsFocusPaused(false); };
   const startFocusMode = () => { setShowFocusOffer(false); setIsFocusActive(true); setFocusRemaining(FOCUS_TOTAL_TIME); if (typeof window !== 'undefined') { localStorage.setItem(FOCUS_ACTIVE_KEY, 'true'); localStorage.setItem(FOCUS_REMAINING_KEY, FOCUS_TOTAL_TIME.toString()); localStorage.setItem(FOCUS_START_TIME_KEY, Date.now().toString()); } posthog.capture('focus_mode_start'); };
-  const giveUpFocus = () => { if (confirm(ui.giveUpConfirm)) { const startTime = parseInt(localStorage.getItem(FOCUS_START_TIME_KEY) || Date.now().toString()); const durationMin = Math.max(1, Math.floor((Date.now() - startTime) / 60000)); setShameData({ name: userName || ui.defaultName, duration: durationMin, date: new Date().toLocaleDateString() }); endFocusMode(); setShowShameModal(true); } };
+  
+  // 🔥 [FIX] 确保数据写入后再弹窗
+  const giveUpFocus = () => { 
+      if (confirm(ui.giveUpConfirm)) { 
+          const startTime = parseInt(localStorage.getItem(FOCUS_START_TIME_KEY) || Date.now().toString()); 
+          const durationMin = Math.max(1, Math.floor((Date.now() - startTime) / 60000)); 
+          setShameData({ name: userName || ui.defaultName, duration: durationMin, date: new Date().toLocaleDateString() }); 
+          endFocusMode(); 
+          setTimeout(() => setShowShameModal(true), 100); 
+      } 
+  };
+  
   const handleStickyComplete = async () => { setShowStickyNote(false); if (typeof window !== 'undefined') { localStorage.removeItem(RIN_ACTIVE_KEY); localStorage.removeItem(RIN_TASK_KEY); } const shortTask = currentStickyTask.split('。')[0]; try { await fetch('/api/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: getDeviceId(), type: 'glory_rin', content: shortTask, persona: 'Rin' }) }); setHasNewGlory(true); setGloryUpdateTrigger(prev => prev + 1); setUserRin(prev => prev + 50); } catch (e) { console.error(e); } setGloryData({ name: userName || ui.defaultName, task: shortTask, date: new Date().toLocaleDateString() }); setTimeout(() => setShowGloryModal(true), 600); };
   const handleStickyGiveUp = () => { setShowStickyNote(false); localStorage.removeItem(RIN_ACTIVE_KEY); localStorage.removeItem(RIN_TASK_KEY); };
   const triggerRinFromStation = () => { setShowEnergyModal(false); triggerRinProtocol(); };
-  const openEnergyStation = () => { setShowEnergyModal(true); setHasNewGlory(false); };
+  
+  // 🔥 [FIX] 确保数据就绪
+  const openEnergyStation = () => { 
+      setHasNewGlory(false); 
+      setTimeout(() => setShowEnergyModal(true), 50); 
+  };
+  
   const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); };
   const formatMentions = (text: string) => text.replace(/\b(Ash|Rin|Sol|Vee|Echo)\b/g, (match) => `[${match}](#trigger-${match})`);
   const getPersonaPreview = (pKey: PersonaType) => { if (!mounted) return { isChatted: false, lastMsg: "", trust: 0, time: "" }; const history = getMemory(pKey); const trust = parseInt(localStorage.getItem(getTrustKey(pKey)) || '0'); if (history.length > 0) { const last = history[history.length - 1]; const visibleMsgs = history.filter(m => m.role !== 'system'); const lastVisible = visibleMsgs[visibleMsgs.length - 1]; return { isChatted: true, lastMsg: lastVisible ? ((lastVisible.role === 'user' ? 'You: ' : '') + lastVisible.content.split('|||')[0]) : "...", trust, time: "Active" }; } return { isChatted: false, lastMsg: PERSONAS[pKey].greetings[lang][0], trust, time: "New" }; };
@@ -304,6 +356,25 @@ export default function Home() {
   // ==========================================
   // 5. Effects
   // ==========================================
+  
+  // 🔥 [FIX] Sol 专注模式倒计时器
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isFocusActive && !isFocusPaused && focusRemaining > 0) {
+      interval = setInterval(() => {
+        setFocusRemaining((prev) => {
+          if (prev <= 1) {
+            endFocusMode(); // 时间到
+            return 0;
+          }
+          localStorage.setItem(FOCUS_REMAINING_KEY, (prev - 1).toString());
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isFocusActive, isFocusPaused, focusRemaining]);
+
   const quickReplies = useMemo<QuickReply[]>(() => {
     const base: QuickReply[] = [
       { id: 'tired', label: lang === 'zh' ? '😪 累了' : '😪 Tired', payload: lang === 'zh' ? '我累了，求放过。' : 'I am tired, give me a break.' },
@@ -526,7 +597,6 @@ export default function Home() {
             )}
             {messages.map((msg, msgIdx) => {
               if (msg.role === 'system') return null;
-              // 🔥 [FIXED] Define isAI locally in the map callback
               const isAI = msg.role !== 'user';
               const isVoice = voiceMsgIds.has(msg.id); 
               const contentDisplay = msg.content.replace(CMD_REGEX, '').replace(RIN_CMD_REGEX, '').trim();
@@ -599,14 +669,12 @@ export default function Home() {
 }
 
 // ----------------------------------------------------------------
-// 🔥 [FINAL FIX] 彻底修复 Hydration Error 的海报组件
+// 🔥 [FINAL FIX] 海报组件：移至 Effect 防止 Hydration Error
 // ----------------------------------------------------------------
 const ViralPoster = ({ data, persona, lang, forwardedRef }: { data: any, persona: PersonaType, lang: LangType, forwardedRef: any }) => {
-  // 1. 定义 State 来存随机值，初始值为空或占位符
   const [posterId, setPosterId] = useState("000000");
   const [dateStr, setDateStr] = useState("");
 
-  // 2. 在 useEffect 里生成随机数和日期（仅在客户端执行）
   useEffect(() => {
     setPosterId(Math.floor(Math.random() * 99999).toString().padStart(5, '0'));
     setDateStr(new Date().toLocaleDateString());
@@ -631,7 +699,6 @@ const ViralPoster = ({ data, persona, lang, forwardedRef }: { data: any, persona
       <div className="relative z-10 p-6 flex justify-between items-center border-b border-white/10">
           <div className="flex flex-col">
              <span className="text-[9px] tracking-[0.3em] text-white/80 font-bold uppercase">TOUGHLOVE.AI</span>
-             {/* 🔥 使用 state 里的变量，而不是直接调用 Math.random() */}
              <span className="text-[9px] text-gray-400 font-mono mt-1">FATE_ID: {posterId} // {dateStr}</span>
           </div>
           <div className={`w-8 h-8 rounded-full border border-white/30 overflow-hidden`}><img src={p.avatar} crossOrigin="anonymous" className="w-full h-full object-cover" /></div>

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   ArrowRight, Activity, ScanFace, Brain, CheckCircle, Zap, 
-  Lock, AlertTriangle, Fingerprint, Eye, Sparkles, XCircle 
+  Lock, AlertTriangle, Eye, XCircle 
 } from 'lucide-react';
 import { ONBOARDING_QUESTIONS, DEEP_QUESTIONS, PERSONAS, PersonaType } from '@/lib/constants';
 
@@ -30,7 +30,6 @@ interface OnboardingModalProps {
 const RadarChart = ({ data, color = "#7F5CFF", opacity = 0.4, isGlitch = false }: { data: number[], color?: string, opacity?: number, isGlitch?: boolean }) => {
   const points = data.map((val, i) => {
     const angle = i * (Math.PI * 2 / 5) - Math.PI / 2;
-    // Glitch effect: randomly offset points slightly if glitch mode is on
     const glitchOffset = isGlitch ? (Math.random() - 0.5) * 15 : 0; 
     const r = (val / 100) * 60 + glitchOffset;
     return `${80 + r * Math.cos(angle)},${80 + r * Math.sin(angle)}`;
@@ -39,14 +38,9 @@ const RadarChart = ({ data, color = "#7F5CFF", opacity = 0.4, isGlitch = false }
   return (
     <div className={`relative w-[160px] h-[160px] mx-auto my-4 ${isGlitch ? 'animate-pulse' : ''}`}>
       <svg width="160" height="160" className="overflow-visible">
-        {/* Grid */}
         <polygon points="80,20 137,62 115,130 45,130 23,62" fill="none" stroke="#333" strokeWidth="1" />
         <circle cx="80" cy="80" r="30" fill="none" stroke="#222" strokeWidth="1" strokeDasharray="4 4" />
-        
-        {/* Data Shape */}
         <polygon points={points} fill={color} fillOpacity={opacity} stroke={color} strokeWidth={isGlitch ? 1 : 2} className="drop-shadow-[0_0_8px_rgba(127,92,255,0.5)]" />
-        
-        {/* Glitch Overlay Shapes */}
         {isGlitch && (
            <>
              <polygon points={points} fill="none" stroke="#ef4444" strokeWidth="1" strokeOpacity="0.5" className="animate-[ping_2s_cubic-bezier(0,0,0.2,1)_infinite]" style={{ transformOrigin: 'center', transform: 'scale(1.05)' }} />
@@ -66,7 +60,7 @@ export const OnboardingModal = ({ show, onFinish, lang }: OnboardingModalProps) 
   const [scores, setScores] = useState<Record<string, number>>({ reality: 50, ego: 50, empathy: 50, will: 50, chaos: 50 });
   const [resultProfile, setResultProfile] = useState<any>(null);
   
-  // Client-side unique ID generation
+  // 🔥 [FIX] 客户端生成随机ID，避免 Hydration Mismatch
   const [randomId, setRandomId] = useState("000000");
   useEffect(() => {
     setRandomId(Math.floor(Math.random() * 100000).toString().padStart(6, '0'));
@@ -100,29 +94,36 @@ export const OnboardingModal = ({ show, onFinish, lang }: OnboardingModalProps) 
     }
   };
 
+  // 🔥 [FIX] 增加参数，如果是模糊诊断，不展示 Result 页，直接结束
   const finishAssessment = (isDeep: boolean) => {
-    setIsAnalyzing(true);
-    setTimeout(() => {
-      const dominantDim = Object.keys(scores).reduce((a, b) => scores[a] > scores[b] ? a : b);
-      const dimToPersona: Record<string, PersonaType> = { reality: 'Rin', ego: 'Ash', empathy: 'Echo', will: 'Sol', chaos: 'Vee' };
-      const pKey = dimToPersona[dominantDim] || 'Ash';
-      
-      const profile = {
-        radar: [scores.reality, scores.ego, scores.empathy, scores.will, scores.chaos],
-        tags: [lang === 'zh' ? "觉醒" : "Awakened", dominantDim.toUpperCase()],
-        diagnosis: lang === 'zh' ? `检测到${dominantDim}波动。建议接入${PERSONAS[pKey].name}。` : `Detected ${dominantDim} flux. Link ${PERSONAS[pKey].name}.`,
-        dominant: pKey,
-        isDeep
-      };
-      setResultProfile(profile);
-      setStage('RESULT');
-      setIsAnalyzing(false);
-    }, 2000);
+    const dominantDim = Object.keys(scores).reduce((a, b) => scores[a] > scores[b] ? a : b);
+    const dimToPersona: Record<string, PersonaType> = { reality: 'Rin', ego: 'Ash', empathy: 'Echo', will: 'Sol', chaos: 'Vee' };
+    const pKey = dimToPersona[dominantDim] || 'Ash';
+    
+    const profile = {
+      radar: [scores.reality, scores.ego, scores.empathy, scores.will, scores.chaos],
+      tags: [lang === 'zh' ? "觉醒" : "Awakened", dominantDim.toUpperCase()],
+      diagnosis: lang === 'zh' ? `检测到${dominantDim}波动。建议接入${PERSONAS[pKey].name}。` : `Detected ${dominantDim} flux. Link ${PERSONAS[pKey].name}.`,
+      dominant: pKey,
+      isDeep
+    };
+    
+    setResultProfile(profile);
+
+    if (!isDeep) {
+       // 模糊模式：直接退出，不渲染 Result 页，防止双重弹窗
+       onFinish(profile);
+    } else {
+       // 深度诊断：展示动画后进入 Result 页
+       setIsAnalyzing(true);
+       setTimeout(() => {
+          setStage('RESULT');
+          setIsAnalyzing(false);
+       }, 2000);
+    }
   };
 
-  // ==========================================
-  // Render: RESULT (Final Report)
-  // ==========================================
+  // 渲染结果页 (仅在深度诊断后显示)
   if (stage === 'RESULT' && resultProfile) {
       const p = PERSONAS[resultProfile.dominant as PersonaType];
       return (
@@ -130,7 +131,6 @@ export const OnboardingModal = ({ show, onFinish, lang }: OnboardingModalProps) 
             <div className="absolute inset-0 bg-[url('/noise.png')] opacity-10 pointer-events-none mix-blend-overlay"></div>
             
             <div className="w-full max-w-sm bg-[#111] border border-white/10 rounded-2xl p-6 shadow-2xl relative overflow-hidden group">
-                {/* Holographic Top Bar */}
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-[#7F5CFF] to-transparent opacity-80 shadow-[0_0_10px_#7F5CFF]"></div>
                 
                 <div className="text-center mb-6 relative z-10">
@@ -142,7 +142,7 @@ export const OnboardingModal = ({ show, onFinish, lang }: OnboardingModalProps) 
                     </h2>
                     <div className="flex justify-center items-center gap-2 mt-2 opacity-50">
                         <span className="h-px w-8 bg-gray-500"></span>
-                        <p className="text-[10px] text-gray-400 font-mono">ID: {randomId} // {resultProfile.isDeep ? 'DEEP_SCAN' : 'L0_SCAN'}</p>
+                        <p className="text-[10px] text-gray-400 font-mono">ID: {randomId} // DEEP_SCAN</p>
                         <span className="h-px w-8 bg-gray-500"></span>
                     </div>
                 </div>
@@ -151,9 +151,7 @@ export const OnboardingModal = ({ show, onFinish, lang }: OnboardingModalProps) 
                     <RadarChart data={resultProfile.radar} />
                     <div className="absolute bottom-2 right-2 flex flex-col items-end">
                         <div className="text-[9px] text-gray-500 font-mono">SYNC RATE</div>
-                        <div className="text-xl font-bold text-[#7F5CFF] font-mono leading-none">
-                            {resultProfile.isDeep ? '100%' : '35%'}
-                        </div>
+                        <div className="text-xl font-bold text-[#7F5CFF] font-mono leading-none">100%</div>
                     </div>
                 </div>
 
@@ -182,9 +180,7 @@ export const OnboardingModal = ({ show, onFinish, lang }: OnboardingModalProps) 
       );
   }
 
-  // ==========================================
-  // Render: PROMPT (The "Fuzzy" / "Glitch" Report)
-  // ==========================================
+  // 渲染 PROMPT 页 (模糊诊断展示)
   if (stage === 'PROMPT') {
       const currentRadar = [scores.reality, scores.ego, scores.empathy, scores.will, scores.chaos];
       const dominantDim = Object.keys(scores).reduce((a, b) => scores[a] > scores[b] ? a : b);
@@ -192,13 +188,10 @@ export const OnboardingModal = ({ show, onFinish, lang }: OnboardingModalProps) 
 
       return (
         <div className="fixed inset-0 z-[300] bg-black flex items-center justify-center p-4 animate-[fadeIn_0.5s_ease-out]">
-           {/* Background Noise */}
            <div className="absolute inset-0 bg-[url('/noise.png')] opacity-15 pointer-events-none mix-blend-overlay"></div>
            
-           {/* Main Card */}
            <div className="w-full max-w-sm bg-[#0a0a0a] border border-red-500/30 rounded-2xl p-6 relative overflow-hidden shadow-[0_0_50px_rgba(220,38,38,0.15)]">
               
-              {/* Top Warning Bar */}
               <div className="flex items-center justify-between mb-6 border-b border-white/5 pb-4">
                  <div className="flex items-center gap-2 text-red-500 animate-pulse">
                     <AlertTriangle size={16} />
@@ -209,31 +202,17 @@ export const OnboardingModal = ({ show, onFinish, lang }: OnboardingModalProps) 
                  </div>
               </div>
 
-              {/* Fuzzy Portrait Visualization */}
               <div className="relative bg-black rounded-xl p-4 border border-red-500/10 mb-6 overflow-hidden group">
-                  {/* The blurred/glitched chart */}
                   <div className="opacity-40 blur-[2px] grayscale contrast-150 transition-all duration-500 scale-95">
                       <RadarChart data={currentRadar} color="#ef4444" opacity={0.3} isGlitch={true} />
                   </div>
-                  
-                  {/* Scan Lines Overlay */}
                   <div className="absolute inset-0 bg-[linear-gradient(transparent_50%,rgba(0,0,0,0.5)_50%)] bg-[length:100%_4px] opacity-20 pointer-events-none"></div>
-
-                  {/* Sync Progress Overlay */}
                   <div className="absolute inset-0 flex flex-col items-center justify-center z-10 mt-2">
                       <div className="relative">
                         <div className="text-5xl font-black text-white mb-0 leading-none tracking-tighter drop-shadow-[0_0_10px_rgba(255,255,255,0.5)]">15<span className="text-xl text-gray-500">%</span></div>
                         <div className="absolute -right-6 top-0 text-[8px] text-red-500 font-bold rotate-[-15deg] border border-red-500 px-1 rounded bg-black">LOW RES</div>
                       </div>
-                      
                       <div className="text-[10px] text-gray-500 font-bold tracking-[0.3em] mb-4 uppercase">{lang === 'zh' ? "同步进度" : "SYNC PROGRESS"}</div>
-                      
-                      {/* Progress Bar */}
-                      <div className="w-40 h-1.5 bg-gray-900 rounded-full overflow-hidden border border-white/10 relative">
-                          <div className="h-full bg-red-600 w-[15%] shadow-[0_0_10px_#dc2626] animate-[pulse_1s_infinite]"></div>
-                      </div>
-
-                      {/* Fuzzy Tag */}
                       <div className="mt-5 px-4 py-2 bg-white/5 backdrop-blur-md rounded-lg border border-white/10 flex flex-col items-center gap-1 min-w-[180px]">
                           <div className="flex items-center gap-1.5 text-[9px] text-gray-400 font-mono uppercase">
                               <Eye size={10} /> {lang === 'zh' ? "疑似人格原型" : "DETECTED ARCHETYPE"}
@@ -245,7 +224,6 @@ export const OnboardingModal = ({ show, onFinish, lang }: OnboardingModalProps) 
                   </div>
               </div>
 
-              {/* Text Description */}
               <div className="text-center mb-6 px-2">
                  <h2 className="text-xl font-black text-white leading-tight mb-2 italic">
                     {lang === 'zh' ? "无法生成精确画像" : "GENERATION FAILED"}
@@ -257,7 +235,6 @@ export const OnboardingModal = ({ show, onFinish, lang }: OnboardingModalProps) 
                  </p>
               </div>
 
-              {/* Actions */}
               <div className="space-y-3">
                  <button 
                     onClick={() => { setStep(0); setStage('L1'); }} 
@@ -281,9 +258,7 @@ export const OnboardingModal = ({ show, onFinish, lang }: OnboardingModalProps) 
       )
   }
 
-  // ==========================================
-  // Render: SCANNING (Questions)
-  // ==========================================
+  // 默认渲染 (答题页)
   return (
     <div className="fixed inset-0 z-[300] bg-black flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-[url('/noise.png')] opacity-20 pointer-events-none mix-blend-overlay"></div>
@@ -313,7 +288,6 @@ export const OnboardingModal = ({ show, onFinish, lang }: OnboardingModalProps) 
         {!isAnalyzing && (
             <div className="space-y-4">
               {currentQ.options.map((opt: any, idx: number) => {
-                // Determine a preview image based on the dimension to add flavor
                 const dimToPersona: Record<string, PersonaType> = { reality: 'Rin', ego: 'Ash', empathy: 'Echo', will: 'Sol', chaos: 'Vee' };
                 const pKey = dimToPersona[opt.dimension] || 'Ash';
 
