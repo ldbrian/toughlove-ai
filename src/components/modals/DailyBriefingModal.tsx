@@ -1,10 +1,7 @@
-
-
 import { useState, useEffect } from 'react';
-import { X, ThumbsUp, ThumbsDown, MessageCircle, Sparkles, Share2 } from 'lucide-react';
+import { X, MessageCircle, Sparkles, Share2, ArrowRight, Brain, Coins } from 'lucide-react';
 import { TAROT_DECK, PERSONAS, PersonaType } from '@/lib/constants';
 
-// 辅助：获取今日主讲人
 const getDominantPersona = (): PersonaType => {
   if (typeof window === 'undefined') return 'Ash';
   const candidates: PersonaType[] = ['Ash', 'Rin', 'Sol', 'Vee'];
@@ -18,8 +15,8 @@ interface DailyBriefingProps {
   lang: string;
   onDataLoaded?: (data: any) => void;
   onDownloadPoster?: () => void;
-  // 🔥 新增：允许父组件强制指定谁来讲（用于新用户引导）
-  forcedSpeaker?: PersonaType | null; 
+  forcedSpeaker?: PersonaType | null;
+  onClaimSalary?: (amount: number) => void;
 }
 
 export const DailyBriefingModal = ({ 
@@ -29,137 +26,125 @@ export const DailyBriefingModal = ({
   lang, 
   onDataLoaded, 
   onDownloadPoster,
-  forcedSpeaker // <--- 接收这个新参数
+  forcedSpeaker,
+  onClaimSalary
 }: DailyBriefingProps) => {
   
-  const [step, setStep] = useState<'feedback' | 'shuffle' | 'reveal'>('feedback');
+  const [step, setStep] = useState<'shuffle' | 'choice' | 'reveal'>('shuffle');
   const [card, setCard] = useState<typeof TAROT_DECK[0] | null>(null);
   const [speaker, setSpeaker] = useState<PersonaType>('Ash');
-  const [lastBriefing, setLastBriefing] = useState<any>(null);
   const [loadingText, setLoadingText] = useState("");
+  const [selectedChoice, setSelectedChoice] = useState<'A' | 'B' | null>(null);
 
-  // 初始化检查
   useEffect(() => {
     if (show) {
-      // 如果有强制指定的主讲人（新用户场景），直接跳过复盘，开始洗牌
-      if (forcedSpeaker) {
-        startShuffleProcess();
-        return;
-      }
-
-      const savedLast = localStorage.getItem('toughlove_last_briefing_card');
-      if (savedLast) {
+      const today = new Date().toLocaleDateString();
+      const storageKey = 'toughlove_daily_progress_v2.3';
+      const savedData = localStorage.getItem(storageKey);
+      
+      let hasRecordToday = false;
+      
+      if (savedData) {
         try {
-            const parsed = JSON.parse(savedLast);
-            const today = new Date().toLocaleDateString();
-            
-            if (parsed.date === today) {
-                const foundCard = TAROT_DECK.find(c => c.name.zh === parsed.name.zh || c.name.zh === parsed.name);
-                if (foundCard) {
-                    setCard(foundCard);
-                    const currentSpeaker = parsed.speaker || 'Ash';
-                    setSpeaker(currentSpeaker);
-                    setStep('reveal');
-                    syncToPoster(foundCard, currentSpeaker);
-                    return;
+            const parsed = JSON.parse(savedData);
+            if (parsed.date === today && parsed.cardId !== undefined) {
+                const savedCard = TAROT_DECK.find(c => c.id === parsed.cardId);
+                if (savedCard) {
+                    setCard(savedCard);
+                    setSpeaker(parsed.speaker || 'Ash');
+                    if (parsed.choice) {
+                        setSelectedChoice(parsed.choice);
+                        setStep('reveal');
+                    } else {
+                        setStep('choice');
+                    }
+                    hasRecordToday = true;
                 }
             }
-            setLastBriefing(parsed);
-            setStep('feedback');
-        } catch(e) {
-            startShuffleProcess();
-        }
-      } else {
-        startShuffleProcess();
+        } catch(e) {}
+      }
+
+      if (!hasRecordToday || forcedSpeaker) {
+        startShuffleSequence(today, storageKey);
       }
     }
-  }, [show, forcedSpeaker]); // 依赖增加 forcedSpeaker
+  }, [show, forcedSpeaker, lang]);
 
-  // ... (syncToPoster 和 getLastCardImage 函数保持不变) ...
-  const syncToPoster = (currentCard: any, currentSpeaker: PersonaType) => {
-    if (onDataLoaded) {
+  const startShuffleSequence = (today: string, storageKey: string) => {
+      setStep('shuffle');
+      setSelectedChoice(null);
+      const dominant = forcedSpeaker || getDominantPersona();
+      setSpeaker(dominant);
+      const steps = lang === 'zh' ? ["链接潜意识...", "读取深层恐惧...", "生成命运镜像..."] : ["Linking...", "Reading Fears...", "Generating..."];
+      let i = 0;
+      setLoadingText(steps[0]);
+      const interval = setInterval(() => {
+        i++;
+        if (i < steps.length) { setLoadingText(steps[i]); } else {
+            clearInterval(interval);
+            const randomCard = TAROT_DECK[Math.floor(Math.random() * TAROT_DECK.length)];
+            setCard(randomCard);
+            setStep('choice');
+            const record = { date: today, cardId: randomCard.id, speaker: dominant, choice: null };
+            localStorage.setItem(storageKey, JSON.stringify(record));
+        }
+      }, 800);
+  };
+
+  useEffect(() => {
+    if (card && onDataLoaded) {
       onDataLoaded({
-        content: (currentCard.reactions as any)[currentSpeaker], 
-        share_quote: currentCard.meaning, 
-        image: currentCard.image,
-        name: lang === 'zh' ? currentCard.name.zh : currentCard.name.en,
-        speaker: currentSpeaker,
-        date: new Date().toLocaleDateString()
+        content: selectedChoice ? card.choices[selectedChoice].text : card.meaning, 
+        share_quote: card.meaning, 
+        image: card.image,
+        name: lang === 'zh' ? card.name.zh : card.name.en,
+        speaker: speaker,
+        date: new Date().toLocaleDateString(),
+        archetype: selectedChoice ? card.choices[selectedChoice].archetype : ""
       });
+    }
+  }, [card, selectedChoice, speaker, onDataLoaded, lang]);
+
+  const checkAndPaySalary = () => {
+    const today = new Date().toLocaleDateString();
+    const salaryKey = 'toughlove_daily_salary_claimed_v2';
+    const lastClaimed = localStorage.getItem(salaryKey);
+    if (lastClaimed !== today && step === 'reveal') {
+        const total = 50 + (Math.random() > 0.8 ? 30 : 0);
+        if (onClaimSalary) onClaimSalary(total);
+        localStorage.setItem(salaryKey, today);
+        alert(lang === 'zh' ? `【系统结算】\n今日精神校准完成。\n算力入账: +${total} RIN` : `[SETTLEMENT]\nCredits: +${total} RIN`);
     }
   };
 
-  const getLastCardImage = () => {
-    if (!lastBriefing) return null;
-    const nameZh = typeof lastBriefing.name === 'string' ? lastBriefing.name : lastBriefing.name.zh;
-    const found = TAROT_DECK.find(c => c.name.zh === nameZh);
-    return found ? found.image : null;
-  };
-  // ... (以上函数保持不变)
-
-  const startShuffleProcess = () => {
-    setStep('shuffle');
-    const steps = lang === 'zh' 
-      ? ["链接潜意识...", "五维议会集结...", "抽取命运剧本..."]
-      : ["Linking Subconscious...", "Assembling Council...", "Drafting Fate..."];
-    let i = 0;
-    setLoadingText(steps[0]);
-    const interval = setInterval(() => {
-        i++;
-        if (i < steps.length) {
-            setLoadingText(steps[i]);
-        } else {
-            clearInterval(interval);
-            finishShuffle();
-        }
-    }, 800);
-  };
-
-  const finishShuffle = () => {
-    const randomCard = TAROT_DECK[Math.floor(Math.random() * TAROT_DECK.length)];
-    
-    // 🔥 核心修改：如果 forcedSpeaker 存在，优先使用它；否则才随机
-    const dominant = forcedSpeaker || getDominantPersona();
-    
-    setCard(randomCard);
-    setSpeaker(dominant);
-    
-    localStorage.setItem('toughlove_last_briefing_card', JSON.stringify({
-      name: randomCard.name,
-      date: new Date().toLocaleDateString(),
-      speaker: dominant
-    }));
-    
+  const handleChoice = (choice: 'A' | 'B') => {
+    setSelectedChoice(choice);
     setStep('reveal');
-    syncToPoster(randomCard, dominant);
-  };
-  
-  // ... (剩下的 handleFeedback, handleJump, handleShare, getSpeakerColor, getCardImage, return JSX 等所有代码保持不变) ...
-  // (为节省篇幅，这里不重复粘贴下方未修改的 UI 代码，请保留原样)
-  
-  const handleFeedback = (isAccurate: boolean) => {
-    startShuffleProcess(); 
+    if (card) {
+        const today = new Date().toLocaleDateString();
+        const storageKey = 'toughlove_daily_progress_v2.3';
+        const record = { date: today, cardId: card.id, speaker: speaker, choice: choice };
+        localStorage.setItem(storageKey, JSON.stringify(record));
+    }
   };
 
   const handleJump = () => {
-    if (!card) return;
-    const reaction = (card.reactions as any)[speaker];
-    
+    checkAndPaySalary();
+    if (!card || !selectedChoice) return;
+    const choiceData = card.choices[selectedChoice];
     const payload = {
       persona: speaker,
-      systemContext: `[EVENT_TRIGGER]: User just drew Tarot Card 【${card.name.zh} (${card.name.en})】.
-        Card Meaning: ${card.meaning}
-        User Action: Clicked card to discuss.`,
-      visibleReaction: reaction
+      visibleReaction: lang === 'zh' ? `关于你选择的“${choiceData.text}”...` : `About your choice "${choiceData.text}"...`,
+      archetype: choiceData.archetype,
+      systemContext: `[EVENT_TRIGGER]: User drew Tarot Card 【${card.name.en}】. Choice: "${choiceData.text}" (${choiceData.archetype}). Inference: "${choiceData.inference}". INSTRUCTION: Interpret this ruthlessly.`
     };
     onJumpToChat(payload);
     onClose();
   };
 
-  const handleShare = () => {
-    if (onDownloadPoster) {
-      onDownloadPoster();
-    }
+  const handleCloseInternal = () => {
+      if (step === 'reveal') checkAndPaySalary();
+      onClose();
   };
 
   const getSpeakerColor = () => {
@@ -172,45 +157,14 @@ export const DailyBriefingModal = ({
     }
   };
 
-  const getCardImage = () => {
-    if (card?.image) return card.image;
-    return "https://images.unsplash.com/photo-1636412929876-47dfd2ce4415?q=80&w=1000&auto=format&fit=crop";
-  };
-
   if (!show) return null;
 
   return (
-    <div className="fixed inset-0 z-[300] flex items-center justify-center bg-[#000]/95 backdrop-blur-xl animate-[fadeIn_0.5s_ease-out]">
-      <button onClick={onClose} className="absolute top-6 right-6 p-2 text-gray-500 hover:text-white transition-colors z-50 rounded-full hover:bg-white/10">
+    <div className="fixed inset-0 z-[300] flex items-center justify-center bg-[#000]/95 backdrop-blur-xl animate-[fadeIn_0.5s_ease-out] p-4">
+      <button onClick={handleCloseInternal} className="absolute top-6 right-6 p-2 text-gray-500 hover:text-white transition-colors z-50 rounded-full hover:bg-white/10">
           <X size={24} />
       </button>
 
-      {/* --- 阶段 1: 复盘 --- */}
-      {step === 'feedback' && lastBriefing && !forcedSpeaker && ( 
-         /* 🔥 注意：如果是新用户引导(forcedSpeaker)，不显示复盘，直接洗牌 */
-        <div className="text-center space-y-8 animate-[slideUp_0.3s_ease-out] max-w-xs px-4">
-           {/* ... 原有复盘 UI 代码 ... */}
-           <div className="relative mx-auto w-32 aspect-[2/3]">
-             <div className="absolute inset-0 bg-indigo-500/20 blur-[30px] rounded-full"></div>
-             <div className="w-full h-full rounded-lg border border-white/10 overflow-hidden relative z-10 transform rotate-[-2deg]">
-                <img src={getLastCardImage() || ""} className="w-full h-full object-cover opacity-80" />
-             </div>
-          </div>
-          <div>
-            <h3 className="text-xl font-bold text-white mb-2">{lang === 'zh' ? '星轨校准' : 'Calibration'}</h3>
-            <p className="text-sm text-gray-400">
-              昨日剧本：<span className="text-indigo-400 font-bold">{lang === 'zh' ? (lastBriefing.name.zh || lastBriefing.name) : lastBriefing.name.en}</span>
-              <br/>准吗？
-            </p>
-          </div>
-          <div className="flex gap-6 justify-center">
-            <button onClick={() => handleFeedback(false)} className="p-4 bg-white/5 rounded-full hover:bg-white/10 transition-colors"><ThumbsDown size={20} /></button>
-            <button onClick={() => handleFeedback(true)} className="p-4 bg-white/5 rounded-full hover:bg-white/10 transition-colors"><ThumbsUp size={20} /></button>
-          </div>
-        </div>
-      )}
-
-      {/* --- 阶段 2: 洗牌 (UI代码不变) --- */}
       {step === 'shuffle' && (
         <div className="flex flex-col items-center gap-6 animate-pulse px-4">
            <div className="w-32 h-48 bg-white/5 rounded-lg border border-white/10 flex items-center justify-center animate-[spin_3s_linear_infinite]">
@@ -220,39 +174,69 @@ export const DailyBriefingModal = ({
         </div>
       )}
 
-      {/* --- 阶段 3: 揭示 (UI代码不变) --- */}
-      {step === 'reveal' && card && (
-        <div className="relative w-full max-w-sm p-6 flex flex-col items-center animate-[scaleIn_0.4s_ease-out]">
-          {/* ... 原有 Card UI ... */}
-          <div className="relative w-full aspect-[2/3] mb-6 group perspective-1000">
-              <div className="w-full h-full rounded-2xl border border-white/20 relative overflow-hidden shadow-2xl transition-transform duration-500 group-hover:scale-[1.02]">
-                  <img src={getCardImage()} className="w-full h-full object-cover opacity-90" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent"></div>
-                  <div className="absolute bottom-6 left-0 w-full text-center">
-                      <h2 className="text-3xl font-black text-white mb-1 drop-shadow-md">{card.name.zh}</h2>
-                      <p className="text-[10px] text-indigo-300 font-mono uppercase tracking-widest">{card.name.en}</p>
-                  </div>
-              </div>
+      {/* --- 抉择阶段 --- */}
+      {step === 'choice' && card && (
+        <div className="w-full max-w-sm flex flex-col items-center animate-[scaleIn_0.4s_ease-out]">
+          <div className="text-center mb-6">
+             <h2 className="text-3xl font-black text-white mb-1 drop-shadow-lg tracking-wider">{card.name.zh}</h2>
+             <p className="text-xs text-indigo-300 font-mono uppercase tracking-[0.3em] opacity-80">{card.name.en}</p>
           </div>
-
-          <div className={`w-full bg-[#111]/90 backdrop-blur-md border ${getSpeakerColor()} rounded-xl p-5 mb-6 shadow-lg`}>
-             <div className="flex items-center gap-3 mb-2">
-                 <div className="w-6 h-6 rounded-full overflow-hidden border border-white/30">
-                     <img src={PERSONAS[speaker].avatar} className="w-full h-full object-cover" />
-                 </div>
-                 <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{speaker} 的解读</span>
-             </div>
-             <p className="text-sm text-gray-200 leading-relaxed">
-                "{(card.reactions as any)[speaker]}"
-             </p>
+          <div className="relative w-64 aspect-[3/5] mb-8 rounded-xl border-2 border-white/10 overflow-hidden shadow-[0_0_50px_rgba(127,92,255,0.25)] transition-transform hover:scale-[1.02]">
+              <img src={card.image} className="w-full h-full object-cover" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none"></div>
           </div>
-
-          <div className="w-full flex gap-3">
-             <button onClick={handleJump} className="flex-1 py-3.5 bg-white text-black font-bold rounded-full text-sm hover:bg-gray-200 transition-colors flex items-center justify-center gap-2">
-                <MessageCircle size={16} /> 聊聊
+          <p className="text-sm text-gray-400 mb-4 font-bold text-center animate-pulse">你看到了什么？</p>
+          <div className="w-full space-y-3 px-2">
+             <button onClick={() => handleChoice('A')} className="w-full p-4 bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 rounded-xl text-left transition-all active:scale-95 group">
+               <div className="flex items-center justify-between"><span className="text-sm text-gray-200 group-hover:text-white font-medium">{card.choices.A.text}</span><ArrowRight size={16} className="text-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity" /></div>
              </button>
-             <button onClick={handleShare} className="px-6 py-3.5 bg-white/10 border border-white/10 text-white font-bold rounded-full hover:bg-white/20 transition-colors flex items-center justify-center gap-2">
-                <Share2 size={16} /> 保存护身符
+             <button onClick={() => handleChoice('B')} className="w-full p-4 bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 rounded-xl text-left transition-all active:scale-95 group">
+               <div className="flex items-center justify-between"><span className="text-sm text-gray-200 group-hover:text-white font-medium">{card.choices.B.text}</span><ArrowRight size={16} className="text-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity" /></div>
+             </button>
+          </div>
+        </div>
+      )}
+
+      {/* --- 揭示阶段 (🔥 Fix: 卡牌放大至 w-64) --- */}
+      {step === 'reveal' && card && selectedChoice && (
+        <div className="relative w-full max-w-sm flex flex-col items-center animate-[slideUp_0.4s_ease-out]">
+          
+          {/* 1. 名字 */}
+          <div className="text-center mb-4">
+             <h2 className="text-2xl font-bold text-white tracking-widest">{card.name.zh}</h2>
+          </div>
+
+          {/* 2. 卡牌 (放大) */}
+          <div className="relative w-64 aspect-[3/5] mb-6 rounded-xl border border-white/20 overflow-hidden shadow-2xl">
+             <img src={card.image} className="w-full h-full object-cover" />
+             {/* 底部遮罩显示 Archetype */}
+             <div className="absolute bottom-0 inset-x-0 p-3 bg-black/80 backdrop-blur-md text-center border-t border-white/10">
+                 <span className="text-xs font-black text-indigo-300 uppercase tracking-widest">
+                   {card.choices[selectedChoice].archetype}
+                 </span>
+             </div>
+          </div>
+
+          {/* 3. AI 引导栏 */}
+          <div className={`w-full bg-[#111]/95 backdrop-blur-md border ${getSpeakerColor()} rounded-2xl p-5 mb-6 shadow-xl relative overflow-hidden flex items-start gap-4`}>
+             <div className="w-10 h-10 rounded-full overflow-hidden border border-white/30 flex-shrink-0 relative z-10 shadow-lg"><img src={PERSONAS[speaker].avatar} className="w-full h-full object-cover" /></div>
+             <div className="relative z-10 flex-1">
+                 <p className="text-[10px] text-gray-400 mb-1 uppercase tracking-wider font-bold">{speaker} 的洞察</p>
+                 <p className="text-sm text-white font-medium leading-relaxed opacity-90">
+                    "{lang === 'zh' ? '这个选择很有意思。它暴露了你现在的弱点。' : 'Interesting choice. It reveals your current weakness.'}"
+                 </p>
+                 <div className="mt-3 inline-flex items-center gap-1 text-[10px] bg-yellow-500/10 text-yellow-500 px-2 py-1 rounded border border-yellow-500/20">
+                    <Coins size={10} /> <span>完成奖励: +50 Rin</span>
+                 </div>
+             </div>
+          </div>
+
+          <div className="w-full flex gap-3 px-2">
+             <button onClick={handleJump} className="flex-1 py-4 bg-white text-black font-black rounded-xl text-sm hover:bg-gray-200 transition-colors flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(255,255,255,0.2)] animate-pulse">
+                <MessageCircle size={18} /> {lang === 'zh' ? '深入解析' : 'Deep Dive'}
+             </button>
+             <button onClick={onClose} className="px-6 py-4 bg-white/5 border border-white/10 text-white font-bold rounded-xl hover:bg-white/10 transition-colors flex items-center justify-center gap-2">
+                <Share2 size={18} />
              </button>
           </div>
         </div>

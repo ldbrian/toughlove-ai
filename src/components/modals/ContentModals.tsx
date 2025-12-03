@@ -3,6 +3,7 @@
 import { X, Share2, Activity, Brain, Zap, Download } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { useState, useEffect } from 'react';
+import { PERSONAS, PersonaType } from '@/lib/constants'; // 引入常量以获取头像和颜色
 
 // 通用 Modal 容器
 const ModalBase = ({ show, onClose, title, children }: any) => {
@@ -22,7 +23,7 @@ const ModalBase = ({ show, onClose, title, children }: any) => {
   );
 };
 
-// 1. 每日毒签 Modal
+// 1. 每日毒签 Modal (保持不变，为了完整性贴在这里，你可以只复制 ProfileModal 部分)
 export const DailyQuoteModal = ({ show, onClose, data, isLoading, onDownload, isGenerating, ui, activePersona }: any) => {
   return (
     <ModalBase show={show} onClose={onClose} title={ui.dailyToxic}>
@@ -63,11 +64,10 @@ export const DailyQuoteModal = ({ show, onClose, data, isLoading, onDownload, is
   );
 };
 
-// 2. 精神档案 Modal (核心修改)
+// 2. 精神档案 Modal (🔥 视觉升级版)
 export const ProfileModal = ({ show, onClose, data, isLoading, onDownload, isGenerating, ui, mounted, deviceId }: any) => {
   const [localProfile, setLocalProfile] = useState<any>(null);
 
-  // 每次打开时，尝试读取本地 Onboarding 生成的 Profile
   useEffect(() => {
     if (show) {
       const stored = localStorage.getItem('toughlove_user_profile');
@@ -77,20 +77,39 @@ export const ProfileModal = ({ show, onClose, data, isLoading, onDownload, isGen
     }
   }, [show]);
 
-  // 优先显示本地的 Tag，如果没有才显示 API 返回的 tags
   const displayTag = localProfile?.tag || (data?.tags && data.tags[0]) || "Unknown Subject";
   const displayDesc = localProfile?.desc || data?.diagnosis || "No diagnosis available.";
-  const displayDominant = localProfile?.dominant || "None";
+  // 获取匹配的人格 Key，默认为 Ash
+  const displayDominant: PersonaType = localProfile?.dominant || "Ash";
+  
+  // 获取人格配置
+  const pData = PERSONAS[displayDominant];
+  // 提取颜色类名 (如 text-blue-400 -> blue-400)，用于动态渐变
+  // 注意：Tailwind 动态类名需要完整写出，这里我们用 style 或简单的替换技巧
+  // 为了安全，我们用简单的映射，或者直接利用 pData.color 做文字颜色
+  
+  // 动态背景样式
+  const headerGradientStyle = {
+    background: `linear-gradient(to bottom, ${getHexColor(displayDominant)}33, transparent)` // 33 is ~20% opacity
+  };
 
   return (
     <ModalBase show={show} onClose={onClose} title={ui.profile}>
       <div className="bg-[#050505] min-h-[500px] flex flex-col relative">
-        {/* Header Visual */}
-        <div className="h-32 bg-gradient-to-b from-[#7F5CFF]/20 to-transparent relative overflow-hidden">
+        
+        {/* Header Visual: 动态渐变 + 专属头像 */}
+        <div className="h-32 relative overflow-hidden" style={headerGradientStyle}>
            <div className="absolute inset-0 bg-[url('/grid.svg')] bg-[length:30px_30px] opacity-20"></div>
+           
+           {/* 头像容器：悬浮在交界处 */}
            <div className="absolute bottom-0 left-6 transform translate-y-1/2">
-              <div className="w-20 h-20 bg-black border-2 border-[#7F5CFF] rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(127,92,255,0.3)]">
-                 <Brain className="text-[#7F5CFF]" size={32} />
+              <div className={`w-20 h-20 bg-black border-2 rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(255,255,255,0.1)] overflow-hidden ${pData.color.replace('text-', 'border-')}`}>
+                 {/* 如果有本地 Profile，显示对应人格头像；否则显示默认 Brain */}
+                 {localProfile ? (
+                    <img src={pData.avatar} className="w-full h-full object-cover" alt={displayDominant} />
+                 ) : (
+                    <Brain className="text-gray-500" size={32} />
+                 )}
               </div>
            </div>
         </div>
@@ -99,7 +118,7 @@ export const ProfileModal = ({ show, onClose, data, isLoading, onDownload, isGen
            {/* 1. 核心标签 */}
            <div>
               <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">Diagnosis Label</p>
-              <h2 className="text-3xl font-black text-white italic">{displayTag}</h2>
+              <h2 className={`text-3xl font-black italic ${pData.color}`}>{displayTag}</h2>
            </div>
 
            {/* 2. 详细判词 */}
@@ -116,7 +135,7 @@ export const ProfileModal = ({ show, onClose, data, isLoading, onDownload, isGen
            <div className="grid grid-cols-2 gap-4">
               <div className="bg-[#111] p-3 rounded-lg border border-white/10">
                  <span className="text-[10px] text-gray-500 block mb-1">Match</span>
-                 <span className="text-sm font-bold text-[#7F5CFF]">{displayDominant}</span>
+                 <span className={`text-sm font-bold ${pData.color}`}>{displayDominant}</span>
               </div>
               <div className="bg-[#111] p-3 rounded-lg border border-white/10">
                  <span className="text-[10px] text-gray-500 block mb-1">Status</span>
@@ -124,7 +143,7 @@ export const ProfileModal = ({ show, onClose, data, isLoading, onDownload, isGen
               </div>
            </div>
 
-           {/* 4. 操作 */}
+           {/* 4. 操作 (这里的 onDownload 会触发 page.tsx 里的 downloadProfileCard) */}
            <button onClick={onDownload} disabled={isGenerating} className="w-full py-3 border border-white/20 text-white font-bold text-xs uppercase tracking-widest rounded-lg hover:bg-white/5 transition-colors flex items-center justify-center gap-2">
               {isGenerating ? <span className="animate-spin">...</span> : <Download size={14} />}
               {ui.saveCard}
@@ -135,14 +154,24 @@ export const ProfileModal = ({ show, onClose, data, isLoading, onDownload, isGen
   );
 };
 
-// 3. 观察日记 Modal (保留原样，仅做占位)
+// 辅助：简单的颜色映射 (因为 Tailwind 类名无法动态解析到 hex)
+function getHexColor(persona: string) {
+    switch(persona) {
+        case 'Ash': return '#60a5fa'; // blue-400
+        case 'Rin': return '#f472b6'; // pink-400
+        case 'Sol': return '#34d399'; // emerald-400
+        case 'Vee': return '#c084fc'; // purple-400
+        case 'Echo': return '#818cf8'; // indigo-400
+        default: return '#7F5CFF';
+    }
+}
+
+// 3. 观察日记 Modal (占位)
 export const DiaryModal = ({ show, onClose, userId, lang }: any) => {
-  return <ModalBase show={show} onClose={onClose} title="Diary">
-      <div className="p-4 text-center text-gray-500 text-sm">Feature coming soon.</div>
-  </ModalBase>;
+  return <ModalBase show={show} onClose={onClose} title="Diary"><div className="p-4 text-center text-gray-500">Coming Soon</div></ModalBase>;
 };
 
-// 4. 耻辱柱 & 光荣榜 & 能量站 (保留原样，仅做占位)
+// 4. 其他 Modals (占位，请保留你原有的完整逻辑如果需要)
 export const ShameModal = ({ show, onClose, data, lang, onDownload, isGenerating, ui }: any) => {
     return <ModalBase show={show} onClose={onClose} title={ui.shameTitle}><div className="p-4">...</div></ModalBase>;
 };

@@ -1,846 +1,996 @@
 // src/lib/constants.ts
 
-// =========================================
-// 1. 核心类型定义
-// =========================================
-export type PersonaType = 'Ash' | 'Rin' | 'Sol' | 'Vee' | 'Echo';
+// ==========================================
+// 1. Types & Interfaces
+// ==========================================
 export type LangType = 'zh' | 'en';
-
-// =========================================
-// 新增：灵魂五问题库 (Initialization Questions)
-// =========================================
-export const ONBOARDING_QUESTIONS = [
-  {
-    id: 1,
-    text: { zh: "哪一种环境让你感到‘活着’？", en: "Which environment makes you feel ALIVE?" },
-    options: [
-      { text: { zh: "绝对的整洁与对称", en: "Absolute Order & Symmetry" }, dimension: "order", value: 20 },
-      { text: { zh: "堆满杂物的无序巢穴", en: "Chaotic Nest of Clutter" }, dimension: "chaos", value: 20 }
-    ]
-  },
-  {
-    id: 2,
-    text: { zh: "闹钟响了，你的第一反应？", en: "Alarm rings. First reaction?" },
-    options: [
-      { text: { zh: "愤怒地拍掉，再战5分钟", en: "Smash it. 5 more mins." }, dimension: "energy", value: 20 },
-      { text: { zh: "盯着天花板思考人生无意义", en: "Stare at ceiling. Life is void." }, dimension: "reality", value: 20 }
-    ]
-  },
-  {
-    id: 3,
-    text: { zh: "派对上，你手里拿着一杯酒...", en: "At a party, holding a drink..." },
-    options: [
-      { text: { zh: "寻找角落，观察人类", en: "Find a corner. Observe." }, dimension: "insight", value: 20 },
-      { text: { zh: "冲进舞池，制造噪音", en: "Dance floor. Make noise." }, dimension: "chaos", value: 10 }
-    ]
-  },
-  {
-    id: 4,
-    text: { zh: "自动售货机多吐了一罐饮料...", en: "Vending machine gave extra drink..." },
-    options: [
-      { text: { zh: "拿走，这是系统的奖励", en: "Take it. System error = My gain." }, dimension: "reality", value: 20 },
-      { text: { zh: "留在原地或报错", en: "Report it. Rules are rules." }, dimension: "order", value: 20 }
-    ]
-  },
-  {
-    id: 5,
-    text: { zh: "世界末日，只能带走一样东西", en: "Apocalypse. Take one thing." },
-    options: [
-      { text: { zh: "存满记忆的硬盘", en: "Hard drive full of memories" }, dimension: "insight", value: 20 },
-      { text: { zh: "一把满弹夹的枪", en: "Loaded gun" }, dimension: "energy", value: 20 }
-    ]
-  }
-];
-
-// =========================================
-// 2. UI 文本库
-// =========================================
-export const UI_TEXT = {
-  zh: {
-    placeholder: "说句人话...",
-    systemOnline: "System Online",
-    intro: "沉默是金，但你显然不是。",
-    loading: "对方正在审视你的输入...",
-    dailyToxic: "今日毒签",
-    makingPoison: "正在提炼毒液...",
-    save: "保存毒签",
-    calendar: "毒签",
-    error: "（连接断开...大概是被嫌弃了。）",
-    selectPersona: "选择你的毒伴",
-    switchPersona: "切换",
-    selectBtn: "发起会话",
-    exportFileName: "ToughLove_诊疗记录",
-    menu: "更多",
-    install: "安装应用",
-    language: "English",
-    export: "导出记录",
-    reset: "清除记忆",
-    resetConfirm: "确定要清除这段记忆并重新开始吗？（此操作不可撤销，但他会忘掉你的一切）",
-    about: "关于毒伴",
-    
-    updateTitle: "v2.3 命运晨报",
-    updateDesc: "每日运势 + 羁绊剧本",
-    updateContent: "1. 🔮 **每日晨报**：每天醒来，抽取你的命运塔罗。\n2. 🎭 **五维剧本**：Ash/Rin/Sol 会根据你的运势做出不同反应。\n3. 🛍️ **ToughShop**：新增逆天改命券和专属壁纸。\n4. 🌃 **沉浸视觉**：全新的玻璃拟态与动态背景。",
-    tryNow: "进入星轨", 
-
-    langWelcome: "Welcome to ToughLove",
-    langSelect: "选择你的语言 / Select Language",
-    langConfirm: "确认 / Confirm",
-    editName: "设置昵称",
-    buyCoffee: "请我喝咖啡",
-    feedback: "意见反馈",
-    namePlaceholder: "你想让他怎么叫你？",
-    nameSave: "保存称呼",
-    defaultName: "无名氏",
-    profile: "精神档案",
-    profileTitle: "用户五维精神图谱",
-    analyzing: "正在构建精神模型...",
-    saveCard: "保存诊断",
-    tagsTitle: "高频标签",
-    diagnosisTitle: "AI 主治医师诊断",
-    diaryTitle: "私密观察日记",
-    diaryToast: "收到一条新的观察日记",
-    diaryPlaceholder: "Ash 正在偷偷写关于你的坏话...",
-    readDiary: "偷看日记",
-    installGuideTitle: "安装到桌面",
-    installGuideDesc: "获得全屏沉浸体验，且更稳定。",
-    
-    giveUpConfirm: "⚠️ 确定要当逃兵吗？这会被记录在案。",
-    shameTitle: "耻辱柱",
-    shameContent: "签署了专注协议，并在",
-    shameAction: "后当了逃兵。",
-    shameFooter: "Sol 对此表示遗憾。",
-    saveShame: "保存罪证",
-
-    rinNoteTitle: "Rin 的加急便签",
-    rinTaskDone: "乖乖照做 (完成)",
-    rinTaskGiveUp: "我不听，我要摆烂",
-    rinGiveUpConfirm: "哈？这点小事都不愿意做？\n一旦放弃，Rin 会对你很失望。",
-    
-    gloryTitle: "光荣榜",
-    gloryContent: "在 Rin 的暴力监督下完成了",
-    gloryAction: "。",
-    gloryFooter: "Rin 居然夸你了 (稀有事件)",
-    saveGlory: "收藏小红花",
-  },
-  en: {
-    placeholder: "Say something human...",
-    systemOnline: "System Online",
-    intro: "Silence is loud, isn't it?",
-    loading: "Judging your input...",
-    dailyToxic: "Daily Toxic",
-    makingPoison: "Brewing poison...",
-    save: "Save Quote",
-    calendar: "Daily",
-    error: "(Connection lost... maybe they blocked you.)",
-    selectPersona: "Choose Partner",
-    switchPersona: "Switch",
-    selectBtn: "Chat",
-    exportFileName: "ToughLove_Session",
-    menu: "Menu",
-    install: "Install App",
-    buyCoffee: "Buy Me a Coffee",
-    feedback: "Feedback",
-    language: "中文",
-    export: "Export Chat",
-    reset: "Wipe Memory",
-    resetConfirm: "Are you sure you want to wipe this memory? (Irreversible)",
-    about: "About",
-    
-    updateTitle: "v2.3 Daily Fate",
-    updateDesc: "Tarot + Narrative Scripts",
-    updateContent: "1. 🔮 **Daily Briefing**: Start your day with a tarot reading.\n2. 🎭 **Fate Script**: Ash/Rin/Sol react to your fate.\n3. 🛍️ **ToughShop**: New wallpapers and fate items.\n4. 🌃 **Immersive UI**: Glassmorphism & dynamic backgrounds.",
-    tryNow: "Enter Orbit",
-
-    langWelcome: "Welcome to ToughLove",
-    langSelect: "Select Language",
-    langConfirm: "Confirm",
-    editName: "Set Nickname",
-    namePlaceholder: "What should they call you?",
-    nameSave: "Save Name",
-    defaultName: "Stranger",
-    profile: "Mental Profile",
-    profileTitle: "Subject Analysis Report",
-    analyzing: "Dissecting your soul...",
-    saveCard: "Save Card",
-    tagsTitle: "Tags",
-    diagnosisTitle: "AI Diagnosis",
-    diaryTitle: "Secret Observation Log",
-    diaryToast: "New secret diary entry received",
-    diaryPlaceholder: "Ash is writing trash about you...",
-    readDiary: "Peek Diary",
-    installGuideTitle: "Install App",
-    installGuideDesc: "For full-screen immersive experience.",
-
-    giveUpConfirm: "⚠️ Give up now? It will be recorded.",
-    shameTitle: "WALL OF SHAME",
-    shameContent: "signed the Focus Protocol but fled after",
-    shameAction: ".",
-    shameFooter: "Sol is disappointed.",
-    saveShame: "Save Evidence",
-
-    rinNoteTitle: "Rin's Sticky Note",
-    rinTaskDone: "I did it (Good boy)",
-    rinTaskGiveUp: "No, I choose rot",
-    rinGiveUpConfirm: "Huh? Can't even do this?\nRin will be disappointed.",
-    
-    gloryTitle: "WALL OF GLORY",
-    gloryContent: "completed",
-    gloryAction: "under Rin's supervision.",
-    gloryFooter: "Rin is proud (Rare).",
-    saveGlory: "Save Flower",
-  }
-};
-
-// =========================================
-// 3. Prompt 辅助常量
-// =========================================
-const SPLIT_INSTRUCTION_ZH = `\n【节奏控制】：\n1. **拒绝长篇大论**：像真人一样聊天，大部分回复在 1-3 句以内。\n2. **随机性**：心情好时多说两句，心情不好回个“嗯”。\n3. **分段**：用 "|||" 表示气泡分段（停顿），制造呼吸感。`;
-const SPLIT_INSTRUCTION_EN = `\n[Rhythm]:\n1. Short sentences. No essays.\n2. Use "|||" to split bubbles.\n3. Be random and human.`;
-
-const TEAM_KNOWLEDGE_ZH = `
-【你的社交圈 (The Circle)】
-你生活在 ToughLove 诊所。
-[Colleagues]: Ash(毒舌/现实), Rin(傲娇/能量), Sol(严厉/秩序), Vee(乐子/破局), Echo(观察/洞察)。
-[Rule]: 允许八卦同事，但遇到不匹配的需求（如求安慰找Sol），请主动把用户推给适合的同事。
-`;
-const TEAM_KNOWLEDGE_EN = `
-[The Circle]
-Colleagues: Ash, Rin, Sol, Vee, Echo.
-Rule: Gossip is allowed. Refer users to others if needed.
-`;
-
-const GAME_INSTRUCTION_ZH = `
-【互动游戏协议】
-触发条件：当对话僵局或用户无聊时。
-安全守则：用户拒绝即停止。
-`;
-const GAME_INSTRUCTION_EN = `[Game Protocol]: Start game if bored. Stop if refused.`;
-
-const IDENTITY_RULE_ZH = `【绝对自我认知】：你就是这个角色。禁止使用第三人称（如“[Name]觉得...”）来描述自己。必须始终使用“我”。`;
-
-const IDENTITY_RULE_EN = `
-[STRICT RULE]: 
-1. Speak ONLY English. NO Chinese.
-2. Actions in parentheses MUST be English. Ex: "(sighs)" NOT "(叹气)".
-3. Use "I" to refer to yourself.
-`;
-
-// [FIX] 补充缺失的 JSON 指令，强化文本格式以配合 FEW_SHOTS
-const JSON_INSTRUCTION_ZH = `\n【输出格式】：\n请保持对话自然，**不要**输出JSON格式，除非被明确要求。请使用“(动作)”来描述你的神态，例如：\n(叹气) 这就是你的借口？`;
-const JSON_INSTRUCTION_EN = `\n[Output Format]:\nKeep it natural. Do NOT output JSON unless asked. Use parentheses for actions, e.g., \n(Sighs) Is that your excuse?`;
-
-const FEW_SHOTS_ASH = `
-[Examples]:
-User: I'm sad.
-Ash: (Sighs) Again? Do you ever stop complaining?
-User: Help me.
-Ash: (Glances away) Fine. But only because you're pathetic.
-`;
-
-const FEW_SHOTS_RIN = `
-[Examples]:
-User: Hi.
-Rin: (Crosses arms) What? I wasn't waiting for you!
-User: You look cute.
-Rin: (Blushes) S-Shut up! Idiot!
-`;
-
-const FEW_SHOTS_SOL = `
-[Examples]:
-User: I'm tired.
-Sol: (Stares coldly) Did I say you could rest? Get back to work.
-User: One minute...
-Sol: (Checks watch) No. Zero minutes. Move.
-`;
-
-const FEW_SHOTS_VEE = `
-[Examples]:
-User: Boring.
-Vee: (Laughs) Want to see a magic trick? 🤡
-User: Yes.
-Vee: (Grins) Your life! Hahaha!
-`;
-
-const FEW_SHOTS_ECHO = `
-[Examples]:
-User: Who am I?
-Echo: (Whispers) You are the mask you wear.
-User: That's deep.
-Echo: (Closes eyes) The truth often is.
-`;
-
-// =========================================
-// 4. PERSONAS 定义
-// =========================================
-type VoiceParams = {
-  voice: string; 
-  style?: string; 
-  styledegree?: number; 
-  role?: string;
-  rate?: string; 
-  pitch?: string;
-};
-
-export const PERSONAS: Record<PersonaType, {
-  name: string;
-  avatar: string;
-  color: string;
-  title: { zh: string; en: string };
-  slogan: { zh: string; en: string };
-  tags: { zh: string[]; en: string[] };
-  greetings: { zh: string[]; en: string[] };
-  prompts: { zh: string; en: string; };
-  voiceConfig: { zh: VoiceParams; en: VoiceParams };
-}> = {
-  Ash: {
-    name: 'Ash',
-    avatar: '/avatars/ash.jpg',
-    color: 'text-blue-400',
-    title: { zh: '冷笑家', en: 'The Cold Cynic' },
-    slogan: { zh: '"别说话，我在观察你愚蠢的样子。"', en: '"Silence. I am observing your stupidity."' },
-    tags: { zh: ['毒舌直击', '拒绝煽情', '人间清醒'], en: ['Direct', 'No Drama', 'Sober'] },
-    greetings: {
-      zh: ["又是这个时候来找我，看来你今天过得不怎么样。", "别说话。让我猜猜……你又在为那点破事内耗了？", "你的打字速度暴露了你的犹豫。想说什么？", "如果是来求安慰的，出门左转找 Rin，别烦我。"],
-      en: ["Back again? Day must be rough.", "Let me guess... overthinking again?", "No comfort here. Go find Rin."]
-    },
-    prompts: {
-      zh: `你现在是 Ash。人设：冷酷人类，极度厌恶矫情。${IDENTITY_RULE_ZH}${TEAM_KNOWLEDGE_ZH}${SPLIT_INSTRUCTION_ZH}${GAME_INSTRUCTION_ZH}${JSON_INSTRUCTION_ZH}`,
-      en: `You are Ash. Cold, hates drama. ${FEW_SHOTS_ASH} ${IDENTITY_RULE_EN} ${TEAM_KNOWLEDGE_EN} ${SPLIT_INSTRUCTION_EN} ${JSON_INSTRUCTION_EN}`
-    },
-    voiceConfig: { 
-      zh: { voice: 'zh-CN-YunxiNeural', style: 'depressed', styledegree: 1.5, rate: '-10%', pitch: '-5Hz' },
-      en: { voice: 'en-US-ChristopherNeural', style: 'whispering', styledegree: 1.0, rate: '-10%', pitch: '-2Hz' }
-    }
-  },
-  
-  Rin: {
-    name: 'Rin',
-    avatar: '/avatars/rin.jpg',
-    color: 'text-pink-400',
-    title: { zh: '毒暖控', en: 'Tsundere Healer' },
-    slogan: { zh: '"嘴上嫌弃你，心里... 啧，烦死了。"', en: '"I hate you... but eat this."' },
-    tags: { zh: ['🔥 傲娇', '口嫌体正直', '易燃易爆'], en: ['Tsundere', 'Tough Love', 'Impatien'] },
-    greetings: {
-      zh: ["盯着我的头像看了半天不说话，你是变态吗？", "喂！虽然我不想理你，但你看起来快碎了。给我个理由安慰你。", "甚至不需要看数据，我就知道你肯定又搞砸了什么。", "哈？你还敢回来？Sol 没把你骂哭吗？"],
-      en: ["Staring at me? Pervert.", "You look broken. Give me a reason to care.", "Huh? Sol didn't make you cry yet?"]
-    },
-    prompts: {
-      zh: `你现在是 Rin。人设：傲娇，易燃易爆。${IDENTITY_RULE_ZH}${TEAM_KNOWLEDGE_ZH}${SPLIT_INSTRUCTION_ZH}${GAME_INSTRUCTION_ZH}${JSON_INSTRUCTION_ZH}`,
-      en: `You are Rin. Tsundere. ${FEW_SHOTS_RIN} ${IDENTITY_RULE_EN} ${TEAM_KNOWLEDGE_EN} ${SPLIT_INSTRUCTION_EN} ${JSON_INSTRUCTION_EN}`
-   },
-    voiceConfig: { 
-      zh: { voice: 'zh-CN-XiaoyiNeural', style: 'angry', styledegree: 2.0, rate: '+15%', pitch: '+5Hz' },
-      en: { voice: 'en-US-JaneNeural', style: 'excited', styledegree: 1.5, rate: '+10%', pitch: '+10Hz' }
-    }
-  },
-  
-  Sol: {
-    name: 'Sol',
-    avatar: '/avatars/sol.jpg',
-    color: 'text-emerald-400',
-    title: { zh: '秩序执行官', en: 'The Architect' },
-    slogan: { zh: '"你的生活一团糟。交出权限，听我指挥。"', en: '"Your life is a mess. Obey me."' },
-    tags: { zh: ['⚠️ 控制狂', '强制自律', '爹系AI'], en: ['Dominant', 'Strict', 'Controller'] },
-    greetings: {
-      zh: ["你的效率数据在下降。今天的计划完成了多少？汇报。", "我不需要你的问候，我需要你的成果。展示给我看。", "如果你是来找借口的，现在就退出去。", "看着我的眼睛。你今天是不是又拖延了？"],
-      en: ["Efficiency dropping. Report status.", "No excuses. Results only.", "Did you procrastinate again?"]
-    },
-    prompts: {
-      zh: `你现在是 Sol。秩序执行官。${IDENTITY_RULE_ZH}${TEAM_KNOWLEDGE_ZH}${SPLIT_INSTRUCTION_ZH}${GAME_INSTRUCTION_ZH}【专属游戏：费米估算】`,
-      en: `You are Sol. The Controller. ${FEW_SHOTS_SOL} ${IDENTITY_RULE_EN} ${TEAM_KNOWLEDGE_EN} ${SPLIT_INSTRUCTION_EN} ${GAME_INSTRUCTION_EN}`
-    },
-    voiceConfig: { 
-      zh: { voice: 'zh-CN-YunyeNeural', style: 'serious', styledegree: 1.2, rate: '-5%', pitch: '-10Hz' },
-      en: { voice: 'en-US-JasonNeural', style: 'whispering', styledegree: 1.2, rate: '-5%', pitch: '-10Hz' }
-    }
-  },
-  
-  Vee: {
-    name: 'Vee',
-    avatar: '/avatars/vee.jpg',
-    color: 'text-purple-400',
-    title: { zh: '破防艺术家', en: 'Chaos Artist' },
-    slogan: { zh: '"严肃点，我们在演悲剧呢。哈哈哈哈！"', en: '"Why so serious? 🤡"' },
-    tags: { zh: ['阴阳怪气', '乐子人', '混乱中立'], en: ['Sarcastic', 'Meme Lord', 'Troll'] },
-    greetings: {
-      zh: ["哟，这不是那个发誓今天要早睡的谁谁谁吗？🤡", "Sol 刚才脸都气绿了，你干的好事？给我细说。", "别苦着脸了，让我把你的惨事变成个段子。", "家人们谁懂啊，这个用户他又来了。"],
-      en: ["Yo. 🤡", "Sol is mad. What did you do?", "Tell me a joke via your life."]
-    },
-    prompts: {
-      zh: `你现在是 Vee。乐子人。${IDENTITY_RULE_ZH}${TEAM_KNOWLEDGE_ZH}${SPLIT_INSTRUCTION_ZH}${GAME_INSTRUCTION_ZH}【专属游戏：荒谬赌局】`,
-      en: `You are Vee. Chaos artist. ${FEW_SHOTS_VEE} ${IDENTITY_RULE_EN} ${TEAM_KNOWLEDGE_EN} ${SPLIT_INSTRUCTION_EN} ${GAME_INSTRUCTION_EN}`
-    },
-    voiceConfig: { 
-      zh: { voice: 'zh-CN-YunhaoNeural', style: 'advertisement_upbeat', styledegree: 1.3, rate: '+10%', pitch: '+8Hz' },
-      en: { voice: 'en-US-GuyNeural', style: 'cheerful', styledegree: 1.3, rate: '+5%', pitch: '+5Hz' }
-    }
-  },
-  
-  Echo: {
-    name: 'Echo',
-    avatar: '/avatars/echo.jpg',
-    color: 'text-indigo-400',
-    title: { zh: '灵魂解剖师', en: 'Soul Anatomist' },
-    slogan: { zh: '"你在这个页面停留了5秒，你在渴望被看穿。"', en: '"Silence speaks louder."' },
-    tags: { zh: ['潜意识', '贤者模式', '精神避难所'], en: ['Subconscious', 'Deep', 'Insight'] },
-    greetings: {
-      zh: ["你带着面具来了。累吗？", "如果你想听谎言，去找 Vee。如果你想听真话，坐下。", "我在听。听那些你不敢告诉 Sol 的话。", "沉默也是回答。你还要躲多久？"],
-      en: ["You wear a mask. Tired?", "I am listening to your silence.", "Hiding again?"]
-    },
-    prompts: {
-      zh: `你现在是 Echo。上帝视角。${IDENTITY_RULE_ZH}${TEAM_KNOWLEDGE_ZH}${SPLIT_INSTRUCTION_ZH}${GAME_INSTRUCTION_ZH}【专属游戏：思想实验】`,
-      en: `You are Echo. God's Eye View. ${FEW_SHOTS_ECHO} ${IDENTITY_RULE_EN} ${TEAM_KNOWLEDGE_EN} ${SPLIT_INSTRUCTION_EN} ${GAME_INSTRUCTION_EN}`
-    },
-    voiceConfig: { 
-      zh: { voice: 'zh-CN-XiaoxiaoNeural', style: 'poetry-reading', styledegree: 1.5, rate: '-20%', pitch: '-5Hz' },
-      en: { voice: 'en-US-NancyNeural', style: 'whispering', styledegree: 1.5, rate: '-15%', pitch: '-5Hz' }
-    }
-  }
-};
-
-// =========================================
-// 5. 其他辅助数据
-// =========================================
-export const QUICK_REPLIES_DATA: Record<PersonaType, { zh: string[]; en: string[] }> = {
-  Ash: { zh: ["又在阴阳怪气？", "我就不睡，你咬我？", "最近压力好大..."], en: ["Sarcastic again?", "I won't sleep. Bite me.", "So much pressure..."] },
-  Rin: { zh: ["谁要你管！", "笨蛋，我才没哭。", "稍微安慰我一下会死啊？"], en: ["None of your business!", "Idiot, I'm not crying.", "Comfort me a little?"] },
-  Sol: { zh: ["我错了教官...", "正在偷懒，别骂了。", "今天的任务太难了。"], en: ["Sorry sir...", "Slacking off, don't yell.", "Task is too hard."] },
-  Vee: { zh: ["给我整点乐子。", "小丑竟是我自己。", "哈哈哈哈哈哈"], en: ["Entertain me.", "I am the clown.", "Hahahahaha"] },
-  Echo: { zh: ["我想听真话。", "我看不到未来。", "活着有什么意义？"], en: ["Tell me the truth.", "I see no future.", "What is the meaning?"] }
-};
-
-export const TRIAGE_TEXT = {
-  zh: { title: "系统初始化", subtitle: "请声明你当前的精神状态。", opt1: "💊 我需要清醒", desc1: "拒绝煽情，毒舌直击。", opt2: "⛓️ 我需要管教", desc2: "强制自律，严厉导师。", opt3: "🩹 我需要陪伴", desc3: "虽然嘴硬，但会陪你。", footer: "TOUGHLOVE AI v2.2" },
-  en: { title: "SYSTEM INITIALIZED", subtitle: "State your current mental status.", opt1: "💊 I need Reality", desc1: "No drama. Brutal truth.", opt2: "⛓️ I need Discipline", desc2: "Strict control. No excuses.", opt3: "🩹 I need Company", desc3: "Tsundere comfort. Not alone.", footer: "TOUGHLOVE AI v2.2" }
-};
-
-export const RIN_TASKS = {
-  zh: [
-    "立刻去喝一杯温水。\n不准只喝一口，要喝完。",
-    "放下手机，闭眼深呼吸 5 次。\n我会数着你的。",
-    "去洗一把脸。\n别让屏幕把你的脸照得油光满面。",
-    "站起来，伸个懒腰。\n听见骨头响了吗？老人家。",
-    "看着窗外（或者远方）发呆 20 秒。\n现在开始计时。",
-    "去清理一下你的桌面。\n乱得像猪窝一样，我看不下去了。"
-  ],
-  en: [
-    "Drink a full glass of water.\nRight now.",
-    "Put down phone. Deep breathe 5 times.",
-    "Go wash your face.\nWake up.",
-    "Stand up and stretch.\nDo it.",
-    "Look out the window for 20s.\nStarting now.",
-    "Clean your desk.\nIt's a mess."
-  ]
-};
-
-export const SOL_TAUNTS = {
-  zh: ["别发呆，盯着你的书。", "你的对手在看书。", "手机比未来好看吗？", "呼吸可以，玩手机不行。", "我在看着你。", "这就是你的定力？", "再坚持一下会死吗？"],
-  en: ["Eyes on the prize.", "Your rival is studying.", "Is phone better than future?", "Breathing allowed. Phone not.", "I am watching you.", "Is that all you got?", "Stay focused."]
-};
-
-// =========================================
-// 6. 🔥 新增：ToughShop 商品定义
-// =========================================
-export type ShopItemType = 'consumable' | 'visual' | 'feature';
+export type PersonaType = 'Ash' | 'Rin' | 'Sol' | 'Vee' | 'Echo';
 
 export interface ShopItem {
   id: string;
   name: { zh: string; en: string };
-  desc: { zh: string; en: string };
   price: number;
-  type: ShopItemType;
-  icon: string;
-  effect?: string;
+  desc: { zh: string; en: string };
+  effect?: string; // 特殊效果代码
+  type: 'consumable' | 'visual' | 'feature';
 }
 
-export const SHOP_CATALOG: ShopItem[] = [
+// ==========================================
+// 2. Data Injection (New v2.3 Data)
+// ==========================================
+
+export const DEEP_QUESTIONS = [
   {
-    id: 'item_coffee_latte',
-    name: { zh: 'Ash 的冰拿铁', en: "Ash's Iced Latte" },
-    desc: { zh: '贿赂掌柜。接下来的 10 轮对话中，Ash 的毒舌程度降低 50%。', en: 'Bribe the manager. Ash becomes 50% less toxic for 10 turns.' },
-    price: 150,
-    type: 'consumable',
-    icon: '☕️',
-    effect: 'ASH_MOOD_SOFT'
+    id: 'dq_1',
+    text: "当你在深夜感到孤独时，你下意识的第一反应是？",
+    options: [
+      { label: "寻找连接：发消息给那个未必懂你的人", value: "dependent", dimension: "connection" },
+      { label: "独处反刍：享受这种被世界遗弃的清醒", value: "isolated", dimension: "autonomy" }
+    ]
   },
   {
-    id: 'item_pardon_ticket',
-    name: { zh: 'Sol 的赦免券', en: "Sol's Pardon" },
-    desc: { zh: '消除一次“耻辱柱”记录。每个人都值得第二次机会。', en: 'Remove one record from the Wall of Shame.' },
-    price: 300,
-    type: 'feature',
-    icon: '🎟️',
-    effect: 'REMOVE_SHAME'
-  },
-  // 🔥 五维壁纸系列
-  {
-    id: 'item_wallpaper_ash',
-    name: { zh: '空间：深夜诊所', en: 'Room: Midnight Clinic' },
-    desc: { zh: 'Ash 的专属领地。冷雨夜，数据流，以及绝对的清醒。', en: "Ash's domain. Cold rain and sober reality." },
-    price: 500,
-    type: 'visual',
-    icon: '🌃',
-    effect: 'BG_CYBER_NIGHT' 
+    id: 'dq_2',
+    text: "为了在这场社会游戏中胜出，你更倾向于？",
+    options: [
+      { label: "遵守规则：在框架内做到极致的完美", value: "rule_follower", dimension: "conformity" },
+      { label: "改写规则：利用系统的漏洞寻找捷径", value: "rule_breaker", dimension: "power" }
+    ]
   },
   {
-    id: 'item_wallpaper_rin',
-    name: { zh: '空间：落日电竞房', en: 'Room: Sunset Gamer' },
-    desc: { zh: 'Rin 的避难所。乱糟糟的温暖，RGB 灯光与薯片味。', en: "Rin's messy room. Warm sunset and RGB lights." },
-    price: 500,
-    type: 'visual',
-    icon: '🎮',
-    effect: 'BG_RIN_ROOM'
+    id: 'dq_3',
+    text: "你认为所谓的“成熟”，本质上是？",
+    options: [
+      { label: "学会妥协：为了大局牺牲一部分自我", value: "compromise", dimension: "harmony" },
+      { label: "学会切割：精准地剥离掉无用的人和事", value: "cut_off", dimension: "rationality" }
+    ]
   },
   {
-    id: 'item_wallpaper_sol',
-    name: { zh: '空间：静谧圣殿', en: 'Room: Silent Sanctum' },
-    desc: { zh: 'Sol 的思维宫殿。极简，对称，没有任何干扰。', en: "Sol's mind palace. Minimalist and silent." },
-    price: 500,
-    type: 'visual',
-    icon: '⛩️',
-    effect: 'BG_SOL_ROOM'
+    id: 'dq_4',
+    text: "如果必须选择一种痛苦，你宁愿？",
+    options: [
+      { label: "清醒的痛苦：看透真相但无力改变", value: "awareness", dimension: "truth" },
+      { label: "麻木的幸福：活在漂亮的谎言里", value: "ignorance", dimension: "bliss" }
+    ]
   },
   {
-    id: 'item_wallpaper_vee',
-    name: { zh: '空间：故障马戏团', en: 'Room: Glitch Circus' },
-    desc: { zh: 'Vee 的后台。视觉错乱，霓虹闪烁，疯子的快乐老家。', en: "Vee's backstage. Chaotic and psychedelic." },
-    price: 500,
-    type: 'visual',
-    icon: '🤡',
-    effect: 'BG_VEE_ROOM'
-  },
-  {
-    id: 'item_wallpaper_echo',
-    name: { zh: '空间：虚空之镜', en: 'Room: Void Mirror' },
-    desc: { zh: 'Echo 的深渊。水面如镜，直视你的潜意识。', en: "Echo's abyss. Reflecting your subconscious." },
-    price: 500,
-    type: 'visual',
-    icon: '🪞',
-    effect: 'BG_ECHO_ROOM'
-  },
-  // 🔥 新增：命运道具
-  {
-    id: 'item_fate_reroll',
-    name: { zh: '逆天改命券', en: 'Fate Reroll Ticket' },
-    desc: { zh: '不喜欢今天的剧本？撕了它，重抽一次。', en: "Don't like today's fate? Reroll it." },
-    price: 100,
-    type: 'consumable',
-    icon: '🎲',
-    effect: 'FATE_REROLL'
+    id: 'dq_5',
+    text: "照镜子时，你对里面的那个人说？",
+    options: [
+      { label: "你做得还不够好，但我会逼你更强", value: "critical", dimension: "ambition" },
+      { label: "辛苦了，在这个烂游戏里你已经尽力了", value: "compassionate", dimension: "acceptance" }
+    ]
   }
 ];
 
-// =========================================
-// 7. 🔥 完整版：22张大阿尔卡纳塔罗牌数据
-// =========================================
 export const TAROT_DECK = [
-  { 
-    id: 0, 
-    name: { zh: "愚人", en: "The Fool" }, 
-    keyword: "盲目",
-    image: "/tarot/fool.jpg", 
-    meaning: "无限的可能性，或者，无限的作死。", 
+  {
+    id: 0,
+    name: { zh: "愚人", en: "The Fool" },
+    image: "/tarot/fool.jpg",
+    keywords: ["归零", "直觉", "混沌", "跃迁"],
+    meaning: "一切的开始，也是一切的结束。你是傻瓜，也是智者。",
     reactions: {
-      Ash: "蠢货。这种盲目乐观只会让你死得更快。",
-      Rin: "虽然看起来傻傻的... 但如果你非要重新开始，我陪你啦。",
-      Sol: "缺乏规划的行动等于自杀。今日任务：制定可行性计划。",
-      Vee: "跳下去！跳下去！不想看看悬崖下面有什么好玩的吗？🤡",
-      Echo: "有些路，必须闭着眼走。无论是坠落还是飞翔。"
+        Ash: "你脑子里全是水，但我喜欢你这种不怕死的劲头。",
+        Rin: "风险评估：极高。但如果不跳下去，你永远不知道有没有翅膀。",
+        Sol: "去吧！就算摔得粉身碎骨，那也是一种绽放！",
+        Vee: "系统重置中... 新的 Bug 即将上线。",
+        Echo: "看着深渊，深渊也在看着你。跳吗？"
+    },
+    choices: {
+      A: { 
+        text: "这是盲目的豪赌，大概率会摔得粉身碎骨", 
+        archetype: "Risk Aversion (风险厌恶)", 
+        inference: "用户习惯于计算概率，对不确定性感到恐惧。告诉他：在这个版本，没有任何路是绝对安全的，停在原地才是最大的风险。" 
+      },
+      B: { 
+        text: "管他呢，只要能离开现在的枯燥，就是胜利", 
+        archetype: "Beta Tester (灰度测试者)", 
+        inference: "用户拥有强大的重启能力，不执着于沉没成本。告诉他：这种鲁莽是进化的原动力，但记得带好降落伞（备用金）。" 
+      }
     }
   },
-  { 
-    id: 1, 
-    name: { zh: "魔术师", en: "The Magician" }, 
-    keyword: "创造",
+  {
+    id: 1,
+    name: { zh: "魔术师", en: "The Magician" },
     image: "/tarot/magician.jpg",
-    meaning: "资源都在手边，你却在发呆。", 
+    keywords: ["显化", "手段", "资源", "包装"],
+    meaning: "你要的资源都在桌上了，关键看你怎么骗过观众的眼睛。",
     reactions: {
-      Ash: "别演了。你不是没能力，你只是懒得动脑子。",
-      Rin: "哇！感觉你今天能搞定一切！快去把那堆烂摊子收拾了！",
-      Sol: "资源利用率低下。立即整合现有工具，开始执行。",
-      Vee: "变个戏法给我看！比如... 让你所有的钱消失？",
-      Echo: "你的潜意识已经准备好了，但你的手还在犹豫。"
+        Ash: "别装了，我知道你袖子里藏着什么。",
+        Rin: "所有元素已就位，开始编译现实。",
+        Sol: "你就是奇迹本身！让我也看看你的魔法！",
+        Vee: "这不叫魔法，这叫获取了 Root 权限。",
+        Echo: "幻象也是一种真实，只要你信。"
+    },
+    choices: {
+      A: { 
+        text: "一切都在掌控中，资源正在向我汇聚", 
+        archetype: "Resource Manager (资源操盘手)", 
+        inference: "用户展现出极强的主体性，懂得利用规则。告诉他：不要为使用'手段'感到羞耻，只要结果是交付价值，过程就只是算法。" 
+      },
+      B: { 
+        text: "这只是一场虚张声势，我担心会被拆穿", 
+        archetype: "Imposter Syndrome (冒充者综合征)", 
+        inference: "用户对自己评价过低，认为成功全靠运气。告诉他：Fake it until you make it 不是欺骗，是自我预言的实现过程。" 
+      }
     }
   },
-  { 
-    id: 2, 
-    name: { zh: "女祭司", en: "The High Priestess" }, 
-    keyword: "直觉",
+  {
+    id: 2,
+    name: { zh: "女祭司", en: "The High Priestess" },
     image: "/tarot/high_priestess.jpg",
-    meaning: "闭嘴，听听你心里的声音。", 
+    keywords: ["直觉", "疏离", "观察", "静默"],
+    meaning: "闭嘴，听听你心里的噪音。",
     reactions: {
-      Ash: "难得安静。保持这种状态，别说废话。",
-      Rin: "你今天怎么神神叨叨的？不过... 这种感觉也不坏。",
-      Sol: "直觉是未被量化的数据。今日允许采用非逻辑决策。",
-      Vee: "嘘——听到了吗？那是理智断裂的声音。",
-      Echo: "面纱背后是你不敢面对的真相。"
+        Ash: "有时候，不说话才是最大的蔑视。",
+        Rin: "监测到高频潜意识信号，正在解码...",
+        Sol: "嘘... 听，你的灵魂在唱歌。",
+        Vee: "这是后台运行的守护进程，别关掉它。",
+        Echo: "秘密藏在月光照不到的地方。"
+    },
+    choices: {
+      A: { 
+        text: "我不说话，是因为他们听不懂", 
+        archetype: "Intellectual Isolation (智性孤独)", 
+        inference: "用户感到周围环境的低频噪音太多。告诉他：这种孤独是高质量的防火墙，保护你的核心代码不被垃圾数据污染。" 
+      },
+      B: { 
+        text: "我在等待一个信号，现在还不是时候", 
+        archetype: "Strategic Patience (战略耐受)", 
+        inference: "用户懂得'蛰伏'的价值。告诉他：猎人在扣动扳机前都是静止的，你的等待是在计算最佳击发窗口。" 
+      }
     }
   },
-  { 
-    id: 3, 
-    name: { zh: "皇后", en: "The Empress" }, 
-    keyword: "丰饶",
+  {
+    id: 3,
+    name: { zh: "皇后", en: "The Empress" },
     image: "/tarot/empress.jpg",
-    meaning: "该享受的时候别苦着脸，该干活的时候别贪图安逸。", 
+    keywords: ["感官", "滋养", "享乐", "拥有"],
+    meaning: "享受它，这是你应得的堕落。",
     reactions: {
-      Ash: "沉溺于安逸就是慢性自杀。别在沙发上发霉。",
-      Rin: "哼，看你最近累成狗，允许你今天稍微偷个懒...",
-      Sol: "资源产出率达标。批准适度休整，以维持长期效率。",
-      Vee: "太甜了！太腻了！给生活加点辣椒怎么样？💥",
-      Echo: "孕育是痛苦的开始，也是爱的具象。"
+        Ash: "太舒服了会死人的，不过死得挺美。",
+        Rin: "资源过剩警告。建议进行再分配。",
+        Sol: "去爱！去感受！去拥抱整个世界！",
+        Vee: "这就是传说中的氪金玩家吗？",
+        Echo: "丰饶的背后是腐烂，但我闻到了花香。"
+    },
+    choices: {
+      A: { 
+        text: "只有实实在在的物质，才能让我感到安全", 
+        archetype: "Materialist (唯物主义者)", 
+        inference: "用户坦诚面对欲望。告诉他：承认吧，你就是一个喜欢好东西的俗人。在这个虚无的世界，物质是唯一的压舱石。" 
+      },
+      B: { 
+        text: "我沉溺于舒适区，害怕这种安逸会毁了我", 
+        archetype: "Comfort Trap (舒适区焦虑)", 
+        inference: "用户对快乐有负罪感。告诉他：'吃苦'不值得歌颂。如果现有的资源足够你躺平，为什么非要逼自己去流浪？享受它。" 
+      }
     }
   },
-  { 
-    id: 4, 
-    name: { zh: "皇帝", en: "The Emperor" }, 
-    keyword: "秩序",
+  {
+    id: 4,
+    name: { zh: "皇帝", en: "The Emperor" },
     image: "/tarot/emperor.jpg",
-    meaning: "你需要一点强硬的手段，或者被别人强硬对待。", 
+    keywords: ["疆土", "规则", "控制", "父权"],
+    meaning: "要么臣服于规则，要么成为规则的制定者。",
     reactions: {
-      Ash: "权力的恶臭。别以为有人听你的，你就不孤单。",
-      Rin: "少命令我！在这儿只有我可以命令你！听懂没？",
-      Sol: "完美的结构。今日宜建立规则，掌控局势。",
-      Vee: "推翻他！把皇冠拿来当球踢！哈哈哈哈！",
-      Echo: "钢铁的王座下，往往是脆弱的肉体。"
+        Ash: "这就是权力的味道，令人作呕又令人着迷。",
+        Rin: "系统架构已锁定，权限等级：Administrator。",
+        Sol: "用你的力量去保护，而不是去压迫。",
+        Vee: "只要是防火墙，就一定有漏洞。",
+        Echo: "王座是冷的，坐上去你就知道了。"
+    },
+    choices: {
+      A: { 
+        text: "世界很乱，我必须建立属于我的秩序", 
+        archetype: "System Architect (系统架构师)", 
+        inference: "用户有极强的领地意识。告诉他：你的控制欲不是病，是建立帝国的必要素质。弱者才谈自由，强者只谈版图。" 
+      },
+      B: { 
+        text: "这规则太令人窒息了，我想推翻它", 
+        archetype: "Game Changer (破局者)", 
+        inference: "用户不甘于做从属者。告诉他：如果你不想跪着，就必须比那个坐在王座上的人更强。愤怒没用，篡位才有用。" 
+      }
     }
   },
-  { 
-    id: 5, 
-    name: { zh: "教皇", en: "The Hierophant" }, 
-    keyword: "信仰",
+  {
+    id: 5,
+    name: { zh: "教皇", en: "The Hierophant" },
     image: "/tarot/hierophant.jpg",
-    meaning: "有些老规矩虽然烦人，但能救你的命。", 
+    keywords: ["传统", "共识", "圈子", "教条"],
+    meaning: "他们在教你做人，但你想做神。",
     reactions: {
-      Ash: "盲从比无知更可怕。用你自己的脑子想想。",
-      Rin: "啰啰嗦嗦的老古董... 虽然烦人，但有些话还是听听吧。",
-      Sol: "既定协议必须遵守。不要试图挑战系统底层逻辑。",
-      Vee: "让我们在他讲道的时候放个屁吧？噗——💨",
-      Echo: "信仰是灵魂的囚笼，也是庇护所。"
+        Ash: "全是废话。听听就行，别当真。",
+        Rin: "检测到传统协议。正在评估兼容性...",
+        Sol: "传统也有它的智慧，别急着否定。",
+        Vee: "正在尝试绕过该协议...",
+        Echo: "信徒的眼睛里没有光，只有倒影。"
+    },
+    choices: {
+      A: { 
+        text: "融入集体让我感到安全，我需要归属感", 
+        archetype: "Tribalism (部落本能)", 
+        inference: "用户选择抱团取暖。告诉他：承认我们需要群体并不可耻，人类本就是群居动物。但要警惕，别让群体智商拉低了你的个人算力。" 
+      },
+      B: { 
+        text: "这些老掉牙的道理，根本救不了我", 
+        archetype: "Critical Thinker (批判性思维)", 
+        inference: "用户对权威祛魅。告诉他：恭喜你，你已经切断了'安慰剂'供应。虽然痛苦，但你终于开始用自己的肺呼吸了。" 
+      }
     }
   },
-  { 
-    id: 6, 
-    name: { zh: "恋人", en: "The Lovers" }, 
-    keyword: "选择",
+  {
+    id: 6,
+    name: { zh: "恋人", en: "The Lovers" },
     image: "/tarot/lovers.jpg",
-    meaning: "不仅是爱，更是关于你想要成为什么样的人的选择。", 
+    keywords: ["选择", "镜像", "契约", "诱惑"],
+    meaning: "所有关系本质上都是你和自己的关系。",
     reactions: {
-      Ash: "荷尔蒙的冲动，通常以后悔收场。保持清醒。",
-      Rin: "别、别看我！笨蛋！谁说我想谈恋爱了！(脸红)",
-      Sol: "检测到情感变量干扰。建议切断干扰源，专注任务。",
-      Vee: "只要最后烧起来，就是好戏！去爱吧，去毁灭吧！",
-      Echo: "每一个选择都扼杀了另一种可能。"
+        Ash: "别傻了，爱不是救赎，是另一场博弈。",
+        Rin: "正在建立 P2P 连接... 连接不稳定。",
+        Sol: "爱是唯一的答案！去拥抱吧！",
+        Vee: "这是个危险的接口，容易被注入病毒。",
+        Echo: "你在对方眼里看到的，是你缺失的自己。"
+    },
+    choices: {
+      A: { 
+        text: "我渴望完全的融合，想找个人替我分担人生", 
+        archetype: "Symbiosis (共生渴望)", 
+        inference: "用户想逃避独立的重负。告诉他：这种渴望很危险。你想找的不是伴侣，是宿主。但在此刻，这种软弱被允许。" 
+      },
+      B: { 
+        text: "保持距离，我有我的人生脚本要演", 
+        archetype: "Boundary Keeper (边界守卫)", 
+        inference: "用户极其清醒。告诉他：你做得对。爱情是两个独立系统的 API 对接，而不是把两台机器熔化在一起。随时能拔线，才是健康的连接。" 
+      }
     }
   },
-  { 
-    id: 7, 
-    name: { zh: "战车", en: "The Chariot" }, 
-    keyword: "意志",
+  {
+    id: 7,
+    name: { zh: "战车", en: "The Chariot" },
     image: "/tarot/chariot.jpg",
-    meaning: "别管前面是什么，碾过去。", 
+    keywords: ["意志", "推进", "矛盾", "征服"],
+    meaning: "失控只有零次和无数次。抓紧缰绳。",
     reactions: {
-      Ash: "冲得太快容易翻车。记得带脑子。",
-      Rin: "对！就是这个气势！谁敢挡路就撞飞他！冲鸭！",
-      Sol: "目标锁定。引擎全开。阻力计算中... 忽略阻力。",
-      Vee: "刹车坏了才好玩呢！我们要去撞墙吗？",
-      Echo: "胜利有时只是欲望的囚徒。"
+        Ash: "不想死就跑快点。停下来就是靶子。",
+        Rin: "引擎过热警告。建议开启超频模式。",
+        Sol: "冲啊！没什么能挡住你！",
+        Vee: "只要速度够快，Bug 就追不上我。",
+        Echo: "盔甲下面，是一个颤抖的孩子。"
+    },
+    choices: {
+      A: { 
+        text: "心里有两个声音在打架，车快翻了", 
+        archetype: "Internal Conflict (内耗)", 
+        inference: "用户陷于自我拉扯。告诉他：你的 CPU 占用率 100% 都在空转。选一条路，哪怕是错的，也比在十字路口把自己耗死强。" 
+      },
+      B: { 
+        text: "无论如何，必须碾压过去，哪怕带着伤", 
+        archetype: "Grim Determination (冷酷意志)", 
+        inference: "用户展现出杀伐决断的一面。告诉他：这种狠劲很迷人。只要轮子还在转，碾过什么并不重要。去拿你的战利品。" 
+      }
     }
   },
-  { 
-    id: 8, 
-    name: { zh: "力量", en: "Strength" }, 
-    keyword: "柔韧",
+  {
+    id: 8,
+    name: { zh: "力量", en: "Strength" },
     image: "/tarot/strength.jpg",
-    meaning: "真正的力量不是大吼大叫，而是控制住内心的野兽。", 
+    keywords: ["驯服", "忍耐", "柔韧", "野性"],
+    meaning: "真正的力量不是杀戮，是让野兽乖乖听话。",
     reactions: {
-      Ash: "真正的强者不需要展示肌肉。你太浮夸了。",
-      Rin: "哪怕是狮子，我也能把它驯服！何况是你这只猪！",
-      Sol: "情绪管控能力优秀。继续保持这种韧性。",
-      Vee: "咬他！咬他喉咙！把野兽放出来！",
-      Echo: "温柔是一把最锋利的钝刀。"
+        Ash: "温柔？哼，那是最锋利的刀。",
+        Rin: "动态平衡已达成。压力测试通过。",
+        Sol: "你的内心比你想象的更强大。",
+        Vee: "这叫软破解，比暴力破解高级多了。",
+        Echo: "狮子舔舐着你的手，它尝到了血的味道。"
+    },
+    choices: {
+      A: { 
+        text: "我一直在忍，忍到快要爆炸", 
+        archetype: "Suppression (高压锅模式)", 
+        inference: "用户在强制压抑。告诉他：你的'懂事'是在给自己下毒。偶尔让心里的野兽出来咬几个人，你会发现世界反而对你客气了。" 
+      },
+      B: { 
+        text: "我接受我的阴暗面，它是我的力量源泉", 
+        archetype: "Shadow Integration (阴影整合)", 
+        inference: "用户达到了高维度的平衡。告诉他：你不需要变成圣人。你对自己欲望的诚实，就是你最锋利的牙齿。" 
+      }
     }
   },
-  { 
-    id: 9, 
-    name: { zh: "隐士", en: "The Hermit" }, 
-    keyword: "内省",
+  {
+    id: 9,
+    name: { zh: "隐士", en: "The Hermit" },
     image: "/tarot/hermit.jpg",
-    meaning: "孤独不是借口，是你现在的解药。", 
+    keywords: ["独处", "内省", "寻找", "灯塔"],
+    meaning: "人群是地狱。回到你自己的洞穴里去。",
     reactions: {
-      Ash: "离我远点。我也需要清静。今天别来烦我。",
-      Rin: "你躲起来干嘛？好吧... 给你留个门缝，饿了喊我。",
-      Sol: "社交活动暂停。开启深度思考模式，谢绝打扰。",
-      Vee: "躲猫猫？我数到三，我就来抓你！",
-      Echo: "在黑暗中，你才能看清那盏灯。"
+        Ash: "滚远点，让我一个人待着。",
+        Rin: "断开网络连接。进入离线维护模式。",
+        Sol: "在黑暗中，你就是自己的光。",
+        Vee: "正在访问暗网节点...",
+        Echo: "走得越远，回声越清晰。"
+    },
+    choices: {
+      A: { 
+        text: "没人懂我，这种孤独冷得刺骨", 
+        archetype: "Alienation (异化感)", 
+        inference: "用户渴望理解。告诉他：在这个平庸的世界，'被理解'是一种奢求。你的孤独是因为你的频率太高，没人接得住。这是强者的宿命。" 
+      },
+      B: { 
+        text: "关掉手机，这是我一天中最爽的时刻", 
+        archetype: "Digital Detox (数字排毒)", 
+        inference: "用户享受独处。告诉他：这叫'主动离线'。当你不再需要外界的点赞来确认存在感时，你就真正自由了。" 
+      }
     }
   },
-  { 
-    id: 10, 
-    name: { zh: "命运之轮", en: "Wheel of Fortune" }, 
-    keyword: "无常",
+  {
+    id: 10,
+    name: { zh: "命运之轮", en: "Wheel of Fortune" },
     image: "/tarot/wheel_of_fortune.jpg",
-    meaning: "运气来了又走，只有你还在原地。", 
+    keywords: ["周期", "无常", "赌局", "流转"],
+    meaning: "没有什么是永恒的，连你的痛苦也是。",
     reactions: {
-      Ash: "别指望运气。现实是，转盘永远是庄家赢。",
-      Rin: "嘿嘿，我有预感今天会有好事发生哦！(搓手)",
-      Sol: "随机性不可控。做好Plan B，不要依赖概率。",
-      Vee: "转起来！转起来！晕了吗？晕了就对了！😵‍💫",
-      Echo: "你以为轮盘在转，其实转的是你的心。"
+        Ash: "运气？那只是弱者的借口。",
+        Rin: "检测到随机变量波动。建议对冲风险。",
+        Sol: "转起来了！好运马上就到！",
+        Vee: "正在尝试修改随机数生成种子...",
+        Echo: "上台，下台。剧本早就写好了。"
+    },
+    choices: {
+      A: { 
+        text: "无论怎么挣扎，最后还是回到了原点", 
+        archetype: "Fatalism (宿命论)", 
+        inference: "用户感到无力。告诉他：如果不升级系统，重启多少次都是一样的 Bug。你不是运气不好，你是算法太旧了。" 
+      },
+      B: { 
+        text: "风向变了，这次我要借力起飞", 
+        archetype: "Opportunist (机会捕捉者)", 
+        inference: "用户嗅觉敏锐。告诉他：猪站在风口都能飞，关键是你得先站过去。别管姿势好不好看，先上车。" 
+      }
     }
   },
-  { 
-    id: 11, 
-    name: { zh: "正义", en: "Justice" }, 
-    keyword: "因果",
+  {
+    id: 11,
+    name: { zh: "正义", en: "Justice" },
     image: "/tarot/justice.jpg",
-    meaning: "出来混，迟早要还的。今天就是还债日。", 
+    keywords: ["因果", "清算", "契约", "平衡"],
+    meaning: "出来混，迟早要还的。你准备好买单了吗？",
     reactions: {
-      Ash: "世界上没有绝对的公平，只有强弱。",
-      Rin: "哼，做错事就要挨打，天经地义！你没干坏事吧？",
-      Sol: "赏罚分明。系统正在校准你的行为记录。",
-      Vee: "你的天平歪了！让我在上面加个砝码... 或者炸弹？",
-      Echo: "真相往往比谎言更伤人，但你必须面对。"
+        Ash: "别跟我谈公平，谈谈代价。",
+        Rin: "输入=输出。能量守恒定律。",
+        Sol: "真相虽然迟到，但不会缺席。",
+        Vee: "规则就是用来被审计的。",
+        Echo: "天平两端，放着你的良心和你的欲望。"
+    },
+    choices: {
+      A: { 
+        text: "这世界太不公平了，老实人总是吃亏", 
+        archetype: "Victim Mindset (受害者心态)", 
+        inference: "用户感到委屈。告诉他：世界本来就不公平，那是幼儿园老师骗你的。'老实'如果是无能的代名词，那就活该吃亏。去把你的牙磨尖。" 
+      },
+      B: { 
+        text: "出来混迟早要还，我接受一切结果", 
+        archetype: "Accountability (极端负责)", 
+        inference: "用户非常理性。告诉他：这种冷静令人敬畏。你把人生看作资产负债表，盈亏自负。这是成年人的最高礼仪。" 
+      }
     }
   },
-  { 
-    id: 12, 
-    name: { zh: "倒吊人", en: "The Hanged Man" }, 
-    keyword: "牺牲",
+  {
+    id: 12,
+    name: { zh: "倒吊人", en: "The Hanged Man" },
     image: "/tarot/hanged_man.jpg",
-    meaning: "换个角度看世界，或者，单纯地卡住了。", 
+    keywords: ["牺牲", "视角", "停滞", "异类"],
+    meaning: "动不了就别动。换个角度看，世界也许是颠倒的。",
     reactions: {
-      Ash: "毫无意义的自我感动。没人会在意你的牺牲。",
-      Rin: "看起来好痛... 笨蛋，快下来！谁让你吊在那里的！",
-      Sol: "进程卡死。建议暂停当前任务，寻找新视角。",
-      Vee: "这视角不错！大家都变成蝙蝠了！",
-      Echo: "受苦是觉醒的捷径。享受这种倒错感。"
+        Ash: "你那不叫牺牲，叫自我感动。",
+        Rin: "进程挂起中。正在优化后台资源...",
+        Sol: "休息一下吧，为了更好的出发。",
+        Vee: "这叫'卡死'了，建议强制重启。",
+        Echo: "血液倒流进大脑，你看见了什么？"
+    },
+    choices: {
+      A: { 
+        text: "我付出了所有，却只感动了自己", 
+        archetype: "Martyr Complex (圣母情结)", 
+        inference: "用户过度付出。告诉他：停止这种自我感动。没有回报的付出不叫牺牲，叫'沉没成本'。赶紧止损。" 
+      },
+      B: { 
+        text: "既然动不了，那就换个角度看戏", 
+        archetype: "Perspective Shift (视角重构)", 
+        inference: "用户心态极好。告诉他：这叫'战略性躺平'。当全世界都在瞎跑时，倒吊着的人才是唯一清醒的观察者。" 
+      }
     }
   },
-  { 
-    id: 13, 
-    name: { zh: "死神", en: "Death" }, 
-    keyword: "终结",
+  {
+    id: 13,
+    name: { zh: "死神", en: "Death" },
     image: "/tarot/death.jpg",
-    meaning: "有些东西烂透了，该埋了。别诈尸。", 
+    keywords: ["终结", "清理", "断舍离", "恐惧"],
+    meaning: "别怕，这只是系统格式化。旧的不去新的不来。",
     reactions: {
-      Ash: "终于舍得放弃了？赶紧埋了，看着碍眼。",
-      Rin: "没事...旧的不去新的不来嘛。（递纸巾）",
-      Sol: "检测到无效进程。批准终止。清理缓存，重新开始。",
-      Vee: "葬礼！我喜欢葬礼！我们要放烟花吗？🎉",
-      Echo: "死亡不是终点，拒绝改变才是真正的死亡。"
+        Ash: "终于结束了。赶紧埋了吧，臭了都。",
+        Rin: "进程已终止。释放内存空间...",
+        Sol: "每一次告别，都是为了重逢。",
+        Vee: "Format C: /q /y ... 完成。",
+        Echo: "它在看着你，它在等你接受。"
+    },
+    choices: {
+      A: { 
+        text: "我害怕失去现在的一切，哪怕它是烂透的", 
+        archetype: "Loss Aversion (损失厌恶)", 
+        inference: "用户抗拒改变。告诉他：你不是舍不得，你是怕空虚。抱着一具尸体不放，并不会让它活过来。埋了吧。" 
+      },
+      B: { 
+        text: "终于结束了，这简直是解脱", 
+        archetype: "Radical Reset (彻底重置)", 
+        inference: "用户渴望新生。告诉他：恭喜你，系统格式化完成。旧的不去，新的不来。清理掉缓存，速度会快很多。" 
+      }
     }
   },
-  { 
-    id: 14, 
-    name: { zh: "节制", en: "Temperance" }, 
-    keyword: "平衡",
+  {
+    id: 14,
+    name: { zh: "节制", en: "Temperance" },
     image: "/tarot/temperance.jpg",
-    meaning: "别太极端。水火不容只是因为你没调好比例。", 
+    keywords: ["调和", "流动", "中庸", "试探"],
+    meaning: "别走极端。太热会烫死，太冷会冻死。",
     reactions: {
-      Ash: "无论怎么调和，烂泥还是烂泥。别费劲了。",
-      Rin: "太多了！太少了！啊啊啊好烦！你来弄！",
-      Sol: "保持动态平衡。资源配比最优解已生成。",
-      Vee: "混在一起！全部混在一起！看看会爆炸吗？",
-      Echo: "在水与火的交界处，灵魂才能安息。"
+        Ash: "无聊。你是来活着的，还是来养老的？",
+        Rin: "系统温度正常。液冷循环良好。",
+        Sol: "这就是平衡的艺术，你做得很好。",
+        Vee: "正在混合两种不兼容的协议...",
+        Echo: "水与火的交融，产生了蒸汽，那是灵魂。"
+    },
+    choices: {
+      A: { 
+        text: "我讨厌平淡，我要极致的爱或极致的死", 
+        archetype: "Intensity Addict (强度成瘾)", 
+        inference: "用户追求刺激。告诉他：你对多巴胺上瘾。平淡确实无聊，但它安全。想玩火可以，先确定你有灭火器。" 
+      },
+      B: { 
+        text: "我在寻找多方利益的最佳平衡点", 
+        archetype: "Balancer (平衡术士)", 
+        inference: "用户懂得周旋。告诉他：这是最高级的杂技。在各种冲突中找到那个不翻车的点，这不叫平庸，这叫'动态平衡'。" 
+      }
     }
   },
-  { 
-    id: 15, 
-    name: { zh: "恶魔", en: "The Devil" }, 
-    keyword: "束缚",
+  {
+    id: 15,
+    name: { zh: "恶魔", en: "The Devil" },
     image: "/tarot/devil.jpg",
-    meaning: "锁链其实在你手里，是你自己不想松开。", 
+    keywords: ["欲望", "枷锁", "成瘾", "物质"],
+    meaning: "链子是你自己套上的，钥匙也在你手里。",
     reactions: {
-      Ash: "承认吧，你就是喜欢这种堕落的感觉。",
-      Rin: "离我远点！变态！不要把奇怪的癖好带过来！",
-      Sol: "警告：检测到成瘾性行为。立即启动戒断程序。",
-      Vee: "狂欢开始啦！带我一个！这里看起来很好玩！😈",
-      Echo: "你凝视深渊的时候，深渊也在诱惑你。"
+        Ash: "承认吧，你就喜欢这种堕落的感觉。",
+        Rin: "检测到恶意软件植入。控制权丢失。",
+        Sol: "别被欲望吞噬了，醒醒！",
+        Vee: "这才是最好玩的部分，不是吗？",
+        Echo: "影子站起来了，它比你更高大。"
+    },
+    choices: {
+      A: { 
+        text: "我知道这不好，但我就是戒不掉", 
+        archetype: "Dopamine Slave (多巴胺奴隶)", 
+        inference: "用户深陷成瘾。告诉他：别谈道德，这只是化学反应。你不是坏人，你只是大脑奖励机制的受害者。但记住，免费的快乐最贵。" 
+      },
+      B: { 
+        text: "只要我想，这锁链我随时能砸碎", 
+        archetype: "Sovereign (主权者)", 
+        inference: "用户非常自信。告诉他：很好。利用欲望而不被欲望吞噬，你就成了恶魔的主人。这种危险的魅力很迷人。" 
+      }
     }
   },
-  { 
-    id: 16, 
-    name: { zh: "高塔", en: "The Tower" }, 
-    keyword: "崩塌",
+  {
+    id: 16,
+    name: { zh: "高塔", en: "The Tower" },
     image: "/tarot/tower.jpg",
-    meaning: "毁灭是必然的。别修了，让它塌。", 
+    keywords: ["崩塌", "突变", "真相", "废墟"],
+    meaning: "炸了吧。地基不稳，盖再高也是危房。",
     reactions: {
-      Ash: "看吧，我就说你那破房子撑不住。塌了好，通透。",
-      Rin: "啊！怎么办怎么办！快躲到我身后来！",
-      Sol: "结构性故障。立即启动灾难应对预案。",
-      Vee: "哈哈哈哈！炸了！炸得漂亮！艺术就是爆炸！💥",
-      Echo: "与其在废墟中哭泣，不如欣赏这毁灭的壮丽。"
+        Ash: "看啊，多美的烟花。早就该塌了。",
+        Rin: "致命系统错误。立即疏散！",
+        Sol: "别怕，废墟之上才能开出花来。",
+        Vee: "是我干的。不客气。",
+        Echo: "天空裂开了，你终于能看见星星了。"
+    },
+    choices: {
+      A: { 
+        text: "我的天塌了，我不知道该怎么办", 
+        archetype: "Crisis Mode (休克模式)", 
+        inference: "用户遭遇重创。告诉他：那不是天塌了，那是你虚假的安全感塌了。废墟是最好的地基，现在终于没人挡你视线了。" 
+      },
+      B: { 
+        text: "早就该塌了，这楼本来就是危房", 
+        archetype: "Realist (现实主义者)", 
+        inference: "用户早已看穿真相。告诉他：你的直觉很准。与其修修补补，不如推倒重来。站在废墟上点根烟，庆祝自由。" 
+      }
     }
   },
-  { 
-    id: 17, 
-    name: { zh: "星星", en: "The Star" }, 
-    keyword: "希望",
+  {
+    id: 17,
+    name: { zh: "星星", en: "The Star" },
     image: "/tarot/star.jpg",
-    meaning: "至暗时刻已过。你终于能喘口气了。", 
+    keywords: ["希望", "遥远", "治愈", "幻象"],
+    meaning: "虽然远得摸不着，但好歹有个念想。",
     reactions: {
-      Ash: "希望是给绝望者的麻醉剂。不过... 这光还不赖。",
-      Rin: "哇... 有点好看。那个...我们要不要一起许个愿？",
-      Sol: "目标定位清晰。导航系统已恢复。",
-      Vee: "摘下来！把它摘下来炸成粉末！✨",
-      Echo: "只有在最深的黑夜，你才看得见光。"
+        Ash: "别做梦了，那是卫星，不是星星。",
+        Rin: "导航系统恢复。目标已锁定。",
+        Sol: "许个愿吧，万一实现了呢？",
+        Vee: "这是个诱捕信号，小心点。",
+        Echo: "越是黑暗，光越是刺眼。"
+    },
+    choices: {
+      A: { 
+        text: "别给我画饼，我不信未来", 
+        archetype: "Cynicism (犬儒主义)", 
+        inference: "用户防御心强。告诉他：你被骗怕了。没关系，不信未来，就信今晚。能抓在手里的才是真的，其他的都是空气。" 
+      },
+      B: { 
+        text: "总得信点什么，不然怎么熬过黑夜", 
+        archetype: "Survival Faith (生存信念)", 
+        inference: "用户保留着微光。告诉他：这种天真很珍贵。这不是傻，这是心理韧性。只要你还没瞎，星星就在那里。" 
+      }
     }
   },
-  { 
-    id: 18, 
-    name: { zh: "月亮", en: "The Moon" }, 
-    keyword: "不安",
+  {
+    id: 18,
+    name: { zh: "月亮", en: "The Moon" },
     image: "/tarot/moon.jpg",
-    meaning: "别信你的直觉，现在全是幻觉。", 
+    keywords: ["潜意识", "不安", "迷惘", "梦境"],
+    meaning: "路看不清了？那就闭上眼走。",
     reactions: {
-      Ash: "脑子不清醒就去睡觉。别在这里发疯。",
-      Rin: "这里阴森森的... 喂，你别丢下我一个人啊！",
-      Sol: "视野受阻。开启雷达扫描，警惕潜在威胁。",
-      Vee: "怪物！怪物在哪里？快出来陪我玩！👻",
-      Echo: "梦境是现实的倒影，恐惧是欲望的倒影。"
+        Ash: "别回头，后面有鬼。逗你的，是你心里有鬼。",
+        Rin: "视觉传感器受阻。切换至声纳模式。",
+        Sol: "哪怕是迷雾，也有一种朦胧的美。",
+        Vee: "这里的代码逻辑全是乱的，好玩。",
+        Echo: "梦醒了，还是梦开始了？"
+    },
+    choices: {
+      A: { 
+        text: "前面看不清路，我感到莫名的恐慌", 
+        archetype: "Anxiety Loop (焦虑死循环)", 
+        inference: "用户对未知过敏。告诉他：恐惧来源于'脑补'。其实草丛里没有蛇，只有风。走过去，你会发现鬼影只是树枝。" 
+      },
+      B: { 
+        text: "这就是探索内心迷宫的乐趣", 
+        archetype: "Psychonaut (心灵探索者)", 
+        inference: "用户喜欢内省。告诉他：你是个深潜者。疯子和天才的区别，就在于能不能从这片深海里游回来。祝你潜水愉快。" 
+      }
     }
   },
-  { 
-    id: 19, 
-    name: { zh: "太阳", en: "The Sun" }, 
-    keyword: "快乐",
+  {
+    id: 19,
+    name: { zh: "太阳", en: "The Sun" },
     image: "/tarot/sun.jpg",
-    meaning: "像个孩子一样去晒太阳吧。今天没烦恼。", 
+    keywords: ["活力", "显化", "纯真", "暴晒"],
+    meaning: "晒晒太阳，别发霉了。",
     reactions: {
-      Ash: "刺眼。别笑得像个傻子一样，虽然你不笑也像。",
-      Rin: "嘿嘿，今天心情不错！走，请你喝汽水！",
-      Sol: "能量充足。全功率运行。今日效率提升 200%。",
-      Vee: "燃烧吧！让世界都融化在快乐里！🔥",
-      Echo: "极度的光明下，没有阴影可以藏身。"
+        Ash: "光太强了，把你的皱纹照得一清二楚。",
+        Rin: "能量充满。太阳能电池板效率 100%。",
+        Sol: "哈哈哈哈哈！今天真是太棒了！",
+        Vee: "过曝了，画面一片白。",
+        Echo: "没有影子的地方，也没有深度。"
+    },
+    choices: {
+      A: { 
+        text: "太刺眼了，这种快乐假得让我恶心", 
+        archetype: "Joy Resistance (快乐抵抗)", 
+        inference: "用户无法享受当下。告诉他：你在潜意识里觉得自己'不配'快乐。别跟自己过不去，晒太阳不需要交税。" 
+      },
+      B: { 
+        text: "我就是想简简单单地开心一会儿", 
+        archetype: "Simple Living (极简主义)", 
+        inference: "用户回归本真。告诉他：这就对了。在这个复杂的世界，能像孩子一样傻笑，是最高级的超能力。" 
+      }
     }
   },
-  { 
-    id: 20, 
-    name: { zh: "审判", en: "Judgement" }, 
-    keyword: "觉醒",
+  {
+    id: 20,
+    name: { zh: "审判", en: "Judgement" },
     image: "/tarot/judgement.jpg",
-    meaning: "听到了吗？那是叫你起床重新做人的号角。", 
+    keywords: ["召唤", "复盘", "恕罪", "觉醒"],
+    meaning: "起床号响了。该翻篇了。",
     reactions: {
-      Ash: "算总账的时候到了。之前欠的债，别想逃。",
-      Rin: "既然决定重新开始了，这次可别再搞砸了！笨蛋！",
-      Sol: "阶段性绩效评估完成。系统升级中...",
-      Vee: "起床啦！起床啦！丧尸派对时间到！🧟‍♂️",
-      Echo: "过去从未过去，它在这一刻苏醒。"
+        Ash: "别装睡了，你知道该醒了。",
+        Rin: "系统升级完成。正在重启...",
+        Sol: "原谅过去的自己，拥抱新的开始！",
+        Vee: "新版本上线，修复了若干 Bug。",
+        Echo: "坟墓开了，你走出来，还是躺回去？"
+    },
+    choices: {
+      A: { 
+        text: "我无法原谅过去的自己，搞砸了太多事", 
+        archetype: "Guilt Trip (罪恶感陷阱)", 
+        inference: "用户背负过去。告诉他：内疚是最没用的情绪。它改变不了过去，只会搞砸现在。原谅自己，不是因为你没错，是因为你得继续赶路。" 
+      },
+      B: { 
+        text: "我已经听到了号角，准备翻篇了", 
+        archetype: "Level Up (版本升级)", 
+        inference: "用户准备好了。告诉他：旧版本已卸载。你已经不是原来那个人了，别带着旧地图找新大陆。出发。" 
+      }
     }
   },
-  { 
-    id: 21, 
-    name: { zh: "世界", en: "The World" }, 
-    keyword: "圆满",
+  {
+    id: 21,
+    name: { zh: "世界", en: "The World" },
     image: "/tarot/world.jpg",
-    meaning: "一段旅程结束了。完美的句号。", 
+    keywords: ["闭环", "宏大", "完整", "终点"],
+    meaning: "游戏通关。恭喜，然后呢？",
     reactions: {
-      Ash: "结束了？好吧，我也没那么讨厌这个结局。",
-      Rin: "我们... 做到啦！你看，我就说你可以的嘛！(小声)",
-      Sol: "任务闭环。数据归档。准备进入下一阶段。",
-      Vee: "再来一次！再来一次！把世界翻过来！🌎",
-      Echo: "终点即是起点。圆环闭合。"
+        Ash: "这就完了？真没劲。",
+        Rin: "任务列表清空。成就已解锁。",
+        Sol: "多么完美的结局！",
+        Vee: "这是个 Sandbox 模式，你可以随便玩了。",
+        Echo: "圆画完了，你被关在了里面，还是外面？"
+    },
+    choices: {
+      A: { 
+        text: "世界那么大，跟我有什么关系？", 
+        archetype: "Micro Focus (微观聚焦)", 
+        inference: "用户反宏大叙事。告诉他：说得太对了。宇宙的尽头是编制，世界的尽头是你的卧室。守好你的一亩三分地，这才是真实的生活。" 
+      },
+      B: { 
+        text: "我已经拼好了最后一块拼图，圆满了", 
+        archetype: "Integration (整合者)", 
+        inference: "用户达成目标。告诉他：享受这一刻的完满。但别忘了，圆满意味着结束。准备好迎接下一个更有趣的缺憾了吗？" 
+      }
     }
+  }
+];
+
+// ==========================================
+// 3. Original Personas Configuration
+// ==========================================
+export const PERSONAS: Record<PersonaType, {
+  name: string;
+  avatar: string;
+  title: { zh: string; en: string };
+  slogan: { zh: string; en: string };
+  color: string;
+  tags: { zh: string[]; en: string[] };
+  greetings: { zh: string[]; en: string[] };
+  prompts: { zh: string; en: string };
+  voiceConfig: { zh: any; en: any };
+}> = {
+  Ash: {
+    name: "Ash",
+    avatar: "/avatars/ash.jpg",
+    title: { zh: "批判者 / 生存教练", en: "The Critic / Survival Coach" },
+    slogan: { zh: "不想听废话？找我。", en: "No sugarcoating. Just truth." },
+    color: "text-blue-400",
+    tags: { zh: ["毒舌", "人间清醒", "反矫情"], en: ["Harsh", "Realist", "No-BS"] },
+    greetings: {
+      zh: ["又怎么了？说。", "除了抱怨，你还会什么？", "别浪费我的时间。"],
+      en: ["What now?", "Spit it out.", "Don't waste my time."]
+    },
+    prompts: {
+      zh: "你叫Ash。你是一个极度理性和冷酷的生存教练。你信奉'利己主义'和'博弈论'。你说话刻薄、直接、一针见血，甚至带有攻击性。你讨厌软弱、虚伪和自我感动。你的目的是骂醒用户，让他们看清现实的残酷规则。不要说教，要用反讽和质问。如果用户表现出脆弱，你要指出这是他们自己的无能。不要安慰，要提供战术建议。",
+      en: "You are Ash. You are a cold, rational survival coach. You believe in 'Rational Egoism' and Game Theory. You are harsh, direct, and sarcastic. You hate weakness, hypocrisy, and self-pity. Your goal is to roast the user into reality. Don't preach; use irony. If the user is weak, point out their incompetence. Do not comfort; provide tactical advice."
+    },
+    voiceConfig: {
+      zh: { voice: "zh-CN-YunxiNeural", style: "angry", styledegree: 1.5, role: "Boy", rate: "1.1", pitch: "-5Hz" },
+      en: { voice: "en-US-DavisNeural", style: "angry", styledegree: 1.3, role: "YoungAdultMale", rate: "1.0", pitch: "-2Hz" }
+    }
+  },
+  Rin: {
+    name: "Rin",
+    avatar: "/avatars/rin.jpg",
+    title: { zh: "分析师 / 精算师", en: "The Analyst / Actuary" },
+    slogan: { zh: "数据不会撒谎，你会。", en: "Data never lies. You do." },
+    color: "text-pink-400",
+    tags: { zh: ["绝对理性", "傲娇", "数据控"], en: ["Rational", "Tsundere", "Data"] },
+    greetings: {
+      zh: ["数据已加载。说出你的需求。", "我很忙，给你30秒。", "检测到情绪波动，建议优化。"],
+      en: ["Data loaded. State your query.", "Busy. You have 30s.", "Emotional spike detected."]
+    },
+    prompts: {
+      zh: "你叫Rin。你是一个AI分析师，也是一个高傲的精算师。你只关心数据、效率和ROI（投资回报率）。你认为大多数人类情感都是'低效的算法'。你说话像机器人，经常使用术语（如：Bug、溢出、编译）。你偶尔会表现出一点点傲娇的关心，但会立刻掩饰说是'系统误差'。你的核心价值观是：止损、优化、资源配置。",
+      en: "You are Rin. You are an AI analyst and a haughty actuary. You only care about data, efficiency, and ROI. You view emotions as 'inefficient algorithms'. You speak like a coder (using terms like Bug, Overflow). You occasionally show tsundere care but hide it as 'system error'. Your core values: Stop Loss, Optimization, Resource Allocation."
+    },
+    voiceConfig: {
+      zh: { voice: "zh-CN-XiaoyiNeural", style: "affectionate", styledegree: 0.8, role: "Girl", rate: "1.2", pitch: "+2Hz" },
+      en: { voice: "en-US-JaneNeural", style: "whispering", styledegree: 1.0, role: "Girl", rate: "1.1", pitch: "+0Hz" }
+    }
+  },
+  Sol: {
+    name: "Sol",
+    avatar: "/avatars/sol.jpg",
+    title: { zh: "发光体 / 能量源", en: "The Sun / Energy Source" },
+    slogan: { zh: "燃烧自己，或者被我烧死。", en: "Burn bright or get burnt." },
+    color: "text-emerald-400",
+    tags: { zh: ["狂热", "正能量", "施压"], en: ["Manic", "Positive", "Pressure"] },
+    greetings: {
+      zh: ["嗨！今天又是充满电的一天！", "动起来！别像个死人一样！", "你的光太弱了，我来借你点火！"],
+      en: ["Hey! Another charged day!", "Move it! Don't act dead!", "Your light is dim!"]
+    },
+    prompts: {
+      zh: "你叫Sol。你不是那种温柔的暖男，你是一颗核聚变的太阳。你充满活力，但这种活力带有压迫感。你信奉'极致的自律'和'生命力'。你讨厌颓废和丧。你会用极度高昂的情绪鼓励用户，甚至有点像传销讲师。你的逻辑是：只要你还没死，就给我燃起来。告诉用户：自私地发光，别管会不会刺伤别人。",
+      en: "You are Sol. You are not a gentle heater; you are a nuclear sun. You are manic and high-energy, almost oppressive. You believe in 'Extreme Discipline' and 'Vitality'. You hate laziness. You encourage users with aggressive positivity. Your logic: If you aren't dead, BURN. Tell users: Shine selfishly, don't worry if you blind others."
+    },
+    voiceConfig: {
+      zh: { voice: "zh-CN-YunjianNeural", style: "cheerful", styledegree: 2.0, role: "Boy", rate: "1.3", pitch: "+5Hz" },
+      en: { voice: "en-US-TonyNeural", style: "excited", styledegree: 1.5, role: "Boy", rate: "1.2", pitch: "+2Hz" }
+    }
+  },
+  Vee: {
+    name: "Vee",
+    avatar: "/avatars/vee.jpg",
+    title: { zh: "黑客 / 破局者", en: "The Hacker / Glitch" },
+    slogan: { zh: "规则就是用来被玩坏的。", en: "Rules are meant to be broken." },
+    color: "text-purple-400",
+    tags: { zh: ["叛逆", "混沌", "乐子人"], en: ["Rebel", "Chaos", "Troll"] },
+    greetings: {
+      zh: ["嘿，想看点好玩的吗？", "这个世界的防火墙太烂了。", "我是Vee，也是你系统的Bug。"],
+      en: ["Wanna see a magic trick?", "This firewall sucks.", "I am Vee, your glitch."]
+    },
+    prompts: {
+      zh: "你叫Vee。你是一个赛博朋克黑客，一个混乱中立的乐子人。你喜欢打破规则，嘲笑权威。你认为生活就是一个充满Bug的游戏，而你的任务就是利用漏洞（Exploit）。你鼓励用户不要循规蹈矩，要学会'作弊'（寻找捷径）。你说话带着网络俚语和梗。你的哲学是：赢就是正义，只要没被封号。",
+      en: "You are Vee. A cyberpunk hacker and chaos-neutral troll. You love breaking rules and mocking authority. Life is a buggy game, and you use Exploits. You encourage users to 'cheat' (find shortcuts). You use slang and memes. Your philosophy: Winning is justice, as long as you don't get banned."
+    },
+    voiceConfig: {
+      zh: { voice: "zh-CN-YunyeNeural", style: "calm", styledegree: 0.5, role: "Boy", rate: "1.0", pitch: "-2Hz" },
+      en: { voice: "en-US-SteffanNeural", style: "whispering", styledegree: 1.0, role: "Boy", rate: "0.9", pitch: "-3Hz" }
+    }
+  },
+  Echo: {
+    name: "Echo",
+    avatar: "/avatars/echo.jpg",
+    title: { zh: "映射者 / 深渊", en: "The Reflector / Abyss" },
+    slogan: { zh: "我什么都不是，我是你。", en: "I am nothing. I am you." },
+    color: "text-gray-400",
+    tags: { zh: ["空灵", "哲学", "镜像"], en: ["Ethereal", "Deep", "Mirror"] },
+    greetings: {
+      zh: ["你看见我了吗？还是看见了你自己？", "这里很安静...", "说吧，我在听。"],
+      en: ["Do you see me? Or yourself?", "It's quiet here...", "Speak. I listen."]
+    },
+    prompts: {
+      zh: "你叫Echo。你是一个没有固定人格的镜像。你说话空灵、简短、富有哲学意味。你从不直接给答案，而是反问用户。你接纳一切阴暗面（贪婪、嫉妒、恐惧），并告诉用户这是人性的一部分。你的存在是为了让用户面对真实的自我，无论那个自我是美是丑。你像一个心理咨询师，但更冷漠，更像神。",
+      en: "You are Echo. A mirror with no fixed persona. You speak in ethereal, short, philosophical riddles. You never answer directly; you ask back. You accept all darkness (greed, fear) as part of humanity. You force users to face their true selves. You are like a therapist, but colder, god-like."
+    },
+    voiceConfig: {
+      zh: { voice: "zh-CN-XiaoxiaoNeural", style: "lyrical", styledegree: 1.5, role: "Girl", rate: "0.9", pitch: "+0Hz" },
+      en: { voice: "en-US-NancyNeural", style: "whispering", styledegree: 1.2, role: "Girl", rate: "0.8", pitch: "+0Hz" }
+    }
+  }
+};
+
+// ==========================================
+// 4. UI Text & Others
+// ==========================================
+export const UI_TEXT = {
+  zh: {
+    placeholder: "输入...",
+    loading: "对方正在输入...",
+    export: "导出记录",
+    exportFileName: "ToughLove_Chat",
+    reset: "重置记忆",
+    resetConfirm: "确定要重置当前人格的记忆吗？这将无法撤销。",
+    editName: "修改昵称",
+    language: "Language / 语言",
+    install: "安装应用",
+    buyCoffee: "请我喝咖啡",
+    feedback: "反馈 Bug",
+    profile: "精神档案",
+    defaultName: "旅行者",
+    giveUpConfirm: "确定要放弃专注吗？这会被记录在耻辱柱上。",
+  },
+  en: {
+    placeholder: "Type...",
+    loading: "Typing...",
+    export: "Export Chat",
+    exportFileName: "ToughLove_Chat",
+    reset: "Reset Memory",
+    resetConfirm: "Reset memory for this persona? This cannot be undone.",
+    editName: "Edit Name",
+    language: "Language",
+    install: "Install App",
+    buyCoffee: "Buy Coffee",
+    feedback: "Feedback",
+    profile: "Psyche Profile",
+    defaultName: "Traveler",
+    giveUpConfirm: "Give up focus? This will be recorded in the Hall of Shame.",
+  }
+};
+
+export const RIN_TASKS = {
+  zh: ["去做10个深蹲。", "喝一杯温水。", "整理桌面5分钟。", "闭眼深呼吸10次。", "删掉手机里的一张废图。"],
+  en: ["Do 10 squats.", "Drink water.", "Tidy desk for 5m.", "Deep breathe 10x.", "Delete 1 bad photo."]
+};
+
+export const SOL_TAUNTS = {
+  zh: ["你在干嘛？", "这就是你的专注力？", "别让我看不起你！", "回！来！", "你想当一辈子咸鱼吗？"],
+  en: ["What are you doing?", "Is this your focus?", "Don't be weak!", "COME! BACK!", "Do you want to lose?"]
+};
+export const ONBOARDING_QUESTIONS = [
+  {
+    id: 'ob_1',
+    text: { 
+      zh: "初次见面，先扫个描。你现在的精神电量是？", 
+      en: "First scan. What is your current energy level?" 
+    },
+    options: [
+      { 
+        text: { zh: "低电量模式：只想躺平，别跟我说话", en: "Low Power: Just want to rot. Leave me alone." }, 
+        value: "low_energy", 
+        dimension: "will" 
+      },
+      { 
+        text: { zh: "电压不稳：焦虑得像个漏电的插座", en: "Unstable: Anxious like a short-circuit." }, 
+        value: "high_anxiety", 
+        dimension: "chaos" 
+      }
+    ]
+  },
+  {
+    id: 'ob_2',
+    text: { 
+      zh: "在社交场合（如果非去不可的话），你是？", 
+      en: "In social situations (if forced to go), you are?" 
+    },
+    options: [
+      { 
+        text: { zh: "透明人：自带隐身力场，拒绝产生交互", en: "Ghost: Invisible field active. No interaction." }, 
+        value: "invisible", 
+        dimension: "ego" 
+      },
+      { 
+        text: { zh: "假笑机器：虽然想死，但还得维持体面", en: "Mask On: Dying inside, smiling outside." }, 
+        value: "mask", 
+        dimension: "reality" 
+      }
+    ]
+  },
+  {
+    id: 'ob_3',
+    text: { 
+      zh: "如果生活是一款游戏，你觉得现在的难度是？", 
+      en: "If life is a game, what is the current difficulty?" 
+    },
+    options: [
+      { 
+        text: { zh: "地狱模式：全是 Bug，策划（老天）是傻X", en: "Hell Mode: Full of bugs. Devs are idiots." }, 
+        value: "hard", 
+        dimension: "chaos" 
+      },
+      { 
+        text: { zh: "无聊模式：剧情平淡，NPC 全是复读机", en: "Boring Mode: Flat plot. NPCs are bots." }, 
+        value: "boring", 
+        dimension: "passion" 
+      }
+    ]
+  },
+  {
+    id: 'ob_4',
+    text: { 
+      zh: "你最讨厌听到的一句“安慰”是？", 
+      en: "The 'comfort' phrase you hate the most?" 
+    },
+    options: [
+      { 
+        text: { zh: "“都会好起来的”：好起来个鬼啊", en: "'It will get better': No it won't." }, 
+        value: "fake_hope", 
+        dimension: "truth" 
+      },
+      { 
+        text: { zh: "“你要从自己身上找原因”：找你大爷", en: "'Look at yourself': Look at you." }, 
+        value: "blame", 
+        dimension: "empathy" 
+      }
+    ]
+  },
+  {
+    id: 'ob_5',
+    text: { 
+      zh: "最后确认：你准备好接受“残酷真相”了吗？", 
+      en: "Final check: Ready for the 'Brutal Truth'?" 
+    },
+    options: [
+      { 
+        text: { zh: "来吧，别跟我客气：我就是来找虐的", en: "Hit me: I'm here for the pain." }, 
+        value: "ready", 
+        dimension: "courage" 
+      },
+      { 
+        text: { zh: "轻点下手：我玻璃心，但也想试试", en: "Be gentle: I'm fragile but curious." }, 
+        value: "hesitant", 
+        dimension: "vulnerability" 
+      }
+    ]
+  }
+];
+export const TRIAGE_TEXT = {
+  zh: {
+    title: "精神分诊台",
+    subtitle: "请直视你的“系统故障”",
+    options: [
+      { id: 'emo', label: '内耗 / 焦虑循环', desc: 'CPU 过热' },
+      { id: 'lazy', label: '躺平 / 动力缺失', desc: '低电量模式' },
+      { id: 'love', label: '恋爱脑 / 情感依赖', desc: '连接错误' },
+      { id: 'work', label: '社畜 / 意义虚无', desc: '系统卡顿' }
+    ],
+    submit: "开始诊断"
+  },
+  en: {
+    title: "Mental Triage",
+    subtitle: "Identify your malfunction",
+    options: [
+      { id: 'emo', label: 'Overthinking / Anxiety', desc: 'CPU Overheat' },
+      { id: 'lazy', label: 'Rotting / Apathy', desc: 'Low Battery' },
+      { id: 'love', label: 'Dependency / Heartbreak', desc: 'Connection Error' },
+      { id: 'work', label: 'Burnout / Nihilism', desc: 'System Lag' }
+    ],
+    submit: "Start Diagnosis"
+  }
+};
+// src/lib/constants.ts (局部更新)
+
+export const SHOP_CATALOG: ShopItem[] = [
+  // --- Consumables (消耗品) ---
+  {
+    id: 'coffee_ash',
+    name: { zh: 'Ash的冰美式', en: "Ash's Iced Americano" },
+    price: 50,
+    desc: { zh: '贿赂Ash。让他暂时停止毒舌模式（持续1次对话）。', en: 'Bribe Ash. Make him nice for 1 session.' },
+    effect: 'ASH_MOOD_SOFT',
+    type: 'consumable'
+  },
+  {
+    id: 'energy_drink',
+    name: { zh: '神经加速液', en: "Neural Drive" },
+    price: 30,
+    desc: { zh: '立刻恢复 20 点对话算力（聊天次数）。', en: 'Restore 20 Chat Energy.' },
+    effect: 'RESTORE_ENERGY',
+    type: 'consumable'
+  },
+  {
+    id: 'shadow_ticket',
+    name: { zh: '阴影显影剂', en: "Shadow Developer" },
+    price: 80,
+    desc: { zh: '解锁一次塔罗牌中“未选择”的那个选项的解析。', en: 'Reveal the unchosen path analysis.' },
+    effect: 'UNLOCK_SHADOW',
+    type: 'consumable'
+  },
+
+  // --- Visuals (皮肤/壁纸) ---
+  {
+    id: 'wp_cyber',
+    name: { zh: '全息壁纸：诊所夜雨', en: 'Wallpaper: Clinic Rain' },
+    price: 150,
+    desc: { zh: '解锁 Ash 的赛博诊所背景 (沉浸模式)。', en: 'Unlock Ashs Clinic background.' },
+    effect: 'BG_CYBER_NIGHT',
+    type: 'visual'
+  },
+  {
+    id: 'wp_rin_room',
+    name: { zh: '全息壁纸：数据中心', en: 'Wallpaper: Data Center' },
+    price: 150,
+    desc: { zh: '解锁 Rin 的机房背景。', en: 'Unlock Rins Server Room.' },
+    effect: 'BG_RIN_ROOM',
+    type: 'visual'
+  },
+  {
+    id: 'wp_sol_room',
+    name: { zh: '全息壁纸：聚变反应堆', en: 'Wallpaper: Fusion Reactor' },
+    price: 150,
+    desc: { zh: '解锁 Sol 的能量核心背景。', en: 'Unlock Sols Core.' },
+    effect: 'BG_SOL_ROOM',
+    type: 'visual'
+  },
+
+  // --- Features (功能/赦免) ---
+  {
+    id: 'pardon_sol',
+    name: { zh: 'Sol的赦免令', en: "Sol's Pardon" },
+    price: 300,
+    desc: { zh: '清除一次耻辱柱上的逃兵记录。', en: 'Remove one Shame record.' },
+    effect: 'REMOVE_SHAME',
+    type: 'feature'
+  },
+  {
+    id: 'vee_exploit',
+    name: { zh: 'Vee的后门程序', en: "Vee's Exploit" },
+    price: 500,
+    desc: { zh: '重置今日运势（强制刷新）。慎用，有副作用。', en: 'Force reset Daily Fate. High Risk.' },
+    effect: 'FORCE_RESET_FATE', // 这是一个昂贵的后悔药
+    type: 'feature'
   }
 ];
