@@ -1,0 +1,7 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M8 24H28V36H24V40H12V36H8V24Z" fill="#C084FC"/>
+<path d="M36 24H56V36H52V40H40V36H36V24Z" fill="#C084FC"/>
+<path d="M28 28H36V32H28V28Z" fill="#C084FC"/>
+<rect x="12" y="28" width="4" height="4" fill="white" class="animate-pulse"/>
+<rect x="40" y="28" width="4" height="4" fill="white" class="animate-pulse"/>
+</svg>

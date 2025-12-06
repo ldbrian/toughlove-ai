@@ -1,0 +1,6 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect x="20" y="24" width="24" height="36" rx="2" stroke="#60A5FA" stroke-width="2" fill="#1E3A8A" fill-opacity="0.3"/>
+<path d="M20 24H44V18H20V24Z" fill="#60A5FA" fill-opacity="0.5"/>
+<path d="M32 4L36 12C36 12 38 14 36 18H28C26 14 28 12 28 12L32 4Z" fill="#3B82F6" class="animate-bounce"/>
+<path d="M28 24V18" stroke="#60A5FA" stroke-width="2"/>
+</svg>

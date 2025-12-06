@@ -1,724 +1,696 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useChat } from 'ai/react';
 import { Message } from 'ai';
-import posthog from 'posthog-js';
-import html2canvas from 'html2canvas';
-
-import { 
-  Send, ChevronLeft, MoreVertical, RotateCcw, 
-  UserPen, Brain, Lock, Sparkles, Shield, 
-  Volume2, Loader2, Ban, ArrowUpRight, 
-  MessageCircle, Bug, Zap, Heart, Globe, Download, Coffee,
-  Mic, MicOff, ShoppingBag, Keyboard, Wand2, Flower2 
-} from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 
-import { PERSONAS, PersonaType, UI_TEXT, LangType, RIN_TASKS, ShopItem, SOL_TAUNTS, TAROT_DECK } from '@/lib/constants';
+// 🔥 引入组件
+import Console from '@/components/Console';
+import { DailyNewsBar } from '@/components/DailyNewsBar'; // 🔥 新增：每日小报组件
+
+// 图标库
+import { 
+  Send, ChevronLeft, MoreVertical, 
+  Package, Check, X as XIcon, User, ChevronDown, 
+  ChevronRight, ShoppingBag, Globe, Download, 
+  Coffee, Bug, RotateCcw, UserPen, Mic
+} from 'lucide-react';
+
+// 🔥 核心数据
+import { 
+  PERSONAS, PersonaType, UI_TEXT, LangType, 
+  LOOT_TABLE, MoodType 
+} from '@/lib/constants';
+import { DailyStatus } from '@/lib/dailyGenerator'; // 🔥 新增：类型定义
+
 import { getDeviceId } from '@/lib/utils';
-import { getMemory, saveMemory, getVoiceIds, saveVoiceIds } from '@/lib/storage';
-import { getLocalTimeInfo, getSimpleWeather } from '@/lib/env';
-import { getPersonaStatus } from '@/lib/status';
+import { getMemory, saveMemory } from '@/lib/storage';
 
+// UI 组件
 import { BootScreen } from '@/components/ui/BootScreen';
-import { Typewriter } from '@/components/ui/Typewriter';
-import { FocusOverlay } from '@/components/features/FocusOverlay';
-import { StickyNoteOverlay } from '@/components/features/StickyNoteOverlay';
 
-import { AnnouncementModal } from '@/components/modals/AnnouncementModal';
-import { FocusOfferModal, DonateModal, LangSetupModal, NameModal, FeedbackModal, InstallModal } from '@/components/modals/SystemModals';
-import { DailyQuoteModal, DiaryModal, ShameModal, GloryModal, EnergyModal } from '@/components/modals/ContentModals';
+// Modals
+import { DonateModal, NameModal, FeedbackModal, InstallModal } from '@/components/modals/SystemModals';
 import { ProfileModal } from '@/components/modals/ProfileModal'; 
 import { ShopModal } from '@/components/modals/ShopModal';
-import { DailyBriefingModal } from '@/components/modals/DailyBriefingModal';
-import { OnboardingModal } from '@/components/modals/OnboardingModal'; 
+import { InventoryModal } from '@/components/modals/InventoryModal';
 
-const WALLPAPER_PRESETS: Record<string, any> = {
-  'BG_CYBER_NIGHT': { backgroundImage: `url('/wallpapers/ash_clinic.jpg')`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundBlendMode: 'overlay', backgroundColor: 'rgba(0,0,0,0.7)' },
-  'BG_RIN_ROOM': { backgroundImage: `url('/wallpapers/rin_room.jpg')`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
-  'BG_SOL_ROOM': { backgroundImage: `url('/wallpapers/sol_room.jpg')`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundColor: 'rgba(0,0,0,0.8)' },
-  'BG_VEE_ROOM': { backgroundImage: `url('/wallpapers/vee_room.jpg')`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundColor: 'rgba(0,0,0,0.6)' },
-  'BG_ECHO_ROOM': { backgroundImage: `url('/wallpapers/echo_room.jpg')`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundColor: 'rgba(0,0,0,0.7)' },
+// ==========================================
+// 0. Configuration & Constants
+// ==========================================
+
+const WALLPAPER_MAP: Record<PersonaType, string> = {
+  Ash: '/wallpapers/ash_clinic.jpg',
+  Rin: '/wallpapers/rin_room.jpg',
+  Sol: '/wallpapers/sol_room.jpg',
+  Vee: '/wallpapers/vee_room.jpg',
+  Echo: '/wallpapers/echo_room.jpg',
 };
 
-const LANGUAGE_KEY = 'toughlove_language_confirmed';
-const LANG_PREF_KEY = 'toughlove_lang_preference';
-const USER_NAME_KEY = 'toughlove_user_name';
-const VISITED_KEY = 'toughlove_has_visited'; 
-const UPDATE_SEEN_KEY = 'toughlove_v2.3.0_update_seen'; 
-const FOCUS_ACTIVE_KEY = 'toughlove_focus_active';
-const FOCUS_REMAINING_KEY = 'toughlove_focus_remaining';
-const FOCUS_START_TIME_KEY = 'toughlove_focus_start_time';
-const FOCUS_TOTAL_TIME = 25 * 60; 
-const RIN_ACTIVE_KEY = 'toughlove_rin_active';
-const RIN_TASK_KEY = 'toughlove_rin_task';
-const CMD_REGEX = /(\n)?\s*(\[|【)CMD\s*:\s*FOCUS_OFFER(\]|】)/gi;
-const RIN_CMD_REGEX = /(\n)?\s*(\[|【)CMD\s*:\s*RIN_OFFER(\]|】)/gi;
-const SILENT_AUDIO = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+const MOOD_OPTIONS: { id: MoodType, label: { zh: string, en: string }, color: string, dotColor: string }[] = [
+  { id: 'low', label: { zh: '低落', en: 'Low' }, color: 'text-gray-300 border-gray-500/50 shadow-[0_0_10px_rgba(107,114,128,0.3)]', dotColor: 'bg-gray-400 shadow-[0_0_8px_gray]' },
+  { id: 'anxious', label: { zh: '焦虑', en: 'Anx' }, color: 'text-blue-300 border-blue-500/50 shadow-[0_0_10px_rgba(59,130,246,0.3)]', dotColor: 'bg-blue-400 shadow-[0_0_8px_#3b82f6]' },
+  { id: 'neutral', label: { zh: '平稳', en: 'Norm' }, color: 'text-emerald-300 border-emerald-500/50 shadow-[0_0_10px_rgba(16,185,129,0.3)]', dotColor: 'bg-emerald-400 shadow-[0_0_8px_#10b981]' },
+  { id: 'angry', label: { zh: '暴躁', en: 'Rage' }, color: 'text-red-300 border-red-500/50 shadow-[0_0_10px_rgba(239,68,68,0.3)]', dotColor: 'bg-red-500 shadow-[0_0_8px_#ef4444]' },
+  { id: 'high', label: { zh: '开心', en: 'High' }, color: 'text-yellow-300 border-yellow-500/50 shadow-[0_0_10px_rgba(234,179,8,0.3)]', dotColor: 'bg-yellow-400 shadow-[0_0_8px_#eab308]' },
+];
 
-type DailyQuote = { content: string; date: string; persona: string; };
-type ViewState = 'selection' | 'chat';
-interface QuickReply { id: string; label: string; payload: string; icon?: React.ReactNode; }
+const USER_INVENTORY_KEY = 'toughlove_inventory';
+const LANG_PREF_KEY = 'toughlove_lang_preference';
+
+type ViewState = 'lobby' | 'chat'; 
+
+// ==========================================
+// 1. Sub-Components
+// ==========================================
+
+const LootMessageCard = ({ itemId, onAccept, lang }: { itemId: string, onAccept: () => void, lang: LangType }) => {
+  const item = LOOT_TABLE[itemId];
+  const [accepted, setAccepted] = useState(false);
+  if (!item) return null;
+  const handleClick = () => { setAccepted(true); onAccept(); };
+  return (
+    <div className="my-2 w-full max-w-[260px]">
+      <div className={`relative overflow-hidden rounded-xl border ${accepted ? 'border-green-500/30 bg-green-500/5' : 'border-[#7F5CFF]/30 bg-[#7F5CFF]/5'} backdrop-blur-md transition-all duration-500`}>
+        <div className={`absolute -top-10 -right-10 w-24 h-24 ${accepted ? 'bg-green-500' : 'bg-[#7F5CFF]'} blur-[50px] opacity-20`} />
+        <div className="p-4 flex flex-col items-center gap-3">
+          <div className="text-[10px] uppercase tracking-widest opacity-60 font-bold">{lang === 'zh' ? '获得物品' : 'INCOMING ITEM'}</div>
+          <div className={`w-16 h-16 flex items-center justify-center transition-transform duration-500 ${accepted ? 'scale-0 opacity-0' : 'scale-100'}`}>
+             <img src={item.iconSvg} alt={item.name.en} className="w-full h-full drop-shadow-[0_0_10px_rgba(255,255,255,0.5)] animate-[float_4s_ease-in-out_infinite]" />
+          </div>
+          <div className="text-center z-10">
+            <div className="font-bold text-sm text-gray-100">{lang === 'zh' ? item.name.zh : item.name.en}</div>
+            <div className="text-[10px] text-gray-400 mt-1 leading-tight">{lang === 'zh' ? item.description.zh : item.description.en}</div>
+          </div>
+          {!accepted ? (
+            <button onClick={handleClick} className="mt-2 w-full py-2 flex items-center justify-center gap-2 text-xs font-bold bg-white/10 hover:bg-white/20 border border-white/10 rounded-lg transition-all active:scale-95">
+              <Package size={14} /> {lang === 'zh' ? '收下' : 'ACCEPT'}
+            </button>
+          ) : (
+            <div className="mt-2 w-full py-2 flex items-center justify-center gap-2 text-xs font-bold text-green-400 bg-green-500/10 rounded-lg animate-[pulse_0.5s_ease-out]">
+              <Check size={14} /> {lang === 'zh' ? '已放入背包' : 'ADDED'}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const GlobalMenu = ({ onClose, onEditName, onSwitchLang, onInstall, onDonate, onFeedback, onReset, ui }: any) => (
+  <div className="absolute top-16 right-6 w-48 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl z-[100] flex flex-col p-1 animate-[fadeIn_0.1s_ease-out] pointer-events-auto">
+      <div className="flex justify-between items-center px-4 py-2 border-b border-white/5">
+          <span className="text-xs font-bold text-gray-500">MENU</span>
+          <button onClick={onClose}><XIcon size={14} className="text-gray-500 hover:text-white" /></button>
+      </div>
+      <button onClick={onEditName} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-white/5 rounded-xl transition-colors text-left">
+        <UserPen size={16} /> {ui.editName}
+      </button>
+      <button onClick={onSwitchLang} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-white/5 rounded-xl transition-colors text-left">
+        <Globe size={16} /> {ui.language}
+      </button>
+      <button onClick={onInstall} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-white/5 rounded-xl transition-colors text-left">
+        <Download size={16} /> {ui.install}
+      </button>
+      <button onClick={onDonate} className="flex items-center gap-3 px-4 py-3 text-sm text-yellow-500 hover:bg-white/5 rounded-xl transition-colors text-left">
+        <Coffee size={16} /> {ui.buyCoffee}
+      </button>
+      <button onClick={onFeedback} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-white/5 rounded-xl transition-colors text-left">
+        <Bug size={16} /> {ui.feedback}
+      </button>
+      <button onClick={onReset} className="flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:bg-red-500/10 rounded-xl transition-colors text-left">
+        <RotateCcw size={16} /> {ui.reset}
+      </button>
+  </div>
+);
+
+  // 💬 Meta Toast (UI Fixed: Aligned with Mood Selector)
+const MetaToast = ({ persona, show, onClose }: { persona: PersonaType, show: boolean, onClose: () => void }) => {
+    if (!show) return null;
+    return (
+      // 修改点 1: top-24 -> top-20 (拉近垂直距离)
+      // 修改点 2: right-4 -> right-16 (向左平移，对齐情绪胶囊)
+      <div className="absolute top-20 right-16 z-50 animate-[bounce_2s_infinite] cursor-pointer max-w-[200px]" onClick={onClose}>
+          
+          {/* Triangle Tail */}
+          {/* 修改点 3: right-12 -> right-6 (微调小箭头的位置，让它指得更准) */}
+          <div className="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[8px] border-b-[#1a1a1a] absolute -top-2 right-6"></div>
+          
+          <div className="flex items-center gap-2 bg-[#1a1a1a] border border-[#7F5CFF]/30 px-3 py-2 rounded-xl shadow-[0_4px_15px_rgba(0,0,0,0.5)]">
+              <div className="w-5 h-5 rounded-full border border-white/20 overflow-hidden flex-shrink-0">
+                  <img src={PERSONAS[persona].avatar} className="w-full h-full object-cover" />
+              </div>
+              <span className="text-[10px] text-gray-200 font-bold leading-tight">来选个心情...</span>
+              <div className="p-1 hover:bg-white/10 rounded-full transition-colors flex-shrink-0">
+                  <XIcon size={10} className="text-gray-500" />
+              </div>
+          </div>
+      </div>
+    )
+  }
+
+// 🔥 Resonance Lobby (Integrated Daily News)
+interface ResonanceLobbyProps {
+  activePersona: PersonaType;
+  setActivePersona: (p: PersonaType) => void;
+  onConsoleAction: (actionId: string, label: string, contextText: string) => void;
+  onContinueChat: () => void;
+  // 🔥 新增：小报点击回调
+  onNewsClick: (status: DailyStatus) => void;
+  lastMessage: string | null;
+  lang: LangType;
+  onMenu: () => void;
+  onOpenInventory: () => void;
+  onOpenProfile: () => void;
+  onOpenShop: () => void;
+  hasNewItem: boolean;
+}
+
+const ResonanceLobby = ({ 
+    activePersona, setActivePersona, onConsoleAction, onContinueChat, onNewsClick, lastMessage,
+    lang, onMenu, onOpenInventory, onOpenProfile, onOpenShop, hasNewItem
+}: ResonanceLobbyProps) => {
+    
+    const [currentMood, setCurrentMood] = useState<MoodType>('neutral');
+    const [isMoodOpen, setIsMoodOpen] = useState(false);
+    const [showToast, setShowToast] = useState(true); 
+    
+    const [ignoreHistory, setIgnoreHistory] = useState(false);
+    const [isSwitching, setIsSwitching] = useState(false);
+    
+    const [slideDirection, setSlideDirection] = useState<'left' | 'right' | null>(null);
+    const touchStart = useRef<number | null>(null);
+
+    useEffect(() => {
+        setCurrentMood('neutral'); 
+        const timer = setTimeout(() => setIsSwitching(false), 100);
+        return () => clearTimeout(timer);
+    }, [activePersona]);
+
+    const cyclePersona = (direction: 'next' | 'prev') => {
+        setIsSwitching(true);
+        setSlideDirection(direction === 'next' ? 'right' : 'left');
+        
+        const keys = Object.keys(PERSONAS) as PersonaType[];
+        const idx = keys.indexOf(activePersona);
+        if (direction === 'next') {
+            const nextIdx = (idx + 1) % keys.length;
+            setActivePersona(keys[nextIdx]);
+        } else {
+            const prevIdx = (idx - 1 + keys.length) % keys.length;
+            setActivePersona(keys[prevIdx]);
+        }
+
+        setTimeout(() => {
+            setSlideDirection(null);
+            setIsSwitching(false); 
+        }, 300);
+    };
+
+    const onTouchStart = (e: React.TouchEvent) => { touchStart.current = e.targetTouches[0].clientX; };
+    const onTouchEnd = (e: React.TouchEvent) => {
+        if (!touchStart.current) return;
+        const touchEnd = e.changedTouches[0].clientX;
+        const distance = touchStart.current - touchEnd;
+        if (Math.abs(distance) < 30) return;
+        cyclePersona(distance > 0 ? 'next' : 'prev');
+        touchStart.current = null;
+    };
+
+    const currentMoodObj = MOOD_OPTIONS.find(m => m.id === currentMood);
+    const consoleCustomText = (!isSwitching && !ignoreHistory && lastMessage) ? lastMessage : null;
+
+    return (
+        <div 
+            className="relative flex flex-col h-full w-full max-w-md mx-auto overflow-hidden bg-black text-white"
+            onTouchStart={onTouchStart}
+            onTouchEnd={onTouchEnd}
+        >
+            {/* 1. Background */}
+            <div className="absolute inset-0 z-0 bg-black">
+                {Object.keys(WALLPAPER_MAP).map((pKey) => (
+                    <div 
+                        key={pKey}
+                        className={`absolute inset-0 bg-cover bg-center transition-opacity duration-700 ease-in-out ${activePersona === pKey ? 'opacity-50' : 'opacity-0'} scale-105`} 
+                        style={{ backgroundImage: `url(${WALLPAPER_MAP[pKey as PersonaType]})` }} 
+                    />
+                ))}
+                <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/40 to-black/95"></div>
+                <div className="absolute inset-0 bg-[url('/noise.png')] opacity-15 mix-blend-overlay pointer-events-none"></div>
+            </div>
+
+            {/* 2. Top HUD */}
+            <div className="absolute top-0 left-0 right-0 z-50 flex flex-col pointer-events-none">
+                <div className="flex justify-between items-center px-6 py-6 pointer-events-auto bg-gradient-to-b from-black/90 to-transparent">
+                    <div className="flex flex-col gap-0.5 justify-center h-9">
+                        <h1 className="text-xl font-black italic tracking-tighter text-white drop-shadow-md">TOUGH.</h1>
+                        <span className="text-[8px] tracking-[0.3em] text-gray-400 uppercase opacity-70">RESONANCE V2.8.2</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <button onClick={() => { setIsMoodOpen(!isMoodOpen); setShowToast(false); }} className="flex items-center gap-2 pl-3 pr-2 h-9 bg-white/5 border border-white/10 backdrop-blur-md rounded-full hover:bg-white/10 transition-all shadow-lg active:scale-95">
+                            <div className={`w-2 h-2 rounded-full ${currentMoodObj?.dotColor || 'bg-white'}`}></div>
+                            <span className="text-[10px] font-bold uppercase text-gray-200 tracking-wider">{currentMoodObj?.label[lang]}</span>
+                            <ChevronDown size={14} className={`text-gray-400 transition-transform duration-300 ${isMoodOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                        <button onClick={onMenu} className="w-9 h-9 flex items-center justify-center bg-white/5 rounded-full hover:bg-white/10 backdrop-blur-md border border-white/5 shadow-lg active:scale-95 transition-all">
+                            <MoreVertical size={18} className="text-gray-200"/>
+                        </button>
+                    </div>
+                </div>
+                
+            
+                <div className="pointer-events-auto transition-opacity duration-300 mt-2">
+                    <MetaToast persona={activePersona} show={showToast && !isMoodOpen} onClose={() => setShowToast(false)} />
+                </div>
+                <div className={`pointer-events-auto mx-4 overflow-hidden transition-all duration-300 ease-out ${isMoodOpen ? 'max-h-24 opacity-100 translate-y-0' : 'max-h-0 opacity-0 -translate-y-2'} -mt-4`}>
+                    <div className="flex bg-black/80 backdrop-blur-xl border border-white/10 rounded-full p-1.5 shadow-2xl gap-2 ring-1 ring-white/5">
+                        {MOOD_OPTIONS.map((mood) => {
+                            const isActive = currentMood === mood.id;
+                            return (
+                                <button 
+                                    key={mood.id}
+                                    onClick={() => { 
+                                        setCurrentMood(mood.id); 
+                                        setIgnoreHistory(true); 
+                                        setShowToast(false); 
+                                        setTimeout(() => setIsMoodOpen(false), 300); 
+                                    }} 
+                                    className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-wider rounded-full transition-all duration-300 border
+                                        ${isActive ? `${mood.color} scale-105 z-10` : 'bg-transparent border-transparent text-gray-500 hover:bg-white/5 hover:text-gray-300'}
+                                    `}
+                                >
+                                    {lang === 'zh' ? mood.label.zh : mood.label.en}
+                                </button>
+                            )
+                        })}
+                    </div>
+                </div>
+            </div>
+
+            {/* 3. Middle Section */}
+            <div className="flex-1 relative z-10 flex flex-col items-center justify-center pointer-events-none gap-4 pt-12">
+                {/* 🔥🔥🔥 新位置：每日小报 (垂直滚动版) */}
+                {/* 放在这里，就在 Avatar 的正上方 */}
+                <div className="pointer-events-auto z-40 w-full mb-2 animate-[fadeIn_0.5s_ease-out_0.5s_forwards] opacity-0">
+                    <DailyNewsBar onItemClick={onNewsClick} />
+                </div>
+                <div className="absolute inset-x-4 top-[40%] -translate-y-1/2 flex justify-between items-center pointer-events-auto">
+                    <button onClick={() => cyclePersona('prev')} className="p-2 hover:bg-white/5 rounded-full transition-colors active:scale-95"><ChevronLeft size={32} className="text-white/40 hover:text-white/80" /></button>
+                    <button onClick={() => cyclePersona('next')} className="p-2 hover:bg-white/5 rounded-full transition-colors active:scale-95"><ChevronRight size={32} className="text-white/40 hover:text-white/80" /></button>
+                </div>
+                
+                <div className="relative w-48 h-48 z-20 pointer-events-auto mb-8">
+                    <div className="absolute -inset-4 rounded-full border border-white/5 bg-gradient-to-b from-white/5 to-transparent animate-[spin_10s_linear_infinite] opacity-50"></div>
+                    <div className="w-full h-full rounded-full overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.6)] border-[1px] border-white/20 bg-black relative z-10 ring-1 ring-white/10">
+                         <div key={activePersona} className={`w-full h-full ${slideDirection ? (slideDirection === 'right' ? 'animate-[slideInRight_0.3s]' : 'animate-[slideInLeft_0.3s]') : ''}`}>
+                             <img src={PERSONAS[activePersona].avatar} className="w-full h-full object-cover scale-110" />
+                         </div>
+                         <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent mix-blend-overlay"></div>
+                    </div>
+                    <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center z-30 w-max">
+                         <div className="px-3 py-0.5 bg-black/80 backdrop-blur-md border border-white/10 rounded-full shadow-lg mb-1">
+                             <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${PERSONAS[activePersona].color}`}>
+                                 {PERSONAS[activePersona].name}
+                             </span>
+                         </div>
+                    </div>
+                </div>
+                
+                <div className={`pointer-events-auto w-full relative z-30 transition-opacity duration-200 ${isSwitching ? 'opacity-0' : 'opacity-100'}`}>
+                    <Console 
+                        key={activePersona} 
+                        currentRole={activePersona}
+                        currentMood={currentMood}
+                        onAction={onConsoleAction}
+                        customText={consoleCustomText}
+                        onContinue={onContinueChat}
+                    />
+                </div>
+            </div>
+
+            {/* Bottom Dock */}
+            <div className="relative z-20 flex justify-between items-center px-10 pb-8 w-full max-w-md mx-auto pointer-events-auto">
+                    <button onClick={onOpenInventory} className="flex flex-col items-center gap-1 text-gray-500 hover:text-white transition-colors group p-2 relative">
+                        <Package size={22} className={hasNewItem ? "text-[#7F5CFF]" : "opacity-60"} />
+                        {hasNewItem && <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full animate-ping" />}
+                    </button>
+                    <button onClick={onOpenShop} className="flex flex-col items-center gap-1 text-gray-500 hover:text-white transition-colors group p-2">
+                        <ShoppingBag size={22} className="opacity-60" />
+                    </button>
+                    <button onClick={onOpenProfile} className="flex flex-col items-center gap-1 text-gray-500 hover:text-white transition-colors group p-2">
+                        <User size={22} className="opacity-60" />
+                    </button>
+            </div>
+        </div>
+    );
+};
+
+// ==========================================
+// 2. MAIN PAGE COMPONENT
+// ==========================================
 
 export default function Home() {
-  // ----------------------------------------------------------------
-  // 1. State Declaration
-  // ----------------------------------------------------------------
   const [mounted, setMounted] = useState(false);
-  const [isCheckingFate, setIsCheckingFate] = useState(false); 
-  const [view, setView] = useState<ViewState>('selection');
+  const [view, setView] = useState<ViewState>('lobby'); 
   const [activePersona, setActivePersona] = useState<PersonaType>('Ash');
   const [lang, setLang] = useState<LangType>('zh');
   
-  // Modals State
-  const [showLangSetup, setShowLangSetup] = useState(false);
-  const [showAnnouncement, setShowAnnouncement] = useState(false);
-  const [showBriefing, setShowBriefing] = useState(false);
-  const [showOnboarding, setShowOnboarding] = useState(false); 
-  const [showQuote, setShowQuote] = useState(false);
-  const [showInstallModal, setShowInstallModal] = useState(false); 
+  const [isSwitchingPersona, setIsSwitchingPersona] = useState(false);
+  
+  // 用于暂存用户 Console 的选择
+  const [initAction, setInitAction] = useState<{ id: string; label: string } | null>(null);
+  // 🔥 新增：用于暂存小报点击的上下文
+  const [pendingNews, setPendingNews] = useState<DailyStatus | null>(null);
+
   const [showMenu, setShowMenu] = useState(false);
-  const [showDonateModal, setShowDonateModal] = useState(false);
-  const [showProfile, setShowProfile] = useState(false);
-  const [showDiary, setShowDiary] = useState(false);
-  const [showNameModal, setShowNameModal] = useState(false);
-  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
-  const [showShameModal, setShowShameModal] = useState(false);
-  const [showGloryModal, setShowGloryModal] = useState(false);
-  const [showEnergyModal, setShowEnergyModal] = useState(false); 
   const [showShop, setShowShop] = useState(false);
-  const [showFocusOffer, setShowFocusOffer] = useState(false);
-
-  // Features State
-  const [userRin, setUserRin] = useState(0); 
-  const [isBuying, setIsBuying] = useState(false);
-  const [inventory, setInventory] = useState<string[]>([]);
-  const [wallpapers, setWallpapers] = useState<Record<string, string>>({});
-  const [hasSeenShop, setHasSeenShop] = useState(false); 
-  const [forcedBriefingSpeaker, setForcedBriefingSpeaker] = useState<PersonaType | null>(null);
-
-  const [isFocusActive, setIsFocusActive] = useState(false);
-  const [focusRemaining, setFocusRemaining] = useState(0);
-  const [isFocusPaused, setIsFocusPaused] = useState(false);
-  const [focusWarning, setFocusWarning] = useState<string | null>(null);
-  const [tauntIndex, setTauntIndex] = useState(0);
-  const [showStickyNote, setShowStickyNote] = useState(false);
-  const [currentStickyTask, setCurrentStickyTask] = useState("");
-
-  const [isRecording, setIsRecording] = useState(false);
-  const [chatInputMode, setChatInputMode] = useState<'guided' | 'free'>('guided');
-  const [lastBriefingResult, setLastBriefingResult] = useState<any>(null);
-  const [tempBriefingIntro, setTempBriefingIntro] = useState<string | null>(null);
+  const [showInventory, setShowInventory] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [showNameModal, setShowNameModal] = useState(false);
+  const [showDonateModal, setShowDonateModal] = useState(false);
+  const [showInstallModal, setShowInstallModal] = useState(false);
   
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-
-  // Data State
-  const [quoteData, setQuoteData] = useState<DailyQuote | null>(null);
-  const [briefingData, setBriefingData] = useState<any>(null);
-  const [profileData, setProfileData] = useState<{tags: string[], diagnosis: string, radar?: number[], achievements?: any[]} | null>(null);
-  const [shameData, setShameData] = useState<{name: string, duration: number, date: string} | null>(null);
-  const [gloryData, setGloryData] = useState<{name: string, task: string, date: string} | null>(null);
-  const [hasNewGlory, setHasNewGlory] = useState(false); 
-  const [gloryUpdateTrigger, setGloryUpdateTrigger] = useState(0);
-
-  // Inputs
-  const [feedbackText, setFeedbackText] = useState("");
-  const [userName, setUserName] = useState("");
+  const [inventory, setInventory] = useState<string[]>([]); 
+  const [hasNewItem, setHasNewItem] = useState(false); 
+  
+  const [userName, setUserName] = useState("Traveler");
   const [tempName, setTempName] = useState("");
-  const [interactionCount, setInteractionCount] = useState(0);
-  const [tick, setTick] = useState(0);
-  const [currentWeather, setCurrentWeather] = useState("");
-
-  const [isQuoteLoading, setIsQuoteLoading] = useState(false);
-  const [isGeneratingImg, setIsGeneratingImg] = useState(false);
-  const [isProfileLoading, setIsProfileLoading] = useState(false);
   
-  // Audio & Voice
-  const [playingMsgId, setPlayingMsgId] = useState<string | null>(null);
-  const [voiceMsgIds, setVoiceMsgIds] = useState<Set<string>>(new Set()); 
-  const [forceVoice, setForceVoice] = useState(false);
-  const [voiceTrial, setVoiceTrial] = useState(3);
-
-  // Refs
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const quoteCardRef = useRef<HTMLDivElement>(null);
-  const viralPosterRef = useRef<HTMLDivElement>(null); 
-  const profileCardRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
   const ui = UI_TEXT[lang];
   const currentP = PERSONAS[activePersona];
 
-  // ==========================================
-  // 2. Helper Functions & Action Handlers
-  // ==========================================
-  
-  const getTrustKey = (p: string) => `toughlove_trust_${p}`;
-  const getLevelInfo = (count: number) => {
-    if (count < 50) return { level: 1, icon: <Shield size={12} />, bgClass: 'bg-[#0a0a0a]', borderClass: 'border-white/5', barColor: 'bg-gray-500', glowClass: '' };
-    if (count < 100) return { level: 2, icon: <Zap size={12} />, bgClass: 'bg-gradient-to-b from-[#0f172a] to-[#0a0a0a]', borderClass: 'border-blue-500/30', barColor: 'bg-blue-500', glowClass: 'shadow-[0_0_30px_rgba(59,130,246,0.1)]' };
-    return { level: 3, icon: <Heart size={12} />, bgClass: 'bg-[url("/grid.svg")] bg-fixed bg-[length:50px_50px] bg-[#0a0a0a]', customStyle: { background: 'radial-gradient(circle at 50% -20%, #1e1b4b 0%, #0a0a0a 60%)' }, borderClass: 'border-[#7F5CFF]/40', barColor: 'bg-[#7F5CFF]', glowClass: 'shadow-[0_0_40px_rgba(127,92,255,0.15)]' };
-  };
-
-  const handlePlayAudio = async (text: string, msgId: string) => { 
-    if (playingMsgId === msgId) { if (audioRef.current) audioRef.current.pause(); setPlayingMsgId(null); return; }
-    if (audioRef.current) audioRef.current.pause();
-    setPlayingMsgId(msgId);
-    try {
-      const p = PERSONAS[activePersona];
-      const currentLang = (lang === 'en' || lang === 'zh') ? lang : 'zh';
-      const vConfig = p.voiceConfig[currentLang];
-      if (!vConfig) { console.warn("Voice config missing"); setPlayingMsgId(null); return; }
-      const res = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: text, voice: vConfig.voice, style: vConfig.style, styledegree: vConfig.styledegree, role: vConfig.role, rate: vConfig.rate, pitch: vConfig.pitch, lang: currentLang === 'zh' ? 'zh-CN' : 'en-US' }), });
-      const data = await res.json();
-      if (!res.ok || !data.audio) throw new Error(data.error || 'TTS Failed');
-      const audioSrc = `data:audio/mp3;base64,${data.audio}`;
-      if (audioRef.current) { audioRef.current.src = audioSrc; audioRef.current.onended = () => setPlayingMsgId(null); audioRef.current.play().catch(e => { console.error("AutoPlay blocked:", e); setPlayingMsgId(null); }); }
-    } catch (e) { console.error("Audio Play Error:", e); setPlayingMsgId(null); }
-  };
-
-  const triggerRinProtocol = () => { 
-    if (isFocusActive) return; 
-    const tasks = RIN_TASKS[lang] || RIN_TASKS['zh']; 
-    const randomTask = tasks[Math.floor(Math.random() * tasks.length)]; 
-    setCurrentStickyTask(randomTask); 
-    setShowStickyNote(true); 
-    if (typeof window !== 'undefined') { 
-      localStorage.setItem(RIN_ACTIVE_KEY, 'true'); 
-      localStorage.setItem(RIN_TASK_KEY, randomTask); 
-    } 
-  };
-
-  const openShopHandler = () => { 
-    setShowShop(true); 
-    setHasSeenShop(true); 
-    localStorage.setItem('toughlove_has_seen_shop', 'true'); 
-  };
-
-  const currentBgStyle = (view === 'chat' && wallpapers[activePersona] && WALLPAPER_PRESETS[wallpapers[activePersona]]) ? WALLPAPER_PRESETS[wallpapers[activePersona]] : {};
-  const levelInfo = getLevelInfo(interactionCount);
-  const progressPercent = Math.min(100, (interactionCount / 50) * 100);
-
-  // ----------------------------------------------------------------
-  // 3. Core Hooks (useChat)
-  // ----------------------------------------------------------------
   const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages, setInput, append } = useChat({
     api: '/api/chat',
-    onError: (err) => console.error("Stream Error:", err),
     onFinish: (message) => {
-      const newCount = interactionCount + 1;
-      setInteractionCount(newCount);
-      localStorage.setItem(getTrustKey(activePersona), newCount.toString());
-      
-      const isAI = message.role === 'assistant';
-
-      if (isAI) { 
-          if (CMD_REGEX.test(message.content)) setShowFocusOffer(true); 
-          if (RIN_CMD_REGEX.test(message.content)) triggerRinProtocol(); 
-      }
-      
-      // Voice Logic
-      const isLevel2 = newCount >= 50; 
-      let shouldPlay = false;
-      if (forceVoice) { 
-          if (isLevel2) shouldPlay = true; 
-          else if (voiceTrial > 0) { const left = voiceTrial - 1; setVoiceTrial(left); localStorage.setItem('toughlove_voice_trial', left.toString()); shouldPlay = true; if (left === 0) setForceVoice(false); } else { shouldPlay = false; setForceVoice(false); } 
-      } else { 
-          const isLucky = Math.random() < 0.3; const isShort = message.content.length < 120; if (isLevel2 && isLucky && isShort) shouldPlay = true; 
-      }
-      
-      if (isAI && shouldPlay) { 
-          setVoiceMsgIds(prev => { const n = new Set(prev).add(message.id); saveVoiceIds(activePersona, Array.from(n)); return n; }); 
-          const cleanText = message.content.replace(CMD_REGEX, '').replace(RIN_CMD_REGEX, ''); 
-          handlePlayAudio(cleanText, message.id); 
-      }
+      // Chat complete logic
     }
   });
 
-  // ----------------------------------------------------------------
-  // 4. Other Handlers
-  // ----------------------------------------------------------------
-  const switchLang = (l: LangType) => { setLang(l); localStorage.setItem(LANG_PREF_KEY, l); };
-  const confirmLanguage = (l: LangType) => { setLang(l); localStorage.setItem(LANG_PREF_KEY, l); localStorage.setItem(LANGUAGE_KEY, 'true'); setShowLangSetup(false); };
-  const saveUserName = () => { setUserName(tempName.trim()); localStorage.setItem(USER_NAME_KEY, tempName.trim()); setShowNameModal(false); };
-  const goBMAC = () => { window.open('https://www.buymeacoffee.com/ldbrian', '_blank'); };
-  const handleEditName = () => { setTempName(userName); setShowNameModal(true); setShowMenu(false); };
-  const handleDonate = () => { setShowDonateModal(true); setShowMenu(false); };
-  const handleFeedbackSubmit = () => { if (!feedbackText.trim()) return; alert('Thanks!'); setFeedbackText(""); setShowFeedbackModal(false); };
-  const handleInstall = () => { setShowMenu(false); if (deferredPrompt) { deferredPrompt.prompt(); deferredPrompt.userChoice.then((choiceResult: any) => { setDeferredPrompt(null); }); } else { setShowInstallModal(true); } };
-
-  const selectPersona = async (persona: PersonaType) => { 
-      setForceVoice(false); 
-      setActivePersona(persona); 
-      setView('chat'); 
-      setShowMenu(false); 
-      const localHistory = getMemory(persona); 
-      const localVoiceIds = getVoiceIds(persona); 
-      setMessages(localHistory); 
-      setVoiceMsgIds(new Set(localVoiceIds)); 
-  };
-  const backToSelection = () => { setView('selection'); setShowMenu(false); setTick(tick + 1); };
-
-  const checkDailyBriefing = useCallback(() => { const today = new Date().toISOString().split('T')[0]; const lastBriefingDate = localStorage.getItem('toughlove_briefing_date'); const hasVisited = localStorage.getItem(VISITED_KEY); if (lastBriefingDate !== today && hasVisited) { setIsCheckingFate(true); setTimeout(() => { setShowBriefing(true); setIsCheckingFate(false); localStorage.setItem('toughlove_briefing_date', today); }, 1000); } }, []);
-  const initStartupSequence = useCallback(() => { const hasSeenUpdate = localStorage.getItem(UPDATE_SEEN_KEY); if (!hasSeenUpdate) { setTimeout(() => setShowAnnouncement(true), 500); } else { checkDailyBriefing(); } }, [checkDailyBriefing]);
-  const handleAnnouncementClose = () => { setShowAnnouncement(false); localStorage.setItem(UPDATE_SEEN_KEY, 'true'); localStorage.setItem('toughlove_broadcast_closed_v2.3', 'true'); setTimeout(() => checkDailyBriefing(), 300); };
-
-  // 🔥 [FIX] 修复 Onboarding 后的竞态条件
-  const handleOnboardingFinish = (profile: any) => { 
-      localStorage.setItem('toughlove_user_profile', JSON.stringify(profile)); 
-      localStorage.setItem(VISITED_KEY, 'true'); 
-      localStorage.setItem(UPDATE_SEEN_KEY, 'true'); 
-      setForcedBriefingSpeaker(profile.dominant); 
-      setShowOnboarding(false); 
-      // 增加延迟，防止两个全屏 Modal 冲突
-      setTimeout(() => { setShowBriefing(true); }, 800); 
+  const handleSwitchPersona = (p: PersonaType) => {
+      setIsSwitchingPersona(true); 
+      setMessages([]); 
+      setActivePersona(p); 
   };
 
-  const syncToCloud = async (currentMessages: any[]) => { try { await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: getDeviceId(), persona: activePersona, messages: currentMessages }) }); } catch (e) {} };
-  const handleReset = () => { if (confirm(ui.resetConfirm)) { setMessages([]); saveMemory(activePersona, []); localStorage.removeItem(`toughlove_voice_ids_${activePersona}`); setVoiceMsgIds(new Set()); syncToCloud([]); setShowMenu(false); setInteractionCount(0); localStorage.setItem(getTrustKey(activePersona), '0'); const p = PERSONAS[activePersona]; const greetings = p.greetings[lang]; const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)]; setTimeout(() => { const welcomeMsg: Message = { id: Date.now().toString(), role: 'assistant', content: randomGreeting }; setMessages([welcomeMsg]); saveMemory(activePersona, [welcomeMsg]); syncToCloud([welcomeMsg]); }, 100); } };
-  const handleExport = () => { if (messages.length === 0) return; const dateStr = new Date().toLocaleString(); const header = `================================\n${ui.exportFileName}\nDate: ${dateStr}\nPersona: ${currentP.name}\nUser: ${userName || 'Anonymous'}\n================================\n\n`; const body = messages.map(m => { const role = m.role === 'user' ? (userName || 'ME') : currentP.name.toUpperCase(); return `[${role}]:\n${m.content.replace(/\|\|\|/g, '\n')}\n`; }).join('\n--------------------------------\n\n'); const blob = new Blob([header + body], { type: 'text/plain;charset=utf-8' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${ui.exportFileName}_${activePersona}_${new Date().toISOString().split('T')[0]}.txt`; a.click(); URL.revokeObjectURL(url); setShowMenu(false); };
+  // 自动保存记忆 (仅在非切换状态下)
+  useEffect(() => {
+    if (!isSwitchingPersona && messages.length > 0) {
+       saveMemory(activePersona, messages);
+       
+       const lastMsg = messages[messages.length - 1];
+       if (lastMsg.role === 'assistant') {
+         const iconRegex = /{{icon:([a-zA-Z0-9_]+)}}/g;
+         let match;
+         while ((match = iconRegex.exec(lastMsg.content)) !== null) {
+           handleUnlockItem(match[1]);
+         }
+       }
+    }
+  }, [messages, activePersona, isSwitchingPersona]); 
 
-  const handleClaimSalary = async (amount: number) => { if (amount <= 0) return; setUserRin(prev => prev + amount); try { const currentBalance = parseInt(localStorage.getItem('toughlove_rin_balance') || '0'); localStorage.setItem('toughlove_rin_balance', (currentBalance + amount).toString()); await fetch('/api/wallet/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: getDeviceId(), amount: amount, reason: 'daily_briefing' }) }); } catch (e) { console.warn("Salary sync failed"); } };
-  const handleBriefingDataLoaded = useCallback((data: any) => { setBriefingData((prev: any) => { if (JSON.stringify(prev) === JSON.stringify(data)) return prev; return data; }); }, []);
-  const handleBriefingJump = (payload: any) => { const { persona, systemContext, visibleReaction, archetype } = payload; const history = getMemory(persona); history.push({ id: Date.now().toString(), role: 'system', content: systemContext } as any); saveMemory(persona, history); selectPersona(persona); setTempBriefingIntro(visibleReaction); setChatInputMode('guided'); setLastBriefingResult({ persona, archetype }); };
-  const handleBribeSuccess = async () => { setShowDonateModal(false); localStorage.setItem('toughlove_is_patron', 'true'); const bribeMsg: Message = { id: Date.now().toString(), role: 'user', content: lang === 'zh' ? "☕️ (给你买了一杯热咖啡，请笑纳...)" : "☕️ (Bought you a coffee. Be nice...)" }; await append(bribeMsg); };
-  
-  const handleBuyItem = async (item: ShopItem) => { setIsBuying(true); try { const res = await fetch('/api/shop/buy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: getDeviceId(), itemId: item.id }) }); let newBalance = userRin; if (res.ok) { const data = await res.json(); newBalance = data.newBalance; } else { if (userRin >= item.price) { newBalance = userRin - item.price; localStorage.setItem('toughlove_rin_balance', newBalance.toString()); } else { throw new Error('Insufficient funds (Local)'); } } setUserRin(newBalance); setInventory(prev => [...prev, item.id]); if (item.effect === 'ASH_MOOD_SOFT') { localStorage.setItem('toughlove_ash_mood', 'soft'); alert(lang === 'zh' ? 'Ash 喝了咖啡，心情变好了。' : 'Ash drank the latte.'); } else if (item.type === 'visual' && item.effect && WALLPAPER_PRESETS[item.effect]) { setWallpapers(prev => { const newMap = { ...prev, [activePersona]: item.effect! }; localStorage.setItem('toughlove_wallpapers_map', JSON.stringify(newMap)); return newMap; }); alert(lang === 'zh' ? `已应用专属背景：${item.name.zh}` : `Applied background: ${item.name.en}`); } else if (item.effect === 'REMOVE_SHAME') { alert(lang === 'zh' ? 'Sol 的赦免生效。耻辱记录已清除。' : 'Pardon granted. Shame cleared.'); } setShowShop(false); } catch (e) { alert(lang === 'zh' ? '交易失败：余额不足' : 'Transaction Failed'); } finally { setIsBuying(false); } };
-  
-  const downloadPoster = async () => { if (!viralPosterRef.current) return; setIsGeneratingImg(true); try { const c = await html2canvas(viralPosterRef.current, { backgroundColor: '#000', scale: 3, useCORS: true, allowTaint: true, logging: true } as any); const url = c.toDataURL("image/png"); const a = document.createElement('a'); a.href = url; a.download = `ToughLove_Fate_${new Date().toISOString().slice(0,10)}.png`; a.click(); } catch (e) { console.error("Save failed:", e); alert("保存失败 (CORS Error)"); } finally { setIsGeneratingImg(false); } };
-  const downloadProfileCard = () => downloadCard(profileCardRef, `ToughLove_Profile.png`);
-  const downloadShameCard = (ref: any) => downloadCard(ref, `ToughLove_Shame.png`);
-  const downloadGloryCard = (ref: any) => downloadCard(ref, `ToughLove_Glory.png`);
-  const downloadCard = async (ref: any, name: string) => { if (!ref.current) return; setIsGeneratingImg(true); try { const c = await html2canvas(ref.current, { backgroundColor: '#000', scale: 3, useCORS: true, allowTaint: true } as any); const url = c.toDataURL("image/png"); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); } catch (e) { console.error(e); } finally { setIsGeneratingImg(false); } };
+  // 加载记忆
+  useEffect(() => {
+    const history = getMemory(activePersona);
+    if (history && history.length > 0) {
+        setMessages(history);
+    } else {
+        setMessages([]); 
+    }
+    setIsSwitchingPersona(false);
+  }, [activePersona, setMessages]);
 
-  const handleOpenProfile = async () => { setShowMenu(false); setShowProfile(true); setIsProfileLoading(true); try { const res = await fetch('/api/profile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: getDeviceId(), language: lang }), }); let data = await res.json(); if (!data.radar || data.radar.length === 0) { const base = Math.min(80, interactionCount + 30); data.radar = Array(5).fill(0).map(() => base + Math.random() * 20 - 10); } if (!data.tags || data.tags.length === 0) { data.tags = [lang === 'zh' ? "神秘访客" : "Unknown Visitor"]; } setProfileData(data); } catch (e) { console.error(e); setProfileData({ tags: ["System Error"], diagnosis: "无法连接至精神网络。", radar: [50, 50, 50, 50, 50] }); } finally { setIsProfileLoading(false); } };
-  
-  const startVoiceInput = () => { const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition; if (!SpeechRecognition) { alert("Browser does not support voice."); return; } const recognition = new SpeechRecognition(); recognition.lang = lang === 'zh' ? 'zh-CN' : 'en-US'; recognition.onstart = () => setIsRecording(true); recognition.onend = () => setIsRecording(false); recognition.onresult = (event: any) => { const transcript = event.results[0][0].transcript; if (showDiary) alert(`Voice: ${transcript}`); else setInput(prev => prev + transcript); }; recognition.start(); };
-  const handleQuickReply = async (reply: QuickReply) => { if (audioRef.current) { audioRef.current.src = SILENT_AUDIO; audioRef.current.play().catch(err => {}); } await append({ id: Date.now().toString(), role: 'user', content: reply.payload }); };
-  
-  // 🔥 [FIX] 拦截用户输入，触发特定功能
+
+  const handleUnlockItem = (itemId: string) => {
+    if (inventory.includes(itemId)) return;
+    const newInventory = [...inventory, itemId];
+    setInventory(newInventory);
+    setHasNewItem(true);
+    localStorage.setItem(USER_INVENTORY_KEY, JSON.stringify(newInventory));
+  };
+
+  const router = useRouter(); 
+
+  const lastAIMessageRaw = useMemo(() => {
+    if (isSwitchingPersona) return null;
+    const lastMsg = messages[messages.length - 1];
+    return (lastMsg?.role === 'assistant') ? lastMsg.content : null;
+  }, [messages, isSwitchingPersona]);
+
+  const handleConsoleAction = (actionId: string, label: string, contextText: string) => {
+    const hookMsg: Message = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: contextText,
+    };
+    
+    setMessages(prev => [...prev, hookMsg]);
+    setInitAction({ id: actionId, label });
+    setView('chat');
+  };
+
+  const handleContinueChat = () => {
+      setView('chat');
+  };
+
+  // 🔥 核心交互 3：点击每日小报
+  const handleDailyNewsClick = (status: DailyStatus) => {
+    // 1. 如果点击的不是当前人格，先切换 (这会触发 useEffect 加载历史)
+    if (activePersona !== status.persona) {
+        handleSwitchPersona(status.persona);
+    }
+    // 2. 将新闻内容暂存，等待 useEffect 注入
+    setPendingNews(status);
+    // 3. 跳转
+    setView('chat');
+  };
+
+  // 生成符合人设的“小报回复”
+const getNewsReaction = (persona: PersonaType, content: string) => {
+    // 去掉 [情绪] 标签，只保留正文
+    const cleanContent = content.replace(/\[.*?\]/, '').trim();
+    
+    switch (persona) {
+        case 'Ash':
+            return `“${cleanContent}”\n\n看到了？这就是我今天的遭遇。如果你是来嘲笑我的，出门左转；如果是来提供解决方案的，说吧。`;
+        case 'Rin':
+            return `“${cleanContent}”\n\n感觉到了吗？这个频率... 我刚把这条信号发出去，你就来了。是巧合吗？`;
+        case 'Sol':
+            return `“${cleanContent}”\n\n嘿！你看到我的状态啦！是不是很那个！快告诉我，你今天过得怎么样？`;
+        case 'Vee':
+            return `“${cleanContent}”\n\n被你发现了。这服务器的随机事件算法绝对有 Bug。你也遇到这种破事了吗？`;
+        case 'Echo':
+            return `“${cleanContent}”\n\n你看见了那个瞬间... 每一个瞬间都是未来的倒影。你从中读出了什么？`;
+        default:
+            return `“${cleanContent}”\n\n你看到了这个？说说你的想法。`;
+    }
+};
+
+  // 🔥 队列处理：自动发送 (Console & DailyNews)
+  useEffect(() => {
+    if (view === 'chat') {
+        // A. 处理 Console 选项
+        if (initAction) {
+            append({
+                role: 'user',
+                content: initAction.label, 
+            }, {
+                body: { persona: activePersona, language: lang, actionId: initAction.id }
+            });
+            setInitAction(null);
+        }
+        
+        // B. 处理 Daily News 注入
+        // 确保人格已经切换到位 (activePersona === pendingNews.persona)
+        if (pendingNews && activePersona === pendingNews.persona && !isSwitchingPersona) {
+            const newsMsg: Message = {
+                id: Date.now().toString(),
+                role: 'assistant',
+                // AI 主动发起话题 
+                content: getNewsReaction(activePersona, pendingNews.content), 
+                createdAt: new Date(),
+            };
+            
+            // 追加到历史记录末尾 (保留之前的记忆)
+            setMessages(prev => [...prev, newsMsg]);
+            setPendingNews(null); // 清除队列
+        }
+    }
+  }, [view, initAction, pendingNews, activePersona, isSwitchingPersona, append, lang, setMessages]);
+
+
   const onFormSubmit = (e: React.FormEvent) => { 
       e.preventDefault(); 
       if (!input.trim()) return;
+      handleSubmit(e, { options: { body: { persona: activePersona, language: lang } } }); 
+  };
 
-      const lowerInput = input.toLowerCase();
-      
-      // Sol: 触发专注模式
-      if (activePersona === 'Sol' && (lowerInput.includes('focus') || lowerInput.includes('专注'))) {
-         setShowFocusOffer(true);
-         setInput('');
-         return;
-      }
-      
-      // Rin: 触发便利贴
-      if (activePersona === 'Rin' && (lowerInput.includes('task') || lowerInput.includes('便利贴'))) {
-         triggerRinProtocol();
-         setInput('');
-         return;
-      }
-      
-      if (audioRef.current) { audioRef.current.src = SILENT_AUDIO; audioRef.current.play().catch(err => {}); } 
-      const timeData = getLocalTimeInfo(); 
-      const envInfo = { time: timeData.localTime, weekday: lang === 'zh' ? timeData.weekdayZH : timeData.weekdayEN, phase: timeData.lifePhase, weather: currentWeather }; 
-      const ashMood = localStorage.getItem('toughlove_ash_mood'); 
-      handleSubmit(e, { options: { body: { persona: activePersona, language: lang, interactionCount, userName, envInfo, userId: getDeviceId(), activeBuffs: ashMood === 'soft' ? ['ASH_MOOD_SOFT'] : [] } } }); 
-  };
-  
-  const endFocusMode = () => { if (typeof window !== 'undefined') { localStorage.removeItem(FOCUS_ACTIVE_KEY); localStorage.removeItem(FOCUS_REMAINING_KEY); } setIsFocusActive(false); setIsFocusPaused(false); };
-  const startFocusMode = () => { setShowFocusOffer(false); setIsFocusActive(true); setFocusRemaining(FOCUS_TOTAL_TIME); if (typeof window !== 'undefined') { localStorage.setItem(FOCUS_ACTIVE_KEY, 'true'); localStorage.setItem(FOCUS_REMAINING_KEY, FOCUS_TOTAL_TIME.toString()); localStorage.setItem(FOCUS_START_TIME_KEY, Date.now().toString()); } posthog.capture('focus_mode_start'); };
-  
-  // 🔥 [FIX] 确保数据写入后再弹窗
-  const giveUpFocus = () => { 
-      if (confirm(ui.giveUpConfirm)) { 
-          const startTime = parseInt(localStorage.getItem(FOCUS_START_TIME_KEY) || Date.now().toString()); 
-          const durationMin = Math.max(1, Math.floor((Date.now() - startTime) / 60000)); 
-          setShameData({ name: userName || ui.defaultName, duration: durationMin, date: new Date().toLocaleDateString() }); 
-          endFocusMode(); 
-          setTimeout(() => setShowShameModal(true), 100); 
-      } 
-  };
-  
-  const handleStickyComplete = async () => { setShowStickyNote(false); if (typeof window !== 'undefined') { localStorage.removeItem(RIN_ACTIVE_KEY); localStorage.removeItem(RIN_TASK_KEY); } const shortTask = currentStickyTask.split('。')[0]; try { await fetch('/api/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: getDeviceId(), type: 'glory_rin', content: shortTask, persona: 'Rin' }) }); setHasNewGlory(true); setGloryUpdateTrigger(prev => prev + 1); setUserRin(prev => prev + 50); } catch (e) { console.error(e); } setGloryData({ name: userName || ui.defaultName, task: shortTask, date: new Date().toLocaleDateString() }); setTimeout(() => setShowGloryModal(true), 600); };
-  const handleStickyGiveUp = () => { setShowStickyNote(false); localStorage.removeItem(RIN_ACTIVE_KEY); localStorage.removeItem(RIN_TASK_KEY); };
-  const triggerRinFromStation = () => { setShowEnergyModal(false); triggerRinProtocol(); };
-  
-  // 🔥 [FIX] 确保数据就绪
-  const openEnergyStation = () => { 
-      setHasNewGlory(false); 
-      setTimeout(() => setShowEnergyModal(true), 50); 
-  };
-  
-  const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); };
-  const formatMentions = (text: string) => text.replace(/\b(Ash|Rin|Sol|Vee|Echo)\b/g, (match) => `[${match}](#trigger-${match})`);
-  const getPersonaPreview = (pKey: PersonaType) => { if (!mounted) return { isChatted: false, lastMsg: "", trust: 0, time: "" }; const history = getMemory(pKey); const trust = parseInt(localStorage.getItem(getTrustKey(pKey)) || '0'); if (history.length > 0) { const last = history[history.length - 1]; const visibleMsgs = history.filter(m => m.role !== 'system'); const lastVisible = visibleMsgs[visibleMsgs.length - 1]; return { isChatted: true, lastMsg: lastVisible ? ((lastVisible.role === 'user' ? 'You: ' : '') + lastVisible.content.split('|||')[0]) : "...", trust, time: "Active" }; } return { isChatted: false, lastMsg: PERSONAS[pKey].greetings[lang][0], trust, time: "New" }; };
-
-  // ==========================================
-  // 5. Effects
-  // ==========================================
-  
-  // 🔥 [FIX] Sol 专注模式倒计时器
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isFocusActive && !isFocusPaused && focusRemaining > 0) {
-      interval = setInterval(() => {
-        setFocusRemaining((prev) => {
-          if (prev <= 1) {
-            endFocusMode(); // 时间到
-            return 0;
-          }
-          localStorage.setItem(FOCUS_REMAINING_KEY, (prev - 1).toString());
-          return prev - 1;
-        });
-      }, 1000);
+    if (view === 'chat') {
+        setTimeout(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, 100);
     }
-    return () => clearInterval(interval);
-  }, [isFocusActive, isFocusPaused, focusRemaining]);
-
-  const quickReplies = useMemo<QuickReply[]>(() => {
-    const base: QuickReply[] = [
-      { id: 'tired', label: lang === 'zh' ? '😪 累了' : '😪 Tired', payload: lang === 'zh' ? '我累了，求放过。' : 'I am tired, give me a break.' },
-      { id: 'roast', label: lang === 'zh' ? '🔥 骂醒我' : '🔥 Roast me', payload: lang === 'zh' ? '最近太飘了，骂醒我。' : 'Roast me hard.' },
-      { id: 'random', label: lang === 'zh' ? '🎲 随便聊聊' : '🎲 Random', payload: lang === 'zh' ? '随便聊聊吧，最近有什么新闻？' : 'Lets chat randomly.' },
-    ];
-    if (tempBriefingIntro && activePersona === lastBriefingResult?.persona) {
-      base.unshift({
-        id: 'tarot_intro',
-        label: `🔮 ${lang === 'zh' ? '开始解析' : 'Start Analysis'}`,
-        payload: tempBriefingIntro 
-      });
-    }
-    return base.slice(0, 4);
-  }, [lang, tempBriefingIntro, lastBriefingResult, activePersona]);
-
-  useEffect(() => { if (isLoading && tempBriefingIntro) { setTempBriefingIntro(null); } }, [isLoading, tempBriefingIntro]);
+  }, [messages, view]);
 
   useEffect(() => { 
-    setMounted(true); 
-    
-    window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); setDeferredPrompt(e); });
+    setMounted(true);
+    const savedInv = localStorage.getItem(USER_INVENTORY_KEY);
+    if (savedInv) setInventory(JSON.parse(savedInv));
+    const savedLang = localStorage.getItem(LANG_PREF_KEY);
+    if (savedLang) setLang(savedLang as LangType);
+  }, []);
 
-    let currentLang: LangType = 'zh';
-    const savedLang = localStorage.getItem(LANG_PREF_KEY); 
-    if (savedLang) { currentLang = savedLang as LangType; setLang(currentLang); } 
-    else { const browserLang = navigator.language; currentLang = browserLang.includes('zh') ? 'zh' : 'en'; setLang(currentLang); localStorage.setItem(LANG_PREF_KEY, currentLang); localStorage.setItem(LANGUAGE_KEY, 'true'); }
-    if (!localStorage.getItem(VISITED_KEY)) { localStorage.setItem(VISITED_KEY, 'true'); }
-
-    const hasProfile = localStorage.getItem('toughlove_user_profile');
-    if (!hasProfile) { setShowOnboarding(true); } 
-    else { setTimeout(() => { initStartupSequence(); }, 200); }
-
-    const storedName = localStorage.getItem(USER_NAME_KEY); 
-    if (storedName) setUserName(storedName); 
-    
-    const fetchWallet = async () => { 
-        const localBalance = localStorage.getItem('toughlove_rin_balance');
-        if (localBalance) setUserRin(parseInt(localBalance));
-        try { 
-            const res = await fetch(`/api/wallet?userId=${getDeviceId()}`); 
-            if(res.ok) { 
-                const d = await res.json(); 
-                setUserRin(d.balance); 
-                localStorage.setItem('toughlove_rin_balance', d.balance.toString());
-            } 
-        } catch(e){} 
-    };
-    fetchWallet();
-
-    try { const savedMap = localStorage.getItem('toughlove_wallpapers_map'); if (savedMap) { setWallpapers(JSON.parse(savedMap)); } } catch (e) { console.error("Load wallpapers failed", e); }
-    const seenShop = localStorage.getItem('toughlove_has_seen_shop'); if (seenShop) setHasSeenShop(true);
-  }, [initStartupSequence]);
-
-  // ==========================================
-  // 6. Render
-  // ==========================================
-  const renderGlobalMenu = () => (
-    <div className="absolute top-12 right-0 mt-2 w-48 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl z-50 flex flex-col p-1 animate-[fadeIn_0.1s_ease-out]">
-      <button onClick={handleEditName} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-white/5 rounded-xl transition-colors text-left">
-        <UserPen size={16} /> {userName || ui.editName}
-      </button>
-      
-      <div className="flex px-2 py-1 gap-2">
-         <button onClick={() => switchLang('zh')} className={`flex-1 py-2 text-xs font-bold rounded-lg border transition-all ${lang === 'zh' ? 'bg-white text-black border-white' : 'text-gray-500 border-white/10 hover:border-white/30'}`}>CN</button>
-         <button onClick={() => switchLang('en')} className={`flex-1 py-2 text-xs font-bold rounded-lg border transition-all ${lang === 'en' ? 'bg-white text-black border-white' : 'text-gray-500 border-white/10 hover:border-white/30'}`}>EN</button>
-      </div>
-
-      <button onClick={handleInstall} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-white/5 rounded-xl transition-colors text-left">
-        <Download size={16} /> {ui.install}
-      </button>
-      <button onClick={handleDonate} className="flex items-center gap-3 px-4 py-3 text-sm text-yellow-500 hover:bg-white/5 rounded-xl transition-colors text-left">
-        <Coffee size={16} /> {ui.buyCoffee}
-      </button>
-      <button onClick={() => setShowFeedbackModal(true)} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-white/5 rounded-xl transition-colors text-left">
-        <Bug size={16} /> {ui.feedback}
-      </button>
-      
-      {view === 'chat' && (
-        <>
-          <div className="h-px bg-white/5 my-1" />
-          <button onClick={handleReset} className="flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:bg-red-500/10 rounded-xl transition-colors text-left">
-            <RotateCcw size={16} /> {ui.reset}
-          </button>
-        </>
-      )}
-    </div>
-  );
-
-  if (!mounted || isCheckingFate) return <BootScreen />;
+  if (!mounted) return <BootScreen />;
 
   return (
-    <div className="relative flex flex-col h-screen supports-[height:100dvh]:h-[100dvh] max-h-[100dvh] bg-[#050505] text-gray-100 overflow-hidden font-sans selection:bg-[#7F5CFF] selection:text-white transition-all duration-700" style={currentBgStyle}>
-      <div className="absolute top-[-20%] left-0 right-0 h-[500px] bg-gradient-to-b from-[#7F5CFF]/10 to-transparent blur-[100px] pointer-events-none" />
-      <audio ref={audioRef} className="hidden" playsInline />
-
-      {isFocusActive && (
-        <FocusOverlay 
-          isFocusPaused={isFocusPaused} 
-          focusRemaining={focusRemaining} 
-          focusWarning={focusWarning} 
-          tauntIndex={tauntIndex} 
-          lang={lang} 
-          onGiveUp={giveUpFocus} 
-        />
-      )}
+    <div className="relative flex flex-col h-screen supports-[height:100dvh]:h-[100dvh] bg-[#050505] text-gray-100 font-sans overflow-hidden">
       
-      {showStickyNote && ( <StickyNoteOverlay task={currentStickyTask} lang={lang} onComplete={handleStickyComplete} onGiveUp={handleStickyGiveUp} /> )}
-
-      <FocusOfferModal show={showFocusOffer} lang={lang} onStart={startFocusMode} onCancel={() => setShowFocusOffer(false)} />
-      <LangSetupModal show={showLangSetup} lang={lang} onConfirm={confirmLanguage} />
-      <NameModal show={showNameModal} onClose={() => setShowNameModal(false)} tempName={tempName} setTempName={setTempName} onSave={saveUserName} ui={ui} />
-      <DonateModal show={showDonateModal} onClose={() => setShowDonateModal(false)} lang={lang} currentP={currentP} onBribe={handleBribeSuccess} onExternal={goBMAC} />
-      <FeedbackModal show={showFeedbackModal} onClose={() => setShowFeedbackModal(false)} text={feedbackText} setText={setFeedbackText} onSubmit={handleFeedbackSubmit} lang={lang} />
-      <ShopModal show={showShop} onClose={() => setShowShop(false)} userRin={userRin} onBuy={handleBuyItem} lang={lang} isBuying={isBuying} />
-      
-      <InstallModal show={showInstallModal} onClose={() => setShowInstallModal(false)} lang={lang} />
-
-      <DailyBriefingModal 
-        show={showBriefing} 
-        onClose={() => { setShowBriefing(false); setForcedBriefingSpeaker(null); }}
-        onJumpToChat={handleBriefingJump} 
-        lang={lang}
-        onDataLoaded={handleBriefingDataLoaded}
-        onDownloadPoster={downloadPoster}
-        forcedSpeaker={forcedBriefingSpeaker}
-        onClaimSalary={handleClaimSalary}
-      />
-
-      <div ref={quoteCardRef} className="contents"><DailyQuoteModal show={showQuote} onClose={() => setShowQuote(false)} data={quoteData} isLoading={isQuoteLoading} onDownload={downloadPoster} isGenerating={isGeneratingImg} ui={ui} activePersona={activePersona} /></div>
-      
-      <div ref={profileCardRef} className="contents">
-        <ProfileModal 
-            show={showProfile} 
-            onClose={() => setShowProfile(false)} 
-            data={profileData} 
-            isLoading={isProfileLoading} 
-            onDownload={downloadProfileCard} 
-            ui={ui} 
-            deviceId={getDeviceId()} 
-            userName={userName} 
-        />
-      </div>
-
-      <DiaryModal show={showDiary} onClose={() => setShowDiary(false)} userId={mounted ? getDeviceId() : null} lang={lang} />
-      <ShameModal show={showShameModal} onClose={() => setShowShameModal(false)} data={shameData} lang={lang} onDownload={downloadShameCard} isGenerating={isGeneratingImg} ui={ui} />
-      <GloryModal show={showGloryModal} onClose={() => setShowGloryModal(false)} data={gloryData} lang={lang} onDownload={downloadGloryCard} isGenerating={isGeneratingImg} ui={ui} />
-      <EnergyModal show={showEnergyModal} onClose={() => setShowEnergyModal(false)} onTriggerTask={triggerRinFromStation} userId={mounted ? getDeviceId() : null} lang={lang} updateTrigger={gloryUpdateTrigger} />
-
-      <OnboardingModal show={showOnboarding} onFinish={handleOnboardingFinish} lang={lang} />
-      <ViralPoster forwardedRef={viralPosterRef} data={briefingData || quoteData} persona={activePersona} lang={lang} />
-
-      <AnnouncementModal show={showAnnouncement} onClose={handleAnnouncementClose} lang={lang} />
-
-      {view === 'selection' && (
-        <div className="z-10 flex flex-col h-full w-full max-w-md mx-auto p-4 animate-[fadeIn_0.5s_ease-out]">
-          <div className="flex justify-between items-center mb-6 px-2">
-            <h1 className="text-xl font-bold tracking-wider flex items-center gap-2">
-              <MessageCircle size={20} className="text-[#7F5CFF]" /> Chats
-            </h1>
-            <div className="flex gap-2">
-               <button onClick={() => setShowBriefing(true)} className="text-xs font-bold text-gray-400 hover:text-white border border-white/10 px-3 py-2 rounded-xl flex items-center gap-2 transition-colors hover:bg-white/5">
-                 <Sparkles size={14} className="text-indigo-400" />
-                 <span>{lang === 'zh' ? '今日运势' : 'Daily Fate'}</span>
-               </button>
-               <div className="relative">
-                 <button onClick={() => setShowMenu(!showMenu)} className="p-2 text-gray-400 hover:text-white border border-white/10 rounded-xl hover:bg-white/5 transition-colors">
-                    <MoreVertical size={18} />
-                 </button>
-                 {showMenu && renderGlobalMenu()}
-               </div>
+      {showMenu && (
+        <div className="absolute inset-0 z-[100] pointer-events-none flex justify-center">
+            <div className="w-full max-w-md relative h-full">
+                <GlobalMenu 
+                    onClose={() => setShowMenu(false)}
+                    onEditName={() => { setShowMenu(false); setShowNameModal(true); setTempName(userName); }}
+                    onSwitchLang={() => { const next = lang === 'zh' ? 'en' : 'zh'; setLang(next); localStorage.setItem(LANG_PREF_KEY, next); }}
+                    onInstall={() => { setShowMenu(false); setShowInstallModal(true); }}
+                    onDonate={() => { setShowMenu(false); setShowDonateModal(true); }}
+                    onFeedback={() => { setShowMenu(false); setShowFeedbackModal(true); }}
+                    onReset={() => { if(confirm('Reset?')) { localStorage.clear(); window.location.reload(); } }}
+                    ui={ui}
+                />
             </div>
-          </div>
-          <div className="flex flex-col gap-3 overflow-y-auto pb-20 no-scrollbar">
-            {(Object.keys(PERSONAS) as PersonaType[]).map((key) => {
-              const p = PERSONAS[key]; const info = getPersonaPreview(key); const lv = getLevelInfo(info.trust); const status = getPersonaStatus(key, new Date().getHours()); 
-              return (
-                <div key={key} onClick={() => selectPersona(key)} className={`group relative p-4 rounded-2xl transition-all duration-200 cursor-pointer flex items-center gap-4 border shadow-sm ${info.isChatted ? 'bg-[#111] hover:bg-[#1a1a1a] border-white/5 hover:border-[#7F5CFF]/30' : 'bg-gradient-to-r from-[#151515] to-[#111] border-white/10 hover:border-white/30'}`}>
-                  <div className="relative flex-shrink-0"><div className={`w-14 h-14 rounded-full flex items-center justify-center text-3xl border-2 overflow-hidden ${info.isChatted ? (info.trust >= 50 ? (info.trust >= 100 ? 'border-[#7F5CFF]' : 'border-blue-500') : 'border-gray-700') : 'border-white/10'}`}>{p.avatar.startsWith('/') ? (<img src={p.avatar} alt={p.name} className="w-full h-full object-cover" />) : (<span>{p.avatar}</span>)}</div>{info.isChatted && (<div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] border-2 border-[#111] ${lv.barColor.replace('bg-', 'text-white bg-')}`}>{lv.level}</div>)}</div>
-                  <div className="flex-1 min-w-0"><div className="flex justify-between items-baseline mb-1"><h3 className="font-bold text-white text-base">{p.name}</h3><span className="text-[10px] text-gray-500">{info.isChatted ? info.time : 'New'}</span></div><div className="flex flex-wrap gap-1 mb-1">
-                  {p.tags[lang].slice(0, 2).map((tag: string) => (<span key={tag} className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-gray-400 border border-white/5 whitespace-nowrap">{tag}</span>))}</div><div className="text-[10px] text-gray-500 mb-1 flex items-center gap-1 truncate">{status}</div><p className={`text-xs truncate transition-colors ${info.isChatted ? 'text-gray-400 group-hover:text-gray-300' : 'text-gray-500 italic'}`}>{info.isChatted ? info.lastMsg : p.slogan[lang]}</p></div>
-                </div>
-              );
-            })}
-          </div>
-          <div className="fixed bottom-6 left-0 right-0 flex justify-center z-20 pointer-events-none"><button onClick={handleOpenProfile} className="pointer-events-auto bg-[#1a1a1a]/80 backdrop-blur-md border border-white/10 text-gray-300 px-6 py-3 rounded-full shadow-2xl flex items-center gap-2 text-xs font-bold hover:bg-[#222] hover:text-white transition-all hover:scale-105 active:scale-95"><Brain size={14} className="text-[#7F5CFF]" /> {ui.profile}</button></div>
-          <button onClick={() => setShowFeedbackModal(true)} className="fixed bottom-6 right-6 z-50 p-3 rounded-full bg-[#1a1a1a] border border-white/10 text-gray-400"><Bug size={20} /></button>
         </div>
       )}
 
-      {view === 'chat' && (
-        <div className={`z-10 flex flex-col h-full w-full max-w-lg mx-auto border-x relative animate-[slideUp_0.3s_ease-out] ${currentBgStyle.backgroundImage ? 'border-white/10 shadow-2xl' : `${levelInfo.bgClass} ${levelInfo.borderClass} ${levelInfo.glowClass}`} transition-all duration-1000`} style={currentBgStyle.backgroundImage ? { backgroundColor: 'rgba(0, 0, 0, 0.05)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' } : levelInfo.customStyle}>
-          <header className="flex-none px-4 py-3 bg-[#0a0a0a]/80 backdrop-blur-md sticky top-0 z-20 border-b border-white/5">
-             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3 min-w-0 flex-1">
-                <button onClick={backToSelection} className="text-gray-400 hover:text-white transition-colors"><div className="p-1.5 bg-white/5 rounded-full hover:bg-[#7F5CFF] transition-colors"><ChevronLeft size={16} className="group-hover:text-white" /></div></button>
-                <div className="relative cursor-pointer" onClick={handleExport} title={ui.export}><div className="w-10 h-10 rounded-full bg-[#1a1a1a] border border-white/10 flex items-center justify-center text-xl shadow-[0_0_15px_rgba(0,0,0,0.5)] overflow-hidden">{currentP.avatar.startsWith('/') ? (<img src={currentP.avatar} alt={currentP.name} className="w-full h-full object-cover" />) : (<span>{currentP.avatar}</span>)}</div><div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-[#0a0a0a]"></div></div>
-                <div className="flex flex-col justify-center min-w-0"><h1 className="font-bold text-sm text-white tracking-wide truncate flex items-center gap-2">{currentP.name}<span className={`text-[9px] font-normal transition-all duration-300 ${isLoading ? 'text-[#7F5CFF] animate-pulse font-bold' : `opacity-50 ${currentP.color}`}`}>{isLoading ? ui.loading : currentP.title[lang]}</span></h1><div className="flex items-center gap-2 mt-0.5"><div className={`text-[9px] px-1.5 py-px rounded-md border border-white/10 bg-white/5 flex items-center gap-1 ${levelInfo.barColor.replace('bg-', 'text-')}`}>{levelInfo.icon} <span className="font-mono font-bold">Lv.{levelInfo.level}</span></div></div></div>
-              </div>
-              <div className="flex items-center gap-1">
-                <button onClick={() => setShowBriefing(true)} className="p-2 text-gray-400 hover:text-indigo-400 relative group" title="Daily Tarot"><Sparkles size={18} /></button>
-                {/* Global Menu */}
-                <div className="relative group">
-                    <button onClick={() => setShowMenu(!showMenu)} className="p-2 text-gray-400 hover:text-white relative group">
-                        <MoreVertical size={18} />
-                    </button>
-                    {showMenu && renderGlobalMenu()}
-                </div>
-              </div>
-             </div>
-             <div className="absolute bottom-0 left-0 w-full h-[1px] bg-white/5"><div className={`h-full ${levelInfo.barColor} shadow-[0_0_10px_currentColor] transition-all duration-500`} style={{ width: `${progressPercent}%` }}/></div>
-          </header>
+      <InventoryModal show={showInventory} onClose={() => {setShowInventory(false); setHasNewItem(false);}} inventoryItems={inventory} lang={lang} />
+      <ShopModal show={showShop} onClose={() => setShowShop(false)} userRin={0} onBuy={()=>{}} lang={lang} isBuying={false} />
+      <ProfileModal show={showProfile} onClose={() => setShowProfile(false)} data={null} isLoading={false} onDownload={()=>{}} ui={ui} deviceId={getDeviceId()} userName="" />
+      
+      <NameModal show={showNameModal} onClose={() => setShowNameModal(false)} tempName={tempName} setTempName={setTempName} onSave={() => { setUserName(tempName); localStorage.setItem('toughlove_user_name', tempName); setShowNameModal(false); }} ui={ui} />
+      <FeedbackModal show={showFeedbackModal} onClose={() => setShowFeedbackModal(false)} text="" setText={()=>{}} onSubmit={()=>{ setShowFeedbackModal(false); alert('Thanks!'); }} lang={lang} />
+      <DonateModal show={showDonateModal} onClose={() => setShowDonateModal(false)} lang={lang} currentP={currentP} onBribe={()=>{}} onExternal={()=>{}} />
+      <InstallModal show={showInstallModal} onClose={() => setShowInstallModal(false)} lang={lang} />
 
-          <main className="flex-1 overflow-y-auto px-4 py-6 space-y-6 scroll-smooth no-scrollbar">
-            {messages.length === 0 && (
-              <div className="h-full flex flex-col items-center justify-center text-center space-y-6 opacity-60">
-                 <div className={`w-24 h-24 rounded-full flex items-center justify-center text-5xl mb-2 overflow-hidden`}>{currentP.avatar.startsWith('/') ? (<img src={currentP.avatar} alt={currentP.name} className="w-full h-full object-cover" />) : (<span>{currentP.avatar}</span>)}</div>
-                 <div className="space-y-2 px-8"><p className="text-white/80 text-lg font-light">{lang === 'zh' ? '我是' : 'I am'} <span className={currentP.color}>{currentP.name}</span>.</p></div>
-              </div>
-            )}
-            {messages.map((msg, msgIdx) => {
-              if (msg.role === 'system') return null;
-              const isAI = msg.role !== 'user';
-              const isVoice = voiceMsgIds.has(msg.id); 
-              const contentDisplay = msg.content.replace(CMD_REGEX, '').replace(RIN_CMD_REGEX, '').trim();
-              return (
-                <div key={msg.id} className={`flex w-full ${!isAI ? 'justify-end' : 'justify-start'} mb-4 animate-[slideUp_0.1s_ease-out]`}>
-                  <div className={`max-w-[85%] flex flex-col items-start gap-1`}>
-                    <div className={`px-5 py-3.5 text-sm leading-6 shadow-md backdrop-blur-sm rounded-2xl border transition-all duration-300 ${!isAI ? 'bg-gradient-to-br from-[#7F5CFF] to-[#6242db] text-white rounded-tr-sm border-transparent' : isVoice ? 'bg-[#1a1a1a]/90 text-[#7F5CFF] border-[#7F5CFF]/50 shadow-[0_0_20px_rgba(127,92,255,0.2)]' : 'bg-[#1a1a1a]/90 text-gray-200 rounded-tl-sm border-white/5'}`}>
-                      {isAI && isVoice && (<div className="flex items-center gap-2 mb-2 pb-2 border-b border-[#7F5CFF]/20 text-[10px] font-bold opacity-90 uppercase tracking-widest">{playingMsgId === msg.id ? <Loader2 size={12} className="animate-spin"/> : <Volume2 size={12} />}<span>Voice Message</span></div>)}
-                      {!isAI ? (
-                        <ReactMarkdown components={{ a: ({ node, href, children, ...props }) => { const linkHref = href || ''; if (linkHref.startsWith('#trigger-')) { const targetPersona = linkHref.replace('#trigger-', '') as PersonaType; const pConfig = PERSONAS[targetPersona]; if (!pConfig) return <span>{children}</span>; const colorClass = pConfig.color; return (<button onClick={(e) => { e.preventDefault(); e.stopPropagation(); selectPersona(targetPersona); }} className="inline-flex items-center gap-1 mx-1 px-2 py-0.5 rounded-full bg-white/10 border border-white/10 hover:bg-white/20 transition-all transform hover:scale-105 align-middle -mt-0.5 cursor-pointer" title={`Switch to ${targetPersona}`}><span className={`text-[10px] font-bold ${colorClass} opacity-70`}>@</span><span className={`text-xs font-bold ${colorClass} underline decoration-dotted underline-offset-2`}>{children}</span><ArrowUpRight size={10} className={`opacity-70 ${colorClass}`} /></button>); } return (<a href={linkHref} {...props} target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300 break-all">{children}</a>); } }}>{contentDisplay}</ReactMarkdown>
-                      ) : (
-                        <div className="flex flex-col gap-1">
-                           {contentDisplay.split('|||').map((part, partIdx, arr) => { if (!part.trim()) return null; const isLastPart = partIdx === arr.length - 1; const shouldType = msgIdx === messages.length - 1 && isLoading && isLastPart; if (shouldType) { return <Typewriter key={partIdx} content={part.trim()} isThinking={true} />; } return ( <ReactMarkdown key={partIdx} components={{ a: ({ node, href, children, ...props }) => { const linkHref = href || ''; if (linkHref.startsWith('#trigger-')) { const targetPersona = linkHref.replace('#trigger-', '') as PersonaType; const pConfig = PERSONAS[targetPersona]; if (!pConfig) return <span>{children}</span>; const colorClass = pConfig.color; return (<button onClick={(e) => { e.preventDefault(); e.stopPropagation(); selectPersona(targetPersona); }} className="inline-flex items-center gap-1 mx-1 px-2 py-0.5 rounded-full bg-white/10 border border-white/10 hover:bg-white/20 transition-all transform hover:scale-105 align-middle -mt-0.5" title={`Switch to ${targetPersona}`}><span className={`text-[10px] font-bold ${colorClass} opacity-70`}>@</span><span className={`text-xs font-bold ${colorClass} underline decoration-dotted underline-offset-2`}>{children}</span><ArrowUpRight size={10} className={`opacity-70 ${colorClass}`} /></button>); } return (<a href={linkHref} {...props} target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300 break-all">{children}</a>); } }}>{formatMentions(part.trim())}</ReactMarkdown> ); })}
-                        </div>
-                      )}
-                    </div>
-                    {isAI && isVoice && playingMsgId !== msg.id && (<button onClick={() => handlePlayAudio(contentDisplay, msg.id)} className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-[#7F5CFF] ml-1 transition-colors"><RotateCcw size={10} /> Replay</button>)}
+      {view === 'lobby' ? (
+        <ResonanceLobby 
+            activePersona={activePersona} 
+            setActivePersona={handleSwitchPersona} 
+            onConsoleAction={handleConsoleAction}
+            onContinueChat={handleContinueChat}
+            onNewsClick={handleDailyNewsClick} // 🔥 传递小报回调
+            lastMessage={lastAIMessageRaw} 
+            lang={lang}
+            onMenu={() => setShowMenu(true)}
+            onOpenInventory={() => setShowInventory(true)}
+            onOpenProfile={() => setShowProfile(true)}
+            onOpenShop={() => setShowShop(true)}
+            hasNewItem={hasNewItem}
+        />
+      ) : (
+        <div className="flex flex-col h-full relative animate-[zoomIn_0.3s_ease-out] w-full max-w-md mx-auto overflow-hidden">
+            <div className="absolute inset-0 z-0 bg-black">
+                 <div className="absolute inset-0 bg-cover bg-center transition-opacity opacity-100" 
+                      style={{ backgroundImage: `url(${WALLPAPER_MAP[activePersona]})` }} />
+                 <div className="absolute inset-0 bg-black/20" />
+                 <div className="absolute inset-0 bg-[url('/noise.png')] opacity-10 mix-blend-overlay pointer-events-none"></div>
+            </div>
+
+            <header className="flex-none pt-12 pb-2 px-6 relative z-50 w-full bg-gradient-to-b from-black/80 to-transparent">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4 pointer-events-auto">
+                      <button 
+                          onClick={() => setView('lobby')} 
+                          className="w-10 h-10 flex items-center justify-center bg-black/30 border border-white/10 rounded-full hover:bg-black/50 backdrop-blur-md transition-all active:scale-95 group"
+                      >
+                          <ChevronLeft size={20} className="text-white group-hover:-translate-x-0.5 transition-transform" />
+                      </button>
+                      
+                      <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full border border-white/20 overflow-hidden shadow-lg ring-2 ring-black/20">
+                              <img src={PERSONAS[activePersona].avatar} className="w-full h-full object-cover" />
+                          </div>
+                          <div className="flex flex-col">
+                              <span className={`text-xs font-black uppercase tracking-widest ${PERSONAS[activePersona].color} drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]`}>
+                                  {PERSONAS[activePersona].name}
+                              </span>
+                              <span className="text-[9px] text-gray-200 font-mono flex items-center gap-1.5 shadow-black drop-shadow-md opacity-90">
+                                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_5px_#22c55e]"></span> 
+                                  ONLINE
+                              </span>
+                          </div>
+                      </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 pointer-events-auto">
+                      <button onClick={() => setShowInventory(true)} className="w-10 h-10 flex items-center justify-center bg-black/30 border border-white/10 rounded-full relative active:scale-95 transition-all hover:bg-black/50 backdrop-blur-md">
+                          <Package size={18} className={hasNewItem ? "text-[#7F5CFF]" : "text-white"} />
+                          {hasNewItem && <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full animate-ping" />}
+                      </button>
+                      <button onClick={() => setShowShop(true)} className="w-10 h-10 flex items-center justify-center bg-black/30 border border-white/10 rounded-full active:scale-95 transition-all hover:bg-black/50 backdrop-blur-md">
+                          <ShoppingBag size={18} className="text-white" />
+                      </button>
+                      <button onClick={() => setShowMenu(true)} className="w-10 h-10 flex items-center justify-center bg-black/30 border border-white/10 rounded-full active:scale-95 transition-all hover:bg-black/50 backdrop-blur-md">
+                          <MoreVertical size={18} className="text-white" />
+                      </button>
                   </div>
                 </div>
-              );
-            })}
-            {isLoading && messages.length > 0 && messages[messages.length - 1].role === 'user' && ( <div className="flex justify-start w-full animate-[slideUp_0.2s_ease-out]"><div className="flex items-center gap-2 bg-[#1a1a1a] px-4 py-3 rounded-2xl rounded-tl-sm border border-white/5"><span className="text-xs text-gray-500 ml-1">{ui.loading}</span></div></div> )}
-            <div ref={messagesEndRef} className="h-4" />
-          </main>
+            </header>
 
-          <footer className="flex-none p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] z-30">
-            <div className="relative flex items-end gap-2 bg-[#151515] p-2 rounded-[24px] border border-white/10 shadow-2xl transition-all duration-300">
-              <div className="relative flex items-center justify-center mr-1 gap-1 pb-2 pl-1">
-                {chatInputMode === 'guided' ? (
-                   <button type="button" onClick={() => setChatInputMode('free')} className="p-2 rounded-full text-gray-400 hover:text-white hover:bg-white/5 transition-colors" title="Switch to Keyboard"><Keyboard size={18} /></button>
-                ) : (
-                   <button type="button" onClick={() => setChatInputMode('guided')} className="p-2 rounded-full text-gray-400 hover:text-[#7F5CFF] hover:bg-white/5 transition-colors" title="Quick Replies"><Wand2 size={18} /></button>
-                )}
-                <button type="button" onClick={startVoiceInput} className={`p-2 rounded-full transition-all ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'text-gray-400 hover:text-white'}`}>{isRecording ? <MicOff size={18}/> : <Mic size={18}/>}</button>
-                <div className="relative group">
-                  {!hasSeenShop && !isFocusActive && (
-                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-28 pointer-events-none animate-[bounce_2s_infinite]">
-                      <div className="bg-[#1a1a1a] border border-blue-500/40 px-3 py-2 rounded-xl rounded-bl-none shadow-[0_0_15px_rgba(59,130,246,0.3)] relative">
-                        <p className="text-[10px] font-bold text-blue-400 text-center leading-tight">{lang === 'zh' ? "“带钱了吗？\n点这交易。”" : "“Got cash?\nClick here.”"}</p>
-                        <div className="absolute -bottom-1.5 left-0 w-3 h-3 bg-[#1a1a1a] border-b border-r border-blue-500/40 transform rotate-45"></div>
-                      </div>
-                    </div>
-                  )}
-                  <button type="button" onClick={openShopHandler} className={`p-2 rounded-full transition-all relative ${!hasSeenShop ? 'text-blue-400 bg-blue-500/10 shadow-[0_0_10px_rgba(59,130,246,0.3)]' : 'text-blue-400 hover:bg-blue-500/10 hover:text-blue-300'}`} title="ToughShop"><ShoppingBag size={18} />{!hasSeenShop && (<span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-[#151515] animate-ping"></span>)}</button>
+            <main className="flex-1 overflow-y-auto px-4 py-4 pb-24 space-y-6 scroll-smooth no-scrollbar relative z-10">
+                {messages.map((msg, idx) => {
+                    const isAI = msg.role !== 'user';
+                    const parts = msg.content.split(/({{icon:[^}]+}})/g);
+                    
+                    return (
+                        <div key={msg.id} className={`flex w-full ${!isAI ? 'justify-end' : 'justify-start'} animate-[slideUp_0.2s_ease-out]`}>
+                            <div className={`flex flex-col gap-1 max-w-[85%] min-w-0 ${!isAI ? 'items-end' : 'items-start'}`}>
+                                
+                                {isAI && idx > 0 && messages[idx-1].role === 'user' && (
+                                    <span className="text-[9px] text-gray-300 ml-1 mb-1 uppercase tracking-widest opacity-80 font-bold shadow-black drop-shadow-md">{PERSONAS[activePersona].name}</span>
+                                )}
+
+                                {!isAI ? (
+                                    <div className="px-5 py-3 text-sm bg-gradient-to-br from-[#7F5CFF] to-[#6242db] text-white rounded-[1.2rem] rounded-tr-sm shadow-[0_4px_15px_rgba(127,92,255,0.3)] border border-white/10 break-words whitespace-pre-wrap min-w-0">
+                                        {msg.content}
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div className="px-6 py-4 text-sm leading-relaxed shadow-lg backdrop-blur-xl rounded-[1.2rem] rounded-tl-sm bg-[#1a1a1a]/85 border border-white/10 text-gray-100 relative overflow-hidden group break-words whitespace-pre-wrap min-w-0">
+                                            <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
+                                            {parts.map((part, pIdx) => {
+                                                if (part.startsWith('{{icon:') && part.endsWith('}}')) return null; 
+                                                return <ReactMarkdown key={pIdx}>{part}</ReactMarkdown>;
+                                            })}
+                                        </div>
+                                        {parts.map((part, pIdx) => {
+                                            if (part.startsWith('{{icon:') && part.endsWith('}}')) {
+                                                const itemId = part.slice(7, -2);
+                                                return <div key={`loot-${pIdx}`} className="mt-2 ml-1"><LootMessageCard itemId={itemId} lang={lang} onAccept={() => handleUnlockItem(itemId)} /></div>;
+                                            }
+                                            return null;
+                                        })}
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })}
+                <div ref={messagesEndRef} className="h-4" />
+            </main>
+
+            <footer className="flex-none px-6 pb-8 pt-4 z-50 absolute bottom-0 left-0 right-0 pointer-events-none">
+                <div className="pointer-events-auto relative flex items-center gap-2 bg-[#1a1a1a]/90 backdrop-blur-xl p-2 rounded-full border border-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.6)] ring-1 ring-white/5">
+                     <button type="button" onClick={() => {}} className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-white transition-colors bg-white/5 rounded-full"><Mic size={20} /></button>
+                     <form onSubmit={onFormSubmit} className="flex-1 flex items-center gap-2 pr-1 min-w-0">
+                        <input type="text" value={input} onChange={handleInputChange} placeholder={ui.placeholder} className="flex-1 bg-transparent text-white text-sm px-2 focus:outline-none placeholder-gray-500 h-full min-w-0" />
+                        <button type="submit" disabled={!input.trim() || isLoading} className="w-10 h-10 flex items-center justify-center bg-[#7F5CFF] text-white rounded-full hover:bg-[#6b4bd6] disabled:opacity-30 disabled:hover:bg-[#7F5CFF] transition-all shadow-[0_0_15px_rgba(127,92,255,0.4)] flex-shrink-0"><Send size={18} fill="white" className="-ml-0.5" /></button>
+                     </form>
                 </div>
-                {activePersona === 'Sol' && (<button type="button" onClick={() => setShowFocusOffer(true)} className="p-2 rounded-full text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-400" title={lang === 'zh' ? "专注监管" : "Focus Protocol"}><Ban size={18} /></button>)}
-                {activePersona === 'Rin' && (<div className="relative"><button type="button" onClick={openEnergyStation} className="p-2 rounded-full text-pink-400 hover:bg-pink-500/10 hover:text-pink-300 transition-colors" title={lang === 'zh' ? "能量补给" : "Energy Station"}><Flower2 size={18} /></button>{hasNewGlory && (<span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 border-2 border-[#151515] rounded-full animate-bounce pointer-events-none"></span>)}</div>)}
-                {activePersona === 'Echo' && (<button type="button" onClick={() => setShowBriefing(true)} className="p-2 rounded-full text-indigo-400 hover:bg-indigo-500/10 hover:text-indigo-300 transition-colors" title={lang === 'zh' ? "虚空塔罗 (晨报)" : "Void Tarot"}><Sparkles size={18} /></button>)}
-              </div>
-              <div className="flex-1 min-w-0">
-                 {chatInputMode === 'guided' && !isFocusActive ? (
-                    <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-2 mask-linear-fade">
-                        {quickReplies.map(reply => (
-                          <button key={reply.id} onClick={() => handleQuickReply(reply)} className="flex-shrink-0 bg-white/5 border border-white/10 hover:bg-[#7F5CFF]/20 hover:border-[#7F5CFF]/50 text-gray-200 text-xs px-3 py-2 rounded-xl transition-all active:scale-95 flex items-center gap-1.5 whitespace-nowrap"><span className="opacity-70">{reply.label.split(' ')[0]}</span><span>{reply.label.split(' ').slice(1).join(' ')}</span></button>
-                        ))}
-                    </div>
-                 ) : (
-                    <form onSubmit={onFormSubmit} className="flex items-center gap-2 w-full pb-1">
-                       <input type="text" value={input} onChange={handleInputChange} placeholder={ui.placeholder} className="flex-1 bg-transparent text-white text-sm px-2 py-2 focus:outline-none placeholder-gray-600 min-w-0" autoFocus />
-                       <button type="submit" disabled={!input.trim() || isLoading} className="p-2 bg-[#7F5CFF] text-white rounded-xl hover:bg-[#6b4bd6] disabled:opacity-30 transition-all transform active:scale-95 flex-shrink-0"><Send size={16} fill="white" /></button>
-                    </form>
-                 )}
-              </div>
-            </div>
-          </footer>
+            </footer>
         </div>
       )}
     </div>
   );
 }
-
-// ----------------------------------------------------------------
-// 🔥 [FINAL FIX] 海报组件：移至 Effect 防止 Hydration Error
-// ----------------------------------------------------------------
-const ViralPoster = ({ data, persona, lang, forwardedRef }: { data: any, persona: PersonaType, lang: LangType, forwardedRef: any }) => {
-  const [posterId, setPosterId] = useState("000000");
-  const [dateStr, setDateStr] = useState("");
-
-  useEffect(() => {
-    setPosterId(Math.floor(Math.random() * 99999).toString().padStart(5, '0'));
-    setDateStr(new Date().toLocaleDateString());
-  }, []);
-
-  const safeData = data || { content: "System Error" }; 
-  const p = PERSONAS[persona];
-  const heroImage = safeData.image || p.avatar;
-  let heroQuote = safeData.share_quote || safeData.content || "";
-  
-  if (!heroQuote || heroQuote.length > 80) { 
-    heroQuote = safeData.meaning || (lang === 'zh' ? "命运在洗牌，但出牌的是你。" : "Fate shuffles the cards, but you play them."); 
-  }
-
-  return (
-    <div ref={forwardedRef} className="fixed left-[-9999px] top-0 w-[375px] h-[667px] overflow-hidden bg-black font-sans flex flex-col">
-      <div className="absolute inset-0 z-0">
-         <img src={heroImage} crossOrigin="anonymous" className="w-full h-full object-cover opacity-40 blur-xl scale-110" />
-         <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/40 to-black/90" />
-         <div className="absolute inset-0 bg-[url('/noise.png')] opacity-30 mix-blend-overlay" />
-      </div>
-      <div className="relative z-10 p-6 flex justify-between items-center border-b border-white/10">
-          <div className="flex flex-col">
-             <span className="text-[9px] tracking-[0.3em] text-white/80 font-bold uppercase">TOUGHLOVE.AI</span>
-             <span className="text-[9px] text-gray-400 font-mono mt-1">FATE_ID: {posterId} // {dateStr}</span>
-          </div>
-          <div className={`w-8 h-8 rounded-full border border-white/30 overflow-hidden`}><img src={p.avatar} crossOrigin="anonymous" className="w-full h-full object-cover" /></div>
-      </div>
-      <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-6 gap-6">
-          <div className="relative group w-[200px] aspect-[2/3] shadow-[0_0_40px_rgba(0,0,0,0.6)] rounded-xl overflow-hidden border border-white/20">
-             <img src={heroImage} crossOrigin="anonymous" className="w-full h-full object-cover" />
-             <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/10 to-white/0 opacity-50" />
-             <div className="absolute bottom-0 inset-x-0 bg-black/60 backdrop-blur-sm p-2 text-center border-t border-white/10"><span className="text-sm text-white font-bold tracking-widest uppercase">{safeData.name || "THE UNKNOWN"}</span></div>
-          </div>
-          {safeData.archetype && (<div className="px-3 py-1 bg-[#7F5CFF]/20 border border-[#7F5CFF]/30 rounded-full"><span className="text-[10px] font-bold text-[#7F5CFF] uppercase tracking-widest">{safeData.archetype}</span></div>)}
-          <div className="relative mt-2 text-center max-w-[280px]"><div className="w-8 h-0.5 bg-[#7F5CFF] mx-auto mb-4" /><p className="text-xl font-medium leading-snug text-white font-serif tracking-wide drop-shadow-md">“{heroQuote}”</p></div>
-      </div>
-      <div className="relative z-10 bg-white p-5 pb-6 flex items-center justify-between rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
-          <div className="flex flex-col gap-1.5">
-             <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-[#7F5CFF] animate-pulse" /><span className="text-xs font-bold text-black uppercase tracking-wider">{lang === 'zh' ? '领取你的精神诊断' : 'GET YOUR DIAGNOSIS'}</span></div>
-             <p className="text-[10px] text-gray-500 max-w-[160px] leading-relaxed">扫码接入 TOUGHLOVE 系统<br/>与 <span className="font-bold text-[#7F5CFF]">{p.name}</span> 建立私密连接</p>
-          </div>
-          <div className="w-20 h-20 bg-black p-1 rounded-lg shadow-lg flex-shrink-0"><div className="w-full h-full bg-white rounded flex items-center justify-center p-1"><img src="/qrcode.png" className="w-full h-full object-contain" /></div></div>
-      </div>
-    </div>
-  );
-};
