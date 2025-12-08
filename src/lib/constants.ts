@@ -977,3 +977,12 @@ export const ACTIONS_MAP = {
     { id: 'silent_mode', label: { zh: '静默陪伴', en: 'Silent Mode' } }
   ]
 };
+export const SOL_TAUNTS = [
+  { zh: "看着我。现在不是玩的时候。", en: "Eyes on me. Not playtime." },
+  { zh: "你的专注力在流失。修补它。", en: "Focus leaking. Patch it." },
+  { zh: "这种效率... 令人失望。", en: "Efficiency critical. Disappointing." },
+  { zh: "别让多巴胺控制你。", en: "Don't let dopamine rule you." },
+  { zh: "我在计时。回去工作。", en: "I'm timing you. Back to work." },
+  { zh: "这就是你的极限吗？", en: "Is this your limit?" },
+  { zh: "检测到注意力涣散。重连中...", en: "Distraction detected. Reconnecting..." }
+];
