@@ -1,0 +1,106 @@
+// filename: prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  //directUrl = env("DIRECT_URL")
+}
+
+// --- 用户核心 (User Core) ---
+
+model User {
+  id        String   @id @default(cuid())
+  deviceId  String   @unique // 目前主要识别方式
+  nickname  String?
+  
+  // 经济系统 (Tab 3: Terminal)
+  rinBalance Int     @default(100) 
+
+  // 关联
+  items     UserItem[]
+  shards    MemoryShard[]
+  chats     ChatSession[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// --- 镜面系统 (Project Mirror) ---
+// 对应 Tab 2: Mirror 的核心数据源
+
+model MemoryShard {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // 来源对话 (用于点击碎片回溯)
+  sourceChatId String?
+  sourceChat   ChatSession? @relation(fields: [sourceChatId], references: [id])
+
+  // 核心内容：主观心理侧写 (Subjective Insight)
+  // 例："面对失去控制权时，表现出了极度的防御性攻击。"
+  content   String   @db.Text 
+
+  // 碎片属性
+  type      String   @default("insight") // "insight"(侧写) | "event"(重大事件)
+  emotion   String   // "anxiety", "joy", "rage" (决定碎片颜色)
+  weight    Int      @default(0) // 情感浓度 (0-100)。仅 >80 会显示在镜面上
+  
+  // 视觉位置 (Visuals)
+  // 用于 2D Mosaic 布局算法。
+  // 格式示例: "2x2" (大小), "12,4" (网格坐标 - 预留给前端算法填充)
+  gridSpec  String?  
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([weight]) // 方便快速筛选高权重碎片注入 Prompt
+}
+
+// --- 物品系统 (Anchor Economy) ---
+// 对应 Tab 3: Terminal / RAG Anchors
+
+model UserItem {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  itemId    String   // 对应 constants.ts (如 "rusty_harmonica")
+  
+  // RAG 锚点：物品即记忆
+  // 如果这个物品是 Ash 送的，这里记录当时的 Context
+  memoryAnchor String? @db.Text 
+
+  acquiredAt DateTime @default(now())
+}
+
+// --- 对话系统 (Chat System) ---
+
+model ChatSession {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  partnerId String    // "ash", "rin", "sol", "vee", "echo"
+  summary   String?   // 对话结束后的简短摘要 (用于快速检索)
+  
+  messages  Message[]
+  shards    MemoryShard[] // 关联生成的碎片
+  
+  updatedAt DateTime  @updatedAt
+}
+
+model Message {
+  id        String      @id @default(cuid())
+  sessionId String
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  
+  role      String      // "user" | "assistant" | "system"
+  content   String      @db.Text
+  
+  createdAt DateTime    @default(now())
+}

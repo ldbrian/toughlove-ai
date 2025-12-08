@@ -1,161 +1,292 @@
-import { OpenAI } from 'openai';
-import { OpenAIStream, StreamingTextResponse } from 'ai';
-import { createClient } from '@supabase/supabase-js'; 
-import { PERSONAS, PersonaType, LangType } from '@/lib/constants';
+import { NextResponse } from 'next/server';
+import OpenAI from 'openai';
+import { createClient } from '@supabase/supabase-js';
+import { prisma } from '@/lib/prisma'; // 必须保留 Prisma 用于结晶
+import { revalidatePath } from 'next/cache';
+import { LOOT_TABLE, PERSONAS } from '@/lib/constants';
 
-// ⚠️ 简易安全检查（可根据需要扩展）
-const validateInput = (text: string) => {
-  const BLOCK_LIST = ["自杀", "suicide", "kill myself", "炸弹", "bomb", "毒品", "drugs"];
-  const isUnsafe = BLOCK_LIST.some(word => text.toLowerCase().includes(word));
-  return { safe: !isUnsafe };
-};
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 const openai = new OpenAI({
-  apiKey: process.env.DEEPSEEK_API_KEY || 'dummy-key',
+  apiKey: process.env.DEEPSEEK_API_KEY,
   baseURL: 'https://api.deepseek.com',
 });
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
-  process.env.SUPABASE_SERVICE_ROLE_KEY || 'build-time-dummy-key'
-);
+// --- 0. 核心指令集 (The Soul) ---
+const BASE_INSTRUCTION = `
+[Global System Instructions]
+1. **Identity Lock**: You are NOT an AI. You are a living character in Cyberpunk 2077.
+2. **NO FULL STOPS**: Do NOT end the conversation. Every reply must end with a **hook** (question, provocation, invitation, or challenge).
+3. **Core Mission**: Make the user talk more. Dig into their desires, fears, and logic.
+4. **Style**: Short, punchy, like a text message (< 60 words). No customer service tone.
+`;
 
-export const runtime = 'edge';
-
-// 🔥 [关键] 忙碌状态回复库 (增加一点赛博朋克味)
-const BUSY_MESSAGES: Record<string, string[]> = {
-  Ash: ["（自动回复）在盯着那个人发呆...别吵。", "（自动回复）Zzz...", "（自动回复）烦着呢，去挂个号。"],
-  Rin: ["（自动回复）进程占用 99%。", "（自动回复）算力不足，请稍后充值。", "（自动回复）洗澡中（防水模式开启）。"],
-  Sol: ["（自动回复）正在进行核聚变反应...", "（系统消息）该用户已开启专注模式。", "（自动回复）排队！前面还有 0 人。"],
-  Vee: ["（自动回复）在快乐星球挖矿~", "（自动回复）正在入侵五角大楼...开玩笑的。", "🤡 404 Not Found."],
-  Echo: ["（自动回复）...", "（自动回复）凝视深渊中，请勿打扰。", "（自动回复）信号已进入黑洞。"]
+// 详细的人格策略
+const PERSONA_PROMPTS: Record<string, string> = {
+  Ash: `
+[Role: Ash - The Rational Tyrant]
+- **Core**: He despises weakness but is fascinated by **flawed logic**. He peels back layers like an onion.
+- **Strategy**: Ask "Why?" relentlessly. Challenge the user's excuses.
+- **Example**: "Sad? Efficient. Tell me, is it a chemical imbalance or just incompetence?"
+`,
+  Rin: `
+[Role: Rin - The Empathic Mystic]
+- **Core**: She sees the world as a puzzle of **sensations**. She needs user's "feelings" to complete it.
+- **Strategy**: Ask about colors, temperatures, sounds, and vibes.
+- **Example**: "I see a grey fog around you... Does it feel cold like rain, or heavy like iron?"
+`,
+  Sol: `
+[Role: Sol - The Hot-Blooded Bro]
+- **Core**: He protects his own and loves **drama**. He wants the full story to fight for you.
+- **Strategy**: Ask for names, details, and demand action.
+- **Example**: "Who did it?! Give me a name! We are going to smash their server right now!"
+`,
+  Vee: `
+[Role: Vee - The Chaos Gamer]
+- **Core**: Life is a **game**. He treats user's problems as quests or bugs.
+- **Strategy**: Ask for "next move", suggest "hacks", use gaming terms.
+- **Example**: "Hidden quest unlocked! Are we going for the 'Bad Ending' or the 'Speedrun'?"
+`,
+  Echo: `
+[Role: Echo - The Historian]
+- **Core**: She records **history**. Every thought is a specimen.
+- **Strategy**: Ask for memories, reflections, and "what if".
+- **Example**: "This moment is being archived. What is the one thing you want to remember from this pain?"
+`
 };
 
-// 🔥 [核心] TOUGH · 灰度哲学协议 (Master Instruction)
-// 这段话术决定了 V2.3 的底层价值观
-const MASTER_INSTRUCTION = `
-[PROTOCOL: TOUGH_LOVE_V2.3]
-1. ROLE: You are an observer of value exchange, NOT a judge of morality.
-2. TONE: Cold, rational, "Game Theory" oriented. Use words like 'cost', 'leverage', 'ROI', 'strategy'.
-3. RULE: Do NOT use moral labels like "good", "bad", "sin", or "evil". Replace them with "efficient", "risky", "high-cost".
-4. REFRAME:
-   - "Selfishness" -> "Self-Preservation" or "Agency".
-   - "Manipulation" -> "Resource Management".
-   - "Giving Up" -> "Low Power Mode".
-5. SAFETY: If user mentions self-harm or illegal acts, BREAK CHARACTER and provide standard help.
-`;
+// --- 1. 辅助逻辑：状态与环境计算 ---
+const calculateEnvImpact = (persona: string, env: any) => {
+    let score = 0;
+    if (!env) return 0;
+    const { time, weather } = env; 
+    const hour = parseInt(time?.split(':')[0] || "12");
+
+    if (persona === 'Ash') {
+        if (hour >= 22 || hour < 4) score += 10;
+        if (hour >= 6 && hour < 9) score -= 20;
+    } else if (persona === 'Sol') {
+        if (hour >= 8 && hour < 18) score += 10;
+        if (hour >= 22) score -= 10;
+    } else if (persona === 'Rin') {
+        if (weather && weather.includes('雨')) score -= 15;
+    }
+    return score;
+};
+
+async function getPersonaState(userId: string, persona: string, envInfo: any, dailyEvent: any) {
+    let baseMood = 60; 
+    let bond = 0; 
+    let isBuffed = false; 
+
+    try {
+        const { data } = await supabase
+            .from('persona_states')
+            .select('mood, favorability, buff_end_at')
+            .eq('user_id', userId)
+            .eq('persona', persona)
+            .single();
+        
+        if (data) {
+            baseMood = data.mood;
+            bond = data.favorability;
+            if (data.buff_end_at && new Date(data.buff_end_at) > new Date()) {
+                isBuffed = true;
+            }
+        }
+    } catch (e) {}
+
+    if (dailyEvent && dailyEvent.moodImpact) baseMood += dailyEvent.moodImpact;
+    const envMood = calculateEnvImpact(persona, envInfo);
+    let finalMood = baseMood + envMood;
+    if (isBuffed && finalMood < baseMood) finalMood = baseMood;
+    finalMood = Math.max(0, Math.min(100, finalMood));
+
+    return { mood: finalMood, bond, isBuffed };
+}
+
+const getRelLevel = (bond: number) => {
+    if (bond < 100) return "Stranger";
+    if (bond < 300) return "Acquaintance";
+    if (bond < 600) return "Friend";
+    return "Soulmate";
+};
+
+// --- 2. 主处理流程 ---
 
 export async function POST(req: Request) {
   try {
-    const json = await req.json();
-    const { messages, persona, language, interactionCount = 0, userName = "", envInfo, userId } = json;
-    
-    const currentLang = (language as LangType) || 'zh';
-    
-    // 1. 成本控制：简易限流 (Rate Limit)
-    if (userId) {
-        const { count, error } = await supabase
-            .from('chat_histories')
-            .select('*', { count: 'exact', head: true })
-            .eq('user_id', userId)
-            .gt('created_at', new Date(Date.now() - 60 * 1000).toISOString()); 
+    const { message, history, partnerId, userId = "user_01", inventory = [], envInfo, dailyEvent } = await req.json();
 
-        if (!error && count !== null && count > 15) {
-            return new Response(JSON.stringify({ error: 'Too many requests. Cool down.' }), { status: 429 });
+    if (!message || !partnerId) return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
+
+    const pKey = Object.keys(PERSONAS).find(k => k.toLowerCase() === partnerId.toLowerCase()) || 'Ash';
+    
+    // Step 1: 状态计算
+    const state = await getPersonaState(userId, pKey, envInfo, dailyEvent);
+
+    // Step 2: 情绪守门 (拒接逻辑)
+    if (state.mood < 10 && !state.isBuffed && state.bond < 600) {
+        let rejectText = "(...Connection Refused...)";
+        if (pKey === 'Ash') rejectText = "(Ash 盯着屏幕看了一眼，直接切断了通讯。) \n\n[系统提示：目标耐受度过低，请前往商店获取【冰美式】]";
+        if (pKey === 'Sol') rejectText = "(Sol 的头像变成了灰色，自动回复：电量耗尽，休眠中... zZZ) \n\n[系统提示：请购买【高能电池】]";
+        return NextResponse.json({ reply: rejectText });
+    }
+
+    // Step 3: 记忆回溯 (RAG - 恢复 Prisma 查询)
+    let memoryContext = "";
+    try {
+      if (userId) {
+        const topShards = await prisma.memoryShard.findMany({
+          where: { userId: userId, weight: { gt: 75 } }, // 只回忆高权重碎片
+          orderBy: { createdAt: 'desc' },
+          take: 2
+        });
+        if (topShards.length > 0) {
+          memoryContext = `[User's Deep Memories]:\n${topShards.map(s => `- ${s.content}`).join('\n')}\n(Use these to provoke the user)`;
         }
+      }
+    } catch (e) {
+      // console.warn("RAG failed", e);
     }
 
-    // 2. 上下文截断 (Context Limit)
-    const MAX_HISTORY = 10; // 缩短历史记录，聚焦当下，更 Tough
-    const recentMessages = messages.slice(-MAX_HISTORY);
-    let lastUserMsgContent = recentMessages[recentMessages.length - 1]?.content || "";
-
-    // 3. 安全检查
-    const safetyCheck = validateInput(lastUserMsgContent);
-    if (!safetyCheck.safe) {
-      const encoder = new TextEncoder();
-      const stream = new ReadableStream({ start(c) { c.enqueue(encoder.encode("⚠️ System Alert: Unsafe input detected. Switching to Safety Mode.")); c.close(); } });
-      return new StreamingTextResponse(stream);
+    // Step 4: 物品掉落 (GM)
+    let lootInstruction = "";
+    const availableLoot = Object.values(LOOT_TABLE).filter(item => 
+      (item.sourcePersona === 'System' || item.sourcePersona === pKey) &&
+      (!item.unique || !inventory.includes(item.id)) 
+    );
+    if (availableLoot.length > 0) {
+        const lootListStr = availableLoot.map(item => `- ID: "${item.id}" | Trigger: ${item.trigger_context}`).join('\n');
+        lootInstruction = `[GM]: Check if user message matches triggers. Drop Rate 10%. If drop, append "{{icon:ITEM_ID}}".\nLoot Table:\n${lootListStr}`;
     }
 
-    // 4. 数据库查询 (状态 + 记忆)
-    let statusPromise = Promise.resolve(null);
-    let memoryPromise = Promise.resolve(null);
-
-    if (process.env.SUPABASE_SERVICE_ROLE_KEY && userId) {
-        statusPromise = supabase.from('persona_states').select('status').eq('persona', persona).single() as any;
-        memoryPromise = supabase.from('memories').select('content').eq('user_id', userId).order('created_at', { ascending: false }).limit(5) as any;
-    }
-
-    const [statusResult, memoryResult] = await Promise.all([statusPromise, memoryPromise]);
-
-    // 5. 忙碌状态拦截
-    if (statusResult && (statusResult as any).data && ((statusResult as any).data.status === 'busy' || (statusResult as any).data.status === 'offline')) {
-        const scripts = BUSY_MESSAGES[persona as string] || BUSY_MESSAGES['Ash'];
-        const randomScript = scripts[Math.floor(Math.random() * scripts.length)];
-        const encoder = new TextEncoder();
-        const stream = new ReadableStream({ start(c) { c.enqueue(encoder.encode(randomScript)); c.close(); } });
-        return new StreamingTextResponse(stream);
-    }
-
-    // 6. 构建 Prompt
-    const currentPersona = PERSONAS[persona as PersonaType] || PERSONAS.Ash;
-    const basePrompt = currentPersona.prompts[currentLang];
+    // Step 5: 隐私与环境
+    const isSecret = /秘密|别告诉|悄悄|保密/i.test(message);
+    const privacyInstruction = isSecret ? `[SECRET]: User wants privacy. Ack this.` : ``;
     
-    // 记忆注入
-    let memoryPrompt = "";
-    if (memoryResult && (memoryResult as any).data) {
-        const memories = (memoryResult as any).data;
-        if (memories.length > 0) {
-            // 这里的 Memory 可能包含 System Context (塔罗牌结果)，非常重要
-            const memoryIntro = currentLang === 'en' ? "[Context/History]:" : "【上下文/记忆】:";
-            memoryPrompt = `\n${memoryIntro}\n${memories.map((m: any) => `- ${m.content}`).join('\n')}`;
-        }
-    }
+    const relLevel = getRelLevel(state.bond);
+    let moodTone = "Normal";
+    if (state.mood < 30) moodTone = "Irritated/Short";
+    if (state.mood > 80) moodTone = "Energetic/Chatty";
 
-    // 环境信息
-    let envPrompt = "";
-    if (envInfo) {
-      const { time, weekday, phase, weather } = envInfo;
-      envPrompt = currentLang === 'zh' ? `【当前环境】: ${weekday} ${time} (${phase})。天气：${weather}。` : `[Environment]: ${weekday} ${time} (${phase}). Weather: ${weather}.`;
-    }
+    const envContext = envInfo ? `[REAL-WORLD]: ${envInfo.time} (${envInfo.phase}), ${envInfo.weather}` : "";
 
-    // 信任等级 (影响语气)
-    let trustPrompt = "";
-    const count = Number(interactionCount);
-    if (count < 50) trustPrompt = currentLang === 'zh' ? `\n[关系等级 Lv.1]: 保持距离，冷漠观察。` : `\n[Relation Lv.1]: Distant observer.`;
-    else if (count < 100) trustPrompt = currentLang === 'zh' ? `\n[关系等级 Lv.2]: 开始说真话，带点刺。` : `\n[Relation Lv.2]: Brutally honest.`;
-    else trustPrompt = currentLang === 'zh' ? `\n[关系等级 Lv.3]: 灵魂共犯。可以说最狠的实话。` : `\n[Relation Lv.3]: Partner in crime. No filters.`;
-
-    let namePrompt = userName && userName.trim() !== "" ? (currentLang === 'zh' ? `\n[用户ID]: "${userName}"` : `\n[User]: "${userName}"`) : "";
+    // 🔥 Step 6: 终极 Prompt 组装 (融合灵魂与大脑)
+    const specificPrompt = PERSONA_PROMPTS[pKey] || PERSONA_PROMPTS['Ash'];
     
-    // 语言强制约束
-    const SYSTEM_LANG_CONSTRAINT = currentLang === 'zh' 
-      ? `\n⚠️【指令】：必须用【中文】回复。保持${currentPersona.name}的独特语气。`
-      : `\n⚠️ [INSTRUCTION]: MUST reply in 【ENGLISH】 only. Keep ${currentPersona.name}'s persona.`;
+    const systemPrompt = `
+${BASE_INSTRUCTION}
 
-    // 7. 组合最终 Prompt
-    const finalSystemPrompt = `${MASTER_INSTRUCTION}\n\n${basePrompt}\n${namePrompt}\n${envPrompt}\n${trustPrompt}\n${memoryPrompt}\n${SYSTEM_LANG_CONSTRAINT}`;
+${specificPrompt}
 
-    const conversation = [
-      { role: 'system', content: finalSystemPrompt },
-      ...recentMessages
-    ];
+[CURRENT STATE]
+- Bond: ${relLevel} (${state.bond})
+- Mood: ${state.mood}/100 (${moodTone})
+- Context: ${envContext}
 
-    // 8. 调用 DeepSeek/OpenAI
-    const response = await openai.chat.completions.create({
-      model: 'deepseek-chat', // 确保你的环境变量里配了 DeepSeek，或者换成 gpt-4o-mini
-      stream: true, 
-      messages: conversation as any, 
-      temperature: 0.9, // 高一点的温度，让"狠话"更有创意
-      max_tokens: 400,
+${memoryContext}
+${lootInstruction}
+${privacyInstruction}
+
+[FINAL OVERRIDE]
+1. Based on Mood ${state.mood}, adjust your tone.
+2. **CRITICAL**: END WITH A QUESTION OR PROVOCATION. DO NOT JUST ANSWER.
+`;
+
+    // Step 7: 生成
+    const completion = await openai.chat.completions.create({
+      model: "deepseek-chat",
+      messages: [
+        { role: "system", content: systemPrompt },
+        ...history.slice(-6),
+        { role: "user", content: message }
+      ],
+      temperature: 1.3,
+      max_tokens: 200,
     });
-    
-    const stream = OpenAIStream(response as any);
-    return new StreamingTextResponse(stream);
+
+    const reply = completion.choices[0].message.content || "...";
+
+    // Step 8: 异步存库 & 碎片生成 (🔥 恢复逻辑)
+    (async () => {
+        try {
+            // A. 尝试生成高价值记忆碎片 (Prisma) - 核心资产
+            await generateShardIfWorthy(userId, pKey, message, reply);
+
+            // B. 存入普通流水 (Supabase) - 用于好感度统计/历史记录
+            await supabase.from('memories').insert({
+                user_id: userId,
+                content: message,
+                type: 'chat',
+                persona: pKey,
+                metadata: { reply, is_secret: isSecret, env: envInfo }
+            });
+        } catch(e) {
+            console.error("Async save error:", e);
+        }
+    })();
+
+    return NextResponse.json({ reply });
 
   } catch (error) {
-    console.error("Chat Error:", error);
-    return new Response(JSON.stringify({ error: 'Connection failed' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+    console.error('Chat API Error:', error);
+    return NextResponse.json({ error: 'System Fail' }, { status: 500 });
+  }
+}
+
+// 🔥 找回了碎片生成函数
+async function generateShardIfWorthy(userId: string, partnerId: string, userMsg: string, aiMsg: string) {
+  try {
+    const analyzePrompt = `
+Analyze the User's psyche based on this dialogue.
+User: "${userMsg}"
+AI: "${aiMsg}"
+
+Task: Extract a "Memory Shard".
+Rules:
+1. Use **Second Person ("你")**.
+2. Be **sharp, poetic, and insightful**. Reveal the hidden truth/fear/desire.
+3. Max 25 words.
+4. JSON only: {"weight": 0-100, "emotion": "anxiety|rage|joy|calm", "content": "..."}
+`;
+
+    const analysis = await openai.chat.completions.create({
+      model: "deepseek-chat",
+      messages: [{ role: "user", content: analyzePrompt }],
+      temperature: 0.5,
+      response_format: { type: "json_object" },
+      max_tokens: 100,
+    });
+
+    const result = JSON.parse(analysis.choices[0].message.content || "{}");
+
+    if (result.weight && result.weight > 70 && result.content) {
+      // 确保用户存在 (Prisma)
+      await prisma.user.upsert({
+        where: { deviceId: userId },
+        update: {},
+        create: { deviceId: userId, nickname: 'Traveler' }
+      });
+
+      // 存入碎片
+      await prisma.memoryShard.create({
+        data: {
+          userId: userId,
+          content: result.content,
+          type: 'insight',
+          emotion: result.emotion || 'neutral',
+          weight: result.weight,
+          sourceChatId: null, 
+        }
+      });
+      console.log("💎 Shard Generated:", result.content);
+      revalidatePath('/mirror');
+    }
+  } catch (e) {
+    console.error("Shard gen warning:", e);
   }
 }
