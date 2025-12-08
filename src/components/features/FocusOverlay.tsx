@@ -40,7 +40,7 @@ export const FocusOverlay = ({ isFocusPaused, focusRemaining, focusWarning, taun
             </div>
          ) : (
             <p className={`text-sm font-medium transition-all duration-500 ${isFocusPaused ? 'text-gray-700' : 'text-red-400/80'}`}>
-               “{SOL_TAUNTS[lang as 'zh'|'en'][tauntIndex]}”
+               “{SOL_TAUNTS[tauntIndex]?.[lang as 'zh'|'en']}”
             </p>
          )}
       </div>
