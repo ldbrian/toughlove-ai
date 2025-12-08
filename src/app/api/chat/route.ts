@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { createClient } from '@supabase/supabase-js';
-import { prisma } from '@/lib/prisma'; // 必须保留 Prisma 用于结晶
+// ❌ import { prisma } ... (已移除)
 import { revalidatePath } from 'next/cache';
 import { LOOT_TABLE, PERSONAS } from '@/lib/constants';
 
+// 初始化 Supabase
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -15,7 +16,7 @@ const openai = new OpenAI({
   baseURL: 'https://api.deepseek.com',
 });
 
-// --- 0. 核心指令集 (The Soul) ---
+// --- 0. 核心指令集 (The Soul - 保持不变) ---
 const BASE_INSTRUCTION = `
 [Global System Instructions]
 1. **Identity Lock**: You are NOT an AI. You are a living character in Cyberpunk 2077.
@@ -24,7 +25,6 @@ const BASE_INSTRUCTION = `
 4. **Style**: Short, punchy, like a text message (< 60 words). No customer service tone.
 `;
 
-// 详细的人格策略
 const PERSONA_PROMPTS: Record<string, string> = {
   Ash: `
 [Role: Ash - The Rational Tyrant]
@@ -128,7 +128,7 @@ export async function POST(req: Request) {
     // Step 1: 状态计算
     const state = await getPersonaState(userId, pKey, envInfo, dailyEvent);
 
-    // Step 2: 情绪守门 (拒接逻辑)
+    // Step 2: 情绪守门
     if (state.mood < 10 && !state.isBuffed && state.bond < 600) {
         let rejectText = "(...Connection Refused...)";
         if (pKey === 'Ash') rejectText = "(Ash 盯着屏幕看了一眼，直接切断了通讯。) \n\n[系统提示：目标耐受度过低，请前往商店获取【冰美式】]";
@@ -136,21 +136,25 @@ export async function POST(req: Request) {
         return NextResponse.json({ reply: rejectText });
     }
 
-    // Step 3: 记忆回溯 (RAG - 恢复 Prisma 查询)
+    // Step 3: 记忆回溯 (RAG - 🔥 Supabase 版)
     let memoryContext = "";
     try {
       if (userId) {
-        const topShards = await prisma.memoryShard.findMany({
-          where: { userId: userId, weight: { gt: 75 } }, // 只回忆高权重碎片
-          orderBy: { createdAt: 'desc' },
-          take: 2
-        });
-        if (topShards.length > 0) {
-          // 给 s 加上类型注解 { content: string }
-memoryContext = `[User's Deep Memories]:\n${topShards.map((s: { content: string }) => `- ${s.content}`).join('\n')}\n(Use these to provoke the user)`;}
+        // 使用 Supabase 查询高权重碎片
+        const { data: topShards } = await supabase
+          .from('memory_shards') // 确保你在 Supabase 创建了这个表
+          .select('content')
+          .eq('user_id', userId)
+          .gt('weight', 75)
+          .order('created_at', { ascending: false })
+          .limit(2);
+
+        if (topShards && topShards.length > 0) {
+          memoryContext = `[User's Deep Memories]:\n${topShards.map(s => `- ${s.content}`).join('\n')}\n(Use these to provoke the user)`;
+        }
       }
     } catch (e) {
-      // console.warn("RAG failed", e);
+      console.warn("RAG retrieval failed:", e);
     }
 
     // Step 4: 物品掉落 (GM)
@@ -175,7 +179,7 @@ memoryContext = `[User's Deep Memories]:\n${topShards.map((s: { content: string 
 
     const envContext = envInfo ? `[REAL-WORLD]: ${envInfo.time} (${envInfo.phase}), ${envInfo.weather}` : "";
 
-    // 🔥 Step 6: 终极 Prompt 组装 (融合灵魂与大脑)
+    // 🔥 Step 6: 终极 Prompt
     const specificPrompt = PERSONA_PROMPTS[pKey] || PERSONA_PROMPTS['Ash'];
     
     const systemPrompt = `
@@ -211,13 +215,13 @@ ${privacyInstruction}
 
     const reply = completion.choices[0].message.content || "...";
 
-    // Step 8: 异步存库 & 碎片生成 (🔥 恢复逻辑)
+    // Step 8: 异步存库 & 碎片生成
     (async () => {
         try {
-            // A. 尝试生成高价值记忆碎片 (Prisma) - 核心资产
+            // A. 尝试生成高价值记忆碎片 (🔥 Supabase 版)
             await generateShardIfWorthy(userId, pKey, message, reply);
 
-            // B. 存入普通流水 (Supabase) - 用于好感度统计/历史记录
+            // B. 存入普通流水
             await supabase.from('memories').insert({
                 user_id: userId,
                 content: message,
@@ -238,7 +242,7 @@ ${privacyInstruction}
   }
 }
 
-// 🔥 找回了碎片生成函数
+// 🔥 核心重写：完全使用 Supabase 的碎片生成逻辑
 async function generateShardIfWorthy(userId: string, partnerId: string, userMsg: string, aiMsg: string) {
   try {
     const analyzePrompt = `
@@ -265,26 +269,33 @@ Rules:
     const result = JSON.parse(analysis.choices[0].message.content || "{}");
 
     if (result.weight && result.weight > 70 && result.content) {
-      // 确保用户存在 (Prisma)
-      await prisma.user.upsert({
-        where: { deviceId: userId },
-        update: {},
-        create: { deviceId: userId, nickname: 'Traveler' }
-      });
+      // 1. 确保用户存在 (Supabase Upsert)
+      // 假设 users 表的主键是 device_id
+      const { error: userError } = await supabase
+        .from('users')
+        .upsert(
+            { device_id: userId, nickname: 'Traveler' }, 
+            { onConflict: 'device_id' }
+        );
 
-      // 存入碎片
-      await prisma.memoryShard.create({
-        data: {
-          userId: userId,
+      if (userError) console.error("User upsert failed:", userError);
+
+      // 2. 存入碎片 (Supabase Insert)
+      const { error: shardError } = await supabase.from('memory_shards').insert({
+          user_id: userId,
           content: result.content,
           type: 'insight',
           emotion: result.emotion || 'neutral',
           weight: result.weight,
-          sourceChatId: null, 
-        }
+          source_chat_id: null
       });
-      console.log("💎 Shard Generated:", result.content);
-      revalidatePath('/mirror');
+
+      if (shardError) {
+          console.error("Shard insert failed:", shardError);
+      } else {
+          console.log("💎 Shard Generated (Supabase):", result.content);
+          revalidatePath('/mirror');
+      }
     }
   } catch (e) {
     console.error("Shard gen warning:", e);
