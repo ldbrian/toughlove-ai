@@ -146,8 +146,8 @@ export async function POST(req: Request) {
           take: 2
         });
         if (topShards.length > 0) {
-          memoryContext = `[User's Deep Memories]:\n${topShards.map(s => `- ${s.content}`).join('\n')}\n(Use these to provoke the user)`;
-        }
+          // 给 s 加上类型注解 { content: string }
+memoryContext = `[User's Deep Memories]:\n${topShards.map((s: { content: string }) => `- ${s.content}`).join('\n')}\n(Use these to provoke the user)`;}
       }
     } catch (e) {
       // console.warn("RAG failed", e);
