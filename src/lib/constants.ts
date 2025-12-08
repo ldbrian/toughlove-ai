@@ -904,7 +904,7 @@ export const UI_TEXT = {
     modalTitle: 'Edit Name', placeholderName: 'Enter Name', cancel: 'Cancel', save: 'Save', feedbackSent: 'Feedback sent',
     online: 'ONLINE', typing: 'Typing...', placeholder: 'Enter signal...', error: 'Signal Lost', systemInit: 'Neural link established.',
     lootTitle: 'INCOMING ITEM', lootAccept: 'ACCEPT', lootAdded: 'ADDED',
-    shop: 'SHOP', inventory: 'INVENTORY', profile: 'PROFILE',rinGiveUpConfirm: "Give up? Rin will be disappointed...",rinNoteTitle: "RIN'S MEMO
+    shop: 'SHOP', inventory: 'INVENTORY', profile: 'PROFILE',rinGiveUpConfirm: "Give up? Rin will be disappointed...",rinNoteTitle: "RIN'S MEMO"
   }
 };
 
