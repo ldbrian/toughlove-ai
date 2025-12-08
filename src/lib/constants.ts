@@ -896,7 +896,7 @@ export const UI_TEXT = {
     modalTitle: '修改昵称', placeholderName: '请输入昵称', cancel: '取消', save: '保存', feedbackSent: '已收到反馈',
     online: '在线', typing: '对方正在输入...', placeholder: '输入信号...', error: '信号中断', systemInit: '神经连接已建立。',
     lootTitle: '获得物品', lootAccept: '收下', lootAdded: '已放入背包',
-    shop: '商店', inventory: '背包', profile: '档案'
+    shop: '商店', inventory: '背包', profile: '档案',rinGiveUpConfirm: "确定要放弃吗？Rin 会失望的..."
   },
   en: { 
     menu: 'MENU', editName: 'Edit Name', lang: 'Language (中)', install: 'Install App', donate: 'Buy Coffee', feedback: 'Feedback', reset: 'Reset Data', 
@@ -904,7 +904,7 @@ export const UI_TEXT = {
     modalTitle: 'Edit Name', placeholderName: 'Enter Name', cancel: 'Cancel', save: 'Save', feedbackSent: 'Feedback sent',
     online: 'ONLINE', typing: 'Typing...', placeholder: 'Enter signal...', error: 'Signal Lost', systemInit: 'Neural link established.',
     lootTitle: 'INCOMING ITEM', lootAccept: 'ACCEPT', lootAdded: 'ADDED',
-    shop: 'SHOP', inventory: 'INVENTORY', profile: 'PROFILE'
+    shop: 'SHOP', inventory: 'INVENTORY', profile: 'PROFILE',rinGiveUpConfirm: "Give up? Rin will be disappointed..."
   }
 };
 
