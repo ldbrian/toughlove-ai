@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { getMemory, saveMemory } from '@/lib/storage';
 import { getLocalTimeInfo, getSimpleWeather } from '@/lib/env'; 
-import { LootItem } from '@/lib/constants'; 
+import { LootItem } from '@/types'; 
 
 // Modals
 import { DonateModal, NameModal, FeedbackModal, InstallModal } from '@/components/modals/SystemModals';
@@ -19,7 +19,11 @@ import { InventoryModal } from '@/components/modals/InventoryModal';
 import { FocusModal } from '@/components/modals/FocusModal';
 import { MemoModal } from '@/components/modals/MemoModal';
 
-
+// 消息类型定义
+interface Message {
+  role: string;
+  content: string;
+}
 
 // 常量
 const PERSONAS: Record<string, any> = {
@@ -132,7 +136,7 @@ export default function ChatRoomPage() {
   const wallpaper = WALLPAPER_MAP[displayKey] || WALLPAPER_MAP['Ash'];
 
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<{role: string, content: string}[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isReady, setIsReady] = useState(false);
   
@@ -153,15 +157,13 @@ export default function ChatRoomPage() {
   const [userName, setUserName] = useState('Traveler');
   const [userBalance, setUserBalance] = useState(100);
 
-  const [inventoryItems, setInventoryItems] = useState<string[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<LootItem[]>([]);
   const [dynamicReply, setDynamicReply] = useState('');
 
   const [stats, setStats] = useState({ favorability: 0, moodValue: 50 });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const initRef = useRef(false);
-
-  // ✨ 新增：用于标记是否完成了首次滚动
   const isInitialScrollDone = useRef(false);
 
   const loadInventory = () => {
@@ -226,6 +228,59 @@ export default function ChatRoomPage() {
       return lang === 'zh' ? '崩溃' : 'BROKEN';
   };
 
+  // 🔥 修复：找回了 handleSwitchLang 函数！
+  const handleSwitchLang = () => {
+    const newLang = lang === 'zh' ? 'en' : 'zh';
+    setLang(newLang);
+    localStorage.setItem('toughlove_lang_preference', newLang);
+    setShowMenu(false);
+    window.location.reload(); 
+  };
+
+  // 🔥 核心逻辑：渲染消息内容，检测名字并生成跳转按钮
+  // 🔥 核心逻辑：渲染消息内容，检测名字并生成跳转按钮
+  const renderMessageContent = (content: string, isAI: boolean) => {
+    // 提取所有的人格名字 (忽略大小写)
+    const names = Object.keys(PERSONAS); 
+    const regex = new RegExp(`(${names.join('|')})`, 'gi');
+    
+    // 切割字符串
+    const parts = content.split(regex);
+
+    return (
+      <div className={`markdown-body ${isAI ? '' : 'text-white'}`}>
+        {parts.map((part, i) => {
+          const lowerPart = part.toLowerCase();
+          // 如果这部分是个人名，且存在于配置中
+          if (names.includes(lowerPart)) {
+             const targetPersona = PERSONAS[lowerPart];
+             
+             // 🎨 动态样式逻辑
+             // AI 侧：保持原样 (深色背景，紫色高亮字)
+             const aiStyle = "bg-white/10 hover:bg-white/20 text-[#7F5CFF] hover:text-[#9f85ff] border-white/10";
+             // 用户侧：高对比度 (紫色背景，白色高亮字，白色半透底)
+             const userStyle = "bg-white/20 hover:bg-white/30 text-white border-white/30 shadow-sm";
+
+             return (
+               <button 
+                 key={i}
+                 onClick={(e) => {
+                    e.stopPropagation(); // 防止触发其他点击
+                    // 💾 保存当前状态，跳转到目标人格
+                    router.push(`/chat/${lowerPart}`);
+                 }}
+                 className={`mx-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md font-bold text-xs transition-colors border -translate-y-0.5 cursor-pointer select-none align-middle ${isAI ? aiStyle : userStyle}`}
+               >
+                 <span>@ {targetPersona.name}</span>
+               </button>
+             );
+          }
+          return <span key={i}><ReactMarkdown components={{ p: ({node, ...props}) => <span {...props} /> }}>{part}</ReactMarkdown></span>;
+        })}
+      </div>
+    );
+  };
+
   useEffect(() => {
     if (initRef.current) return;
     initRef.current = true;
@@ -251,23 +306,17 @@ export default function ChatRoomPage() {
     const contextHook = searchParams.get('context'); 
     const newsContent = searchParams.get('newsContent');
     const localHistory = getMemory(partnerId);
-    let initialMsgs = localHistory || [];
+    
+    let initialMsgs: Message[] = localHistory || [];
 
     let shouldTriggerSend = false;
     let textToSend = "";
 
-    // 🔥 核心修正：优化文案 & 强化 AI 记忆
     if (newsContent) {
         shouldTriggerSend = true;
-        
-        // 1. System Prompt: 强制让 AI 承认这是它的状态
         const hiddenPrompt = `[SYSTEM_CONTEXT: User is reading your own status update/diary entry: "${newsContent}". This is NOT a rumor, it is YOUR recent thought/action. React naturally.]`;
-        
-        // 2. User Text: 优化为“指着你的动态”，解决语病
         const userText = `(指着终端上你的每日动态) “${newsContent}” ……这是什么情况？`;
-        
         textToSend = `${hiddenPrompt}${userText}`;
-        
         updateStats('event'); 
     } else if (actionText) {
         if (contextHook) {
@@ -304,28 +353,15 @@ export default function ChatRoomPage() {
   }, [messages, partnerId, isReady, lang]);
 
   useEffect(() => {
-    // 必须确保 isReady 为 true 且 ref 存在
     if (isReady && messagesEndRef.current) {
-      
-      // 判断逻辑：
-      // 如果还没有进行过首次滚动 (Current = false)，则瞬间跳转 (auto)
-      // 否则 (Current = true)，说明是后续对话，使用平滑滚动 (smooth)
       if (!isInitialScrollDone.current) {
         messagesEndRef.current.scrollIntoView({ behavior: 'auto' });
-        isInitialScrollDone.current = true; // 标记已完成
+        isInitialScrollDone.current = true; 
       } else {
         messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
       }
     }
   }, [messages, isReady]);
-
-  const handleSwitchLang = () => {
-    const newLang = lang === 'zh' ? 'en' : 'zh';
-    setLang(newLang);
-    localStorage.setItem('toughlove_lang_preference', newLang);
-    setShowMenu(false);
-    window.location.reload(); 
-  };
 
   const handleSend = async (textOverride?: string, isHidden: boolean = false) => {
     const textToSend = textOverride || input;
@@ -352,7 +388,6 @@ export default function ChatRoomPage() {
     try {
       const timeInfo = getLocalTimeInfo();
       const weather = await getSimpleWeather();
-      // 强化禁令
       const envInfo = { 
           ...timeInfo, 
           weather: weather || "未知",
@@ -393,27 +428,6 @@ export default function ChatRoomPage() {
     handleSend(`(展示塔罗牌) ${visibleReaction}`);
   };
 
-  const handleItemUse = async (item: LootItem) => {
-    setShowInventory(false);
-    fetch('/api/shop/use', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: "user_01", itemId: item.id, targetPersona: config.name })
-    });
-
-    let rarityBonus = 5;
-    if (item.rarity === 'rare') rarityBonus = 10;
-    if (item.rarity === 'epic') rarityBonus = 15;
-    if (item.rarity === 'legendary') rarityBonus = 25;
-    updateStats('gift', rarityBonus);
-
-    let visibleText = `(递给你 ${item.name.zh})`;
-    if (item.id.includes('tarot')) visibleText = `(展示了 ${item.name.zh}) 这张牌代表什么？`;
-    if (item.id.includes('letter')) visibleText = `(拿出了泛黄的信笺) 你看看这个...`;
-    
-    handleSend(visibleText);
-  };
-
   const handleQuickReply = (text: string) => {
       handleSend(text);
   };
@@ -434,12 +448,37 @@ export default function ChatRoomPage() {
             onJumpToChat={handleTarotJump} 
             lang={lang} 
             forcedSpeaker={config.name as any} 
+            partnerId={partnerId}
             onCollect={loadInventory}
         />
         
-        <InventoryModal show={showInventory} onClose={() => setShowInventory(false)} inventoryItems={inventoryItems} lang={lang} isUsageMode={true} currentPersona={config.name} onUseItem={handleItemUse} />
-        <FocusModal show={showFocus} onClose={() => setShowFocus(false)} lang={lang} onReward={handleReward} />
-        <MemoModal show={showMemo} onClose={() => setShowMemo(false)} lang={lang} onReward={handleReward} />
+        <InventoryModal 
+            show={showInventory} 
+            onClose={() => setShowInventory(false)} 
+            lang={lang} 
+            partnerId={partnerId} 
+            inventory={inventoryItems}
+            setInventory={setInventoryItems}
+            handleSend={handleSend}
+        />
+
+        <FocusModal 
+            show={showFocus} 
+            onClose={() => setShowFocus(false)} 
+            lang={lang} 
+            partnerId={partnerId} 
+            onReward={handleReward} 
+            handleSend={handleSend}
+        />
+        
+        <MemoModal 
+            show={showMemo} 
+            onClose={() => setShowMemo(false)} 
+            lang={lang} 
+            partnerId={partnerId} 
+            onReward={handleReward} 
+            handleSend={handleSend}
+        />
 
         <div className="absolute inset-0 z-0 bg-black">
              <div className="absolute inset-0 bg-cover bg-center transition-opacity opacity-100" style={{ backgroundImage: `url(${wallpaper})` }} />
@@ -518,19 +557,18 @@ export default function ChatRoomPage() {
                             )}
                             {!isAI ? (
                                 <div className="px-5 py-3 text-sm bg-gradient-to-br from-[#7F5CFF] to-[#6242db] text-white rounded-[1.2rem] rounded-tr-sm shadow-[0_4px_15px_rgba(127,92,255,0.3)] border border-white/10 break-words whitespace-pre-wrap min-w-0">
-                                    {/* 🔥 清洗 Tag */}
-                                    {msg.content.replace(/\[.*?\]/g, '').trim()}
+                                    {/* 用户消息支持提及跳转 */}
+                                    {renderMessageContent(msg.content.replace(/\[.*?\]/g, '').trim(), false)}
                                 </div>
                             ) : (
                                 <>
                                     <div className="px-6 py-4 text-sm leading-relaxed shadow-lg backdrop-blur-xl rounded-[1.2rem] rounded-tl-sm bg-[#1a1a1a]/85 border border-white/10 text-gray-100 relative overflow-hidden group break-words whitespace-pre-wrap min-w-0">
                                         <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
-                                        <div className="markdown-body">
-                                          {parts.map((part, pIdx) => {
-                                              if (part.startsWith('{{icon:') && part.endsWith('}}')) return null; 
-                                              return <ReactMarkdown key={pIdx}>{part}</ReactMarkdown>;
-                                          })}
-                                        </div>
+                                        {/* AI 消息内容渲染 */}
+                                        {parts.map((part, pIdx) => {
+                                            if (part.startsWith('{{icon:') && part.endsWith('}}')) return null;
+                                            return <div key={pIdx}>{renderMessageContent(part, true)}</div>;
+                                        })}
                                     </div>
                                     {parts.map((part, pIdx) => {
                                         if (part.startsWith('{{icon:') && part.endsWith('}}')) {

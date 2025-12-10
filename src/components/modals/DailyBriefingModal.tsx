@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Sparkles, Download, Clock } from 'lucide-react';
-import { TAROT_DECK, LangType } from '@/lib/constants';
+import { LangType } from '@/types';
+import { useContent } from '@/contexts/ContentContext';
 
 interface DailyBriefingModalProps {
   show: boolean;
@@ -10,11 +11,13 @@ interface DailyBriefingModalProps {
   forcedSpeaker?: string;
   // 🔥 新增回调
   onCollect?: () => void;
+  partnerId: string;
 }
 
 const STORAGE_KEY = 'toughlove_daily_tarot_log';
 
 export const DailyBriefingModal = ({ show, onClose, lang, onCollect }: DailyBriefingModalProps) => {
+    const { tarotDeck } = useContent();
   const [step, setStep] = useState<'SHUFFLE' | 'DRAW' | 'REVEAL' | 'REVIEW'>('SHUFFLE');
   const [selectedCard, setSelectedCard] = useState<any>(null);
   const [isFlipping, setIsFlipping] = useState(false);
@@ -32,7 +35,7 @@ export const DailyBriefingModal = ({ show, onClose, lang, onCollect }: DailyBrie
     if (savedLog) {
         const log = JSON.parse(savedLog);
         if (log.date === today && log.cardId !== undefined) {
-            const card = TAROT_DECK.find(c => c.id === log.cardId);
+            const card = tarotDeck.find(c => c.id === log.cardId);
             setSelectedCard(card);
             setStep('REVIEW');
             return;
@@ -47,7 +50,7 @@ export const DailyBriefingModal = ({ show, onClose, lang, onCollect }: DailyBrie
   const handleDraw = () => {
     if (step !== 'DRAW') return;
 
-    const randomCard = TAROT_DECK[Math.floor(Math.random() * TAROT_DECK.length)];
+    const randomCard = tarotDeck[Math.floor(Math.random() * tarotDeck.length)];
     setSelectedCard(randomCard);
     setIsFlipping(true);
 

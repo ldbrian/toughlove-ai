@@ -1,11 +1,12 @@
-import { PersonaType } from '../lib/constants';
+import { PersonaType } from '@/types/index';
+
 
 export interface DailyNewsItem {
   routine: string[];
   event: string[];
 }
 
-export const DAILY_NEWS_DATA: Record<PersonaType, DailyNewsItem> = {
+export const DAILY_NEWS_DATA: Record<Exclude<PersonaType, 'System'>, DailyNewsItem> = {
   // 🧊 Ash: 平淡是工作，事件是蠢货
   Ash: {
     routine: [

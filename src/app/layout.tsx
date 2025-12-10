@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { BottomNav } from "@/components/layout/BottomNav";
+import { ContentProvider } from '@/contexts/ContentContext';
+
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -42,7 +44,9 @@ export default function RootLayout({
           
           {/* 主内容区 */}
           <main className="flex-1 relative overflow-hidden">
+          <ContentProvider>
             {children}
+          </ContentProvider>
           </main>
 
           {/* 底部导航 */}

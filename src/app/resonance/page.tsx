@@ -1,5 +1,7 @@
-'use client';
+// page.tsx - 最终修复后的完整代码
 
+'use client';
+import { getDict, getContentText } from '@/lib/i18n/dictionaries';
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
@@ -7,11 +9,11 @@ import {
   MoreVertical, X as XIcon,
   UserPen, Globe, Download, ShoppingBag, RotateCcw, Bug
 } from 'lucide-react';
-
+import { LootItem, LangType, PersonaType, MoodType } from '@/types'; // 假设类型已在 types.ts 中定义
 import Console from '@/components/Console';
 import { DailyNewsBar } from '@/components/DailyNewsBar'; 
 import { getLastMessage } from '@/lib/storage';
-import { NameModal, FeedbackModal, InstallModal } from '@/components/modals/SystemModals';
+import { NameModal, FeedbackModal, InstallModal, LangSetupModal } from '@/components/modals/SystemModals';
 
 import { AccessGate } from '@/components/modals/AccessGate'; 
 import { OnboardingModal } from '@/components/modals/OnboardingModal';
@@ -20,10 +22,12 @@ import { ShopModal } from '@/components/modals/ShopModal';
 import { InventoryModal } from '@/components/modals/InventoryModal'; 
 import { DailyBriefingModal } from '@/components/modals/DailyBriefingModal'; 
 
-// 🔥 新增引入
 import { FocusModal } from '@/components/modals/FocusModal';
 import { MemoModal } from '@/components/modals/MemoModal';
 
+
+
+// 定义角色常量 (保持一致)
 const PERSONAS = {
   Ash: { name: 'Ash', avatar: '/avatars/ash_hero.jpg', color: 'text-cyan-400' },
   Rin: { name: 'Rin', avatar: '/avatars/rin_hero.jpg', color: 'text-purple-400' },
@@ -32,14 +36,10 @@ const PERSONAS = {
   Echo: { name: 'Echo', avatar: '/avatars/echo_hero.jpg', color: 'text-slate-400' },
 } as const;
 
-type PersonaType = keyof typeof PERSONAS;
-type LangType = 'zh' | 'en';
-type MoodType = 'low' | 'anxious' | 'neutral' | 'angry' | 'high';
+// type PersonaType = keyof typeof PERSONAS; // 假设已导入
+// type MoodType = 'low' | 'anxious' | 'neutral' | 'angry' | 'high'; // 假设已导入
 
-const UI_TEXT = {
-  zh: { menu: '菜单', editName: '修改昵称', lang: '切换语言 (EN)', install: '安装应用', shop: '黑市商店', feedback: '反馈 Bug', reset: '重置数据', resetConfirm: '⚠️ 警告：确认重置记忆？这将清除所有聊天记录、背包和塔罗牌，系统将重启并重新进行心理测试。', newMail: '收到来自未来的信笺' },
-  en: { menu: 'MENU', editName: 'Edit Name', lang: 'Language (中)', install: 'Install App', shop: 'Black Market', feedback: 'Feedback', reset: 'Reset Data', resetConfirm: '⚠️ WARNING: Reset memory? This will wipe chat history, inventory and tarot cards. System will reboot to psychological test.', newMail: 'You received a letter from future' }
-};
+
 
 const WALLPAPER_MAP: Record<string, string> = {
   Ash: '/wallpapers/ash_clinic.jpg',
@@ -59,8 +59,28 @@ const MOOD_OPTIONS: { id: MoodType, label: { zh: string, en: string }, color: st
 
 const USER_INVENTORY_KEY = 'toughlove_inventory';
 const USER_PROFILE_KEY = 'toughlove_user_profile';
-const USER_TAROT_LOG_KEY = 'toughlove_daily_tarot_log'; 
+const MATCHED_PERSONA_KEY = 'toughlove_matched_persona'; 
 
+// 辅助函数：MetaToast 和 GlobalMenu 保持不变...
+interface GlobalMenuProps { onClose: () => void; onEditName: () => void; onSwitchLang: () => void; onInstall: () => void; onShop: () => void; onInventory: () => void; onReset: () => void; onFeedback: () => void; lang: LangType; }
+const GlobalMenu = ({ onClose, onEditName, onSwitchLang, onInstall, onShop, onInventory, onReset, onFeedback, lang }: GlobalMenuProps) => {
+    const t = getDict(lang); // 获取当前语言字典
+  
+    return (
+      <div className="absolute top-16 right-6 w-48 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl z-[100] flex flex-col p-1 animate-in fade-in zoom-in-95 duration-200 pointer-events-auto">
+          <div className="flex justify-between items-center px-4 py-2 border-b border-white/5">
+              <span className="text-xs font-bold text-gray-500">{t.menu.title}</span>
+              <button onClick={onClose}><XIcon size={14} className="text-gray-500 hover:text-white" /></button>
+          </div>
+          <button onClick={onEditName} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-white/5 rounded-xl transition-colors text-left"><UserPen size={16} /> {t.menu.editName}</button>
+          <button onClick={onSwitchLang} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-white/5 rounded-xl transition-colors text-left"><Globe size={16} /> {t.menu.lang}</button>
+          <button onClick={onInstall} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-white/5 rounded-xl transition-colors text-left"><Download size={16} /> {t.menu.install}</button>
+          <button onClick={onShop} className="flex items-center gap-3 px-4 py-3 text-sm text-yellow-500 hover:bg-white/5 rounded-xl transition-colors text-left"><ShoppingBag size={16} /> {t.menu.shop}</button>
+          <button onClick={onFeedback} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-white/5 rounded-xl transition-colors text-left"><Bug size={16} /> {t.menu.feedback}</button>
+          <button onClick={onReset} className="flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:bg-red-500/10 rounded-xl transition-colors text-left"><RotateCcw size={16} /> {t.menu.reset}</button>
+      </div>
+    );
+  };
 const MetaToast = ({ persona, show, onClose, lang }: { persona: string, show: boolean, onClose: () => void, lang: LangType }) => {
   if (!show) return null;
   // @ts-ignore
@@ -81,29 +101,24 @@ const MetaToast = ({ persona, show, onClose, lang }: { persona: string, show: bo
   )
 }
 
-interface GlobalMenuProps { onClose: () => void; onEditName: () => void; onSwitchLang: () => void; onInstall: () => void; onShop: () => void; onInventory: () => void; onReset: () => void; onFeedback: () => void; lang: LangType; }
-const GlobalMenu = ({ onClose, onEditName, onSwitchLang, onInstall, onShop, onInventory, onReset, onFeedback, lang }: GlobalMenuProps) => {
-  const t = UI_TEXT[lang];
-  return (
-    <div className="absolute top-16 right-6 w-48 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl z-[100] flex flex-col p-1 animate-in fade-in zoom-in-95 duration-200 pointer-events-auto">
-        <div className="flex justify-between items-center px-4 py-2 border-b border-white/5">
-            <span className="text-xs font-bold text-gray-500">{t.menu}</span>
-            <button onClick={onClose}><XIcon size={14} className="text-gray-500 hover:text-white" /></button>
-        </div>
-        <button onClick={onEditName} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-white/5 rounded-xl transition-colors text-left"><UserPen size={16} /> {t.editName}</button>
-        <button onClick={onSwitchLang} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-white/5 rounded-xl transition-colors text-left"><Globe size={16} /> {t.lang}</button>
-        <button onClick={onInstall} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-white/5 rounded-xl transition-colors text-left"><Download size={16} /> {t.install}</button>
-        <button onClick={onShop} className="flex items-center gap-3 px-4 py-3 text-sm text-yellow-500 hover:bg-white/5 rounded-xl transition-colors text-left"><ShoppingBag size={16} /> {t.shop}</button>
-        <button onClick={onFeedback} className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-white/5 rounded-xl transition-colors text-left"><Bug size={16} /> {t.feedback}</button>
-        <button onClick={onReset} className="flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:bg-red-500/10 rounded-xl transition-colors text-left"><RotateCcw size={16} /> {t.reset}</button>
-    </div>
-  );
-};
-
 export default function ResonancePage() {
   const router = useRouter();
+
+  // 🔥 核心修复 1: 在组件函数体内部初始化状态，确保读取到本地匹配结果
+  const ALL_PERSONAS = Object.keys(PERSONAS) as PersonaType[];
+  const initialMatchedId = typeof window !== 'undefined' ? localStorage.getItem(MATCHED_PERSONA_KEY) : null;
+  const initialPersona = (initialMatchedId && ALL_PERSONAS.includes(initialMatchedId as PersonaType)) 
+                         ? (initialMatchedId as PersonaType) 
+                         : 'Ash'; // 默认 fallback
+
+  const initialSortedPersonas = initialPersona === 'Ash'
+      ? ALL_PERSONAS
+      : [initialPersona, ...ALL_PERSONAS.filter(k => k !== initialPersona)];
   
-  const [activePersona, setActivePersona] = useState<PersonaType>('Ash');
+  const [activePersona, setActivePersona] = useState<PersonaType>(initialPersona);
+  const [sortedPersonas, setSortedPersonas] = useState<PersonaType[]>(initialSortedPersonas);
+  // --------------------------------------------------------------------------
+
   const [currentMood, setCurrentMood] = useState<MoodType>('neutral');
   const [lang, setLang] = useState<LangType>('zh'); 
   
@@ -115,10 +130,10 @@ export default function ResonancePage() {
   const [showShopModal, setShowShopModal] = useState(false); 
   const [showInstallModal, setShowInstallModal] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [showLangModal, setShowLangModal] = useState(false);
   const [showInventory, setShowInventory] = useState(false); 
   const [showTarot, setShowTarot] = useState(false); 
 
-  // 🔥 新增状态：Focus 和 Memo
   const [showFocus, setShowFocus] = useState(false); 
   const [showMemo, setShowMemo] = useState(false);
 
@@ -130,7 +145,8 @@ export default function ResonancePage() {
   const [userName, setUserName] = useState('Traveler');
   
   const [userBalance, setUserBalance] = useState(100);
-  const [inventoryItems, setInventoryItems] = useState<string[]>([]); 
+  
+  const [inventoryItems, setInventoryItems] = useState<LootItem[]>([]); 
 
   const touchStart = useRef<number | null>(null);
 
@@ -138,7 +154,37 @@ export default function ResonancePage() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showLetter, setShowLetter] = useState(false);
 
+  const hydrateInventory = (ids: string[]): LootItem[] => {
+    return ids.map(id => ({
+        id,
+        name: { zh: id, en: id }, 
+        description: { zh: '...', en: '...' },
+        price: 0,
+        rarity: 'common',
+        type: 'consumable',
+        sourcePersona: undefined, 
+        trigger_context: undefined, 
+    }));
+  };
+
   useEffect(() => {
+    // 数据同步中心
+    const syncData = () => {
+        const lastMsg = getLastMessage(activePersona); 
+        
+        // 修复 Console 遮挡: 文本截断增强
+        const truncatedMsg = lastMsg && lastMsg.length > 60 
+            ? lastMsg.substring(0, 57).trim() + '...' 
+            : lastMsg;
+            
+        setMemoryText(truncatedMsg); 
+        loadInventory();
+        const savedBalance = localStorage.getItem('toughlove_user_rin');
+        if (savedBalance) setUserBalance(parseInt(savedBalance));
+    };
+
+    syncData();
+
     // 门禁检查
     const hasToken = localStorage.getItem('toughlove_access_token');
     if (hasToken === 'GRANTED') {
@@ -146,28 +192,26 @@ export default function ResonancePage() {
         checkFlow(); 
     }
 
-    const lastMsg = getLastMessage(activePersona);
-    setMemoryText(lastMsg);
-    
     const savedName = localStorage.getItem('toughlove_user_name');
     if (savedName) setUserName(savedName);
     
     const savedLang = localStorage.getItem('toughlove_lang_preference');
-    if (savedLang === 'zh' || savedLang === 'en') setLang(savedLang as LangType);
+    if (savedLang) setLang(savedLang as LangType);
 
     const toastDismissed = localStorage.getItem('toughlove_toast_dismissed');
     if (!toastDismissed) setShowToast(true);
 
-    setUserBalance(100); 
-    loadInventory(); 
+    window.addEventListener('focus', syncData);
+    // ⚠️ 依赖 activePersona，以确保状态变化时能重新同步聊天记录/库存。
+    return () => window.removeEventListener('focus', syncData);
 
   }, [activePersona]); 
 
-  // 核心：刷新背包数据
   const loadInventory = () => {
       const savedInv = localStorage.getItem(USER_INVENTORY_KEY);
       if (savedInv) {
-          setInventoryItems(JSON.parse(savedInv));
+          const ids = JSON.parse(savedInv);
+          setInventoryItems(hydrateInventory(ids));
       }
   };
 
@@ -176,6 +220,25 @@ export default function ResonancePage() {
       if (!hasProfile) {
           setShowOnboarding(true);
           return;
+      }
+
+      const matched = localStorage.getItem(MATCHED_PERSONA_KEY);
+      
+      if (matched) {
+          const winner = matched as PersonaType;
+          
+          // 🏆 核心修复：强制纠正 activePersona 状态
+          // 如果 LocalStorage 有匹配结果，且当前 activePersona 不是它，则强制更新。
+          if (activePersona !== winner) {
+              // ⚠️ 这一步是为了对抗任何外部（如 Ash 默认值）的覆盖。
+             setActivePersona(winner); 
+          }
+          
+          // 更新排序列表
+          if (sortedPersonas[0] !== winner) {
+              const others = ALL_PERSONAS.filter(k => k !== winner) as PersonaType[];
+              setSortedPersonas([winner, ...others]); 
+          }
       }
 
       loadInventory(); 
@@ -192,12 +255,27 @@ export default function ResonancePage() {
   };
 
   const handleOnboardingFinish = (profile: any) => {
+    
+      localStorage.removeItem(MATCHED_PERSONA_KEY);
+      
       localStorage.setItem(USER_PROFILE_KEY, JSON.stringify(profile));
-      if (profile.dominant && PERSONAS[profile.dominant as PersonaType]) {
-          setActivePersona(profile.dominant as PersonaType);
+      
+      if (
+        profile.dominant &&
+        typeof profile.dominant === 'string' &&
+        (Object.keys(PERSONAS) as PersonaType[]).includes(profile.dominant as PersonaType)
+      ) {
+          const winner = profile.dominant as PersonaType;
+          localStorage.setItem(MATCHED_PERSONA_KEY, winner); 
+          
+          // ✅ 关键修复：直接在内存中更新状态
+          const others = ALL_PERSONAS.filter(k => k !== winner);
+          setSortedPersonas([winner, ...others]);
+          setActivePersona(winner); 
       }
+      
       setShowOnboarding(false);
-      setTimeout(() => setShowLetter(true), 800);
+      setShowLetter(true); // 完成 Onboarding 后直接进入信件环节
   };
 
   const handleLetterOpen = () => {
@@ -215,16 +293,52 @@ export default function ResonancePage() {
       setUserBalance(newBalance);
       loadInventory();
   };
+  
+  const handleReward = (amount: number) => {
+      const newBalance = userBalance + amount;
+      setUserBalance(newBalance);
+      localStorage.setItem('toughlove_user_rin', newBalance.toString());
+      loadInventory();
+  };
+
+  const handleSend = (text: string, isHidden: boolean = false) => {
+      const pId = activePersona.toLowerCase();
+      const storageKey = `toughlove_chat_${pId}`;
+      const history = JSON.parse(localStorage.getItem(storageKey) || '[]');
+      
+      const newMessage = { role: 'user', content: text };
+      const newHistory = [...history, newMessage];
+      
+      localStorage.setItem(storageKey, JSON.stringify(newHistory));
+      setMemoryText(text);
+  };
 
   const handleTarotCollect = () => {
       loadInventory(); 
   };
 
-  const handleSwitchLang = () => {
-    const newLang = lang === 'zh' ? 'en' : 'zh';
-    setLang(newLang);
-    localStorage.setItem('toughlove_lang_preference', newLang);
+  const handleOpenLangMenu = () => {
     setShowMenu(false);
+    setShowLangModal(true);
+  };
+
+  // ✅ 新增：真正切换语言的函数 (由弹窗调用)
+  const handleLangConfirm = (selectedLang: LangType) => {
+    setLang(selectedLang);
+    localStorage.setItem('toughlove_lang_preference', selectedLang);
+    setShowLangModal(false);
+    window.dispatchEvent(new Event('toughlove_lang_change'));
+  };
+
+  const handleFullReset = () => {
+    if(confirm(getDict(lang).menu.resetConfirm)) { 
+        Object.keys(localStorage).forEach(key => {
+            if(key.startsWith('toughlove_')) {
+                localStorage.removeItem(key);
+            }
+        });
+        window.location.reload(); 
+    } 
   };
 
   const handleCloseToast = () => { setShowToast(false); localStorage.setItem('toughlove_toast_dismissed', 'true'); };
@@ -233,8 +347,10 @@ export default function ResonancePage() {
     if (isSwitching) return;
     setIsSwitching(true);
     setSlideDirection(direction === 'next' ? 'right' : 'left');
-    const keys = Object.keys(PERSONAS) as PersonaType[];
+    
+    const keys = sortedPersonas; 
     const idx = keys.indexOf(activePersona);
+    
     setTimeout(() => {
         if (direction === 'next') setActivePersona(keys[(idx + 1) % keys.length]);
         else setActivePersona(keys[(idx - 1 + keys.length) % keys.length]);
@@ -249,20 +365,15 @@ export default function ResonancePage() {
       touchStart.current = null;
   };
 
-  // 🔥 关键修改：拦截 Sol 和 Rin 的专属 Action
   const handleConsoleAction = (actionId: string, label: string, contextText: string) => {
-    // Sol: 专注模式
     if (actionId === 'focus_mode' || actionId === 'timer') {
         setShowFocus(true);
         return;
     }
-    // Rin: 便利贴
     if (actionId === 'memo' || actionId === 'note') {
         setShowMemo(true);
         return;
     }
-
-    // 其他：正常跳转聊天
     const params = new URLSearchParams();
     params.set('action', actionId);
     params.set('text', label);
@@ -273,32 +384,59 @@ export default function ResonancePage() {
   const handleContinueChat = () => router.push(`/chat/${activePersona}`);
   
   const handleNewsClick = (status: any) => {
-      if (status.type === 'event' && !status.content.includes('日常')) {
-          // Logic
-      }
       router.push(`/chat/${status.persona}?newsContent=${encodeURIComponent(status.content)}`);
   };
 
   const currentMoodObj = MOOD_OPTIONS.find(m => m.id === currentMood);
+  const safePersona = PERSONAS[activePersona as keyof typeof PERSONAS] || PERSONAS['Ash'];
 
   return (
-    <div className="relative flex flex-col h-screen w-full bg-black text-white overflow-hidden pb-24" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+    // 🔥 修复 Console 遮挡 1: 移除冗余 class，使用 style 属性确保安全区域留白
+    <div 
+        className="relative flex flex-col h-screen w-full bg-black text-white overflow-hidden" 
+        onTouchStart={onTouchStart} 
+        onTouchEnd={onTouchEnd}
+        style={{
+            // 🏆 稳健修复：增大 base padding (16rem = 64 * 0.25rem) 并加上 env() 变量
+            paddingBottom: 'calc(16rem + env(safe-area-inset-bottom))' 
+        }}
+    >
         {isLocked && <AccessGate onUnlock={handleUnlock} />}
         <OnboardingModal show={showOnboarding} onFinish={handleOnboardingFinish} lang={lang} />
         <LetterOpenModal show={showLetter} onOpen={handleLetterOpen} />
         <ShopModal show={showShopModal} onClose={() => setShowShopModal(false)} userRin={userBalance} onBalanceUpdate={handleBalanceUpdate} lang={lang} />
         
-        {/* 🔥 挂载新 Modals */}
-        <FocusModal show={showFocus} onClose={() => setShowFocus(false)} lang={lang} />
-        <MemoModal show={showMemo} onClose={() => setShowMemo(false)} lang={lang} />
+        <FocusModal 
+            show={showFocus} 
+            onClose={() => setShowFocus(false)} 
+            lang={lang} 
+            partnerId={activePersona} 
+            onReward={handleReward}
+            handleSend={handleSend}
+        />
+        
+        <MemoModal 
+            show={showMemo} 
+            onClose={() => setShowMemo(false)} 
+            lang={lang} 
+            partnerId={activePersona}
+            onReward={handleReward}
+            handleSend={handleSend}
+        />
 
         {showInventory && (
             <InventoryModal 
                 show={showInventory} 
                 onClose={() => setShowInventory(false)} 
-                inventoryItems={inventoryItems} 
+                partnerId={activePersona}
                 lang={lang} 
-                isUsageMode={false} 
+                inventory={inventoryItems} 
+                setInventory={(newItems: LootItem[]) => {
+                    const newIds = newItems.map(item => item.id);
+                    setInventoryItems(newItems);
+                    localStorage.setItem(USER_INVENTORY_KEY, JSON.stringify(newIds));
+                }}
+                handleSend={handleSend}
             />
         )}
 
@@ -306,13 +444,19 @@ export default function ResonancePage() {
             show={showTarot} 
             onClose={() => setShowTarot(false)} 
             lang={lang} 
-            onCollect={handleTarotCollect} 
+            onCollect={handleTarotCollect}
+            forcedSpeaker={activePersona}
+            partnerId={activePersona}
         />
 
         <NameModal show={showNameModal} onClose={() => setShowNameModal(false)} tempName={tempName} setTempName={setTempName} onSave={() => { setUserName(tempName); localStorage.setItem('toughlove_user_name', tempName); setShowNameModal(false); }} ui={{ title: lang === 'zh' ? '修改昵称' : 'Edit Name', placeholder: 'Name', cancel: 'Cancel', save: 'Save' }} />
         <InstallModal show={showInstallModal} onClose={() => setShowInstallModal(false)} lang={lang} />
         <FeedbackModal show={showFeedbackModal} onClose={() => setShowFeedbackModal(false)} text="" setText={()=>{}} onSubmit={()=>{ setShowFeedbackModal(false); alert(lang === 'zh' ? '已收到反馈' : 'Feedback sent'); }} lang={lang} />
-
+        <LangSetupModal 
+            show={showLangModal} 
+            lang={lang} 
+            onConfirm={handleLangConfirm} 
+        />
         <div className="absolute inset-0 z-0 bg-black">
             {Object.keys(WALLPAPER_MAP).map((pKey) => (
                 <div key={pKey} className={`absolute inset-0 bg-cover bg-center transition-opacity duration-700 ease-in-out ${activePersona === pKey ? 'opacity-50' : 'opacity-0'} scale-105`} style={{ backgroundImage: `url(${WALLPAPER_MAP[pKey]})` }} />
@@ -321,8 +465,9 @@ export default function ResonancePage() {
             <div className="absolute inset-0 bg-[url('/noise.png')] opacity-15 mix-blend-overlay pointer-events-none"></div>
         </div>
 
-        <div className="absolute top-0 left-0 right-0 z-50 flex flex-col pointer-events-none">
-            <div className="flex justify-between items-center px-6 py-6 pointer-events-auto bg-gradient-to-b from-black/90 to-transparent">
+        {/* UI 区域 1: Header (保持不变) */}
+        <div className="absolute top-0 left-0 right-0 z-50 flex flex-col pointer-events-none bg-black/95">
+            <div className="flex justify-between items-center px-6 py-4 pointer-events-auto bg-gradient-to-b from-black/90 to-transparent">
                 <div className="flex flex-col gap-0.5 justify-center h-9">
                     <h1 className="text-xl font-black italic tracking-tighter text-white drop-shadow-md">TOUGH.</h1>
                     <span className="text-[8px] tracking-[0.3em] text-gray-400 uppercase opacity-70">RESONANCE V2.9</span>
@@ -330,7 +475,9 @@ export default function ResonancePage() {
                 <div className="flex items-center gap-3 relative">
                     <button onClick={() => { setIsMoodOpen(!isMoodOpen); setShowToast(false); setShowMenu(false); }} className="flex items-center gap-2 pl-3 pr-2 h-9 bg-white/5 border border-white/10 backdrop-blur-md rounded-full hover:bg-white/10 transition-all shadow-lg active:scale-95">
                         <div className={`w-2 h-2 rounded-full ${currentMoodObj?.dotColor || 'bg-white'}`}></div>
-                        <span className="text-[10px] font-bold uppercase text-gray-200 tracking-wider">{lang === 'zh' ? currentMoodObj?.label.zh : currentMoodObj?.label.en}</span>
+                        <span className="text-[10px] font-bold uppercase text-gray-200 tracking-wider"><span className="text-[10px] font-bold uppercase text-gray-200 tracking-wider">
+  {getContentText(currentMoodObj?.label, lang)}
+</span></span>
                         <ChevronDown size={14} className={`text-gray-400 transition-transform duration-300 ${isMoodOpen ? 'rotate-180' : ''}`} />
                     </button>
                     <button onClick={() => { setShowMenu(!showMenu); setIsMoodOpen(false); }} className="w-9 h-9 flex items-center justify-center bg-white/5 rounded-full hover:bg-white/10 backdrop-blur-md border border-white/5 shadow-lg active:scale-95 transition-all">
@@ -341,20 +488,12 @@ export default function ResonancePage() {
                             lang={lang}
                             onClose={() => setShowMenu(false)}
                             onEditName={() => { setShowMenu(false); setTempName(userName); setShowNameModal(true); }}
-                            onSwitchLang={handleSwitchLang}
+                            onSwitchLang={handleOpenLangMenu}
                             onInstall={() => { setShowMenu(false); setShowInstallModal(true); }}
                             onShop={() => { setShowMenu(false); setShowShopModal(true); }} 
                             onInventory={() => { setShowMenu(false); setShowInventory(true); }} 
                             onFeedback={() => { setShowMenu(false); setShowFeedbackModal(true); }}
-                            onReset={() => { 
-                                if(confirm(UI_TEXT[lang].resetConfirm)) { 
-                                    localStorage.removeItem(USER_PROFILE_KEY);
-                                    localStorage.removeItem(USER_INVENTORY_KEY);
-                                    localStorage.removeItem(USER_TAROT_LOG_KEY);
-                                    localStorage.removeItem('toughlove_user_name');
-                                    window.location.reload(); 
-                                } 
-                            }}
+                            onReset={handleFullReset}
                         />
                     )}
                 </div>
@@ -370,7 +509,7 @@ export default function ResonancePage() {
                         const isActive = currentMood === mood.id;
                         return (
                             <button key={mood.id} onClick={() => { setCurrentMood(mood.id); handleCloseToast(); setTimeout(() => setIsMoodOpen(false), 300); }} className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-wider rounded-full transition-all duration-300 border ${isActive ? `${mood.color} scale-105 z-10` : 'bg-transparent border-transparent text-gray-500 hover:bg-white/5 hover:text-gray-300'}`}>
-                                {lang === 'zh' ? mood.label.zh : mood.label.en}
+                                {getContentText(mood.label, lang)}
                             </button>
                         )
                     })}
@@ -378,7 +517,8 @@ export default function ResonancePage() {
             </div>
         </div>
 
-        <div className="flex-1 relative z-10 flex flex-col items-center justify-center gap-4 pt-12">
+        {/* UI 区域 2: Main Content */}
+        <div className="flex-1 relative z-10 flex flex-col items-center justify-center gap-4 pt-24"> 
             <div className="w-full mb-2 animate-[fadeIn_0.5s_ease-out_0.5s_forwards]">
                 <DailyNewsBar onItemClick={handleNewsClick} />
             </div>
@@ -390,20 +530,21 @@ export default function ResonancePage() {
                 <div className="absolute -inset-4 rounded-full border border-white/5 bg-gradient-to-b from-white/5 to-transparent animate-[spin_10s_linear_infinite] opacity-50"></div>
                 <div className="w-full h-full rounded-full overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.6)] border-[1px] border-white/20 bg-black relative z-10 ring-1 ring-white/10">
                      <div key={activePersona} className={`w-full h-full ${slideDirection ? (slideDirection === 'right' ? 'animate-[slideInRight_0.3s]' : 'animate-[slideInLeft_0.3s]') : ''}`}>
-                         <img src={PERSONAS[activePersona].avatar} className="w-full h-full object-cover scale-110" />
+                     <img src={safePersona.avatar} className="w-full h-full object-cover scale-110" />
                      </div>
                      <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent mix-blend-overlay"></div>
                 </div>
                 <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center z-30 w-max">
                      <div className="px-3 py-0.5 bg-black/80 backdrop-blur-md border border-white/10 rounded-full shadow-lg mb-1">
-                         <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${PERSONAS[activePersona].color}`}>
-                             {PERSONAS[activePersona].name}
+                         <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${safePersona.color}`}>
+                         {safePersona.name}
                          </span>
                      </div>
                 </div>
             </div>
-            <div className={`w-full relative z-30 transition-opacity duration-200 ${isSwitching ? 'opacity-0' : 'opacity-100'}`}>
-                {/* 🔥 关键修改：传入 inventoryItems */}
+            
+            {/* 🔥 修复 Console 遮挡 2: 减小 pt-12 到 pt-6，收紧 Console 区域 */}
+            <div className={`w-full relative z-30 px-6 pt-6 mt-auto transition-opacity duration-200 ${isSwitching ? 'opacity-0' : 'opacity-100'}`}>
                 <Console 
                     key={activePersona} 
                     currentRole={activePersona}
@@ -412,7 +553,7 @@ export default function ResonancePage() {
                     customText={memoryText} 
                     onContinue={handleContinueChat}
                     lang={lang}
-                    inventoryItems={inventoryItems} 
+                    inventoryItems={inventoryItems.map(i => i.id)} 
                 />
             </div>
         </div>

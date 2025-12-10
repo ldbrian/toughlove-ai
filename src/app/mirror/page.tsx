@@ -3,10 +3,12 @@
 import { useState, useEffect } from 'react';
 import { Sparkles, RefreshCw, Database } from 'lucide-react';
 import MirrorClient from './MirrorClient'; 
-// 引入常量以获取角色列表
 import { PERSONAS } from '@/lib/constants';
+// ✅ 引入多语言工具
+import { LangType } from '@/types';
+import { getDict } from '@/lib/i18n/dictionaries';
 
-// 模拟的情绪关键词库
+// 模拟的情绪关键词库 (这个作为底层逻辑，暂时保持现状即可)
 const EMOTION_KEYWORDS: Record<string, string[]> = {
   anxiety: ['担心', '害怕', '焦虑', '不安', 'fear', 'anxious', 'worry', '死', '黑暗'],
   rage: ['生气', '愤怒', '滚', '讨厌', 'hate', 'angry', 'destroy', 'stupid', '怒'],
@@ -17,18 +19,38 @@ const EMOTION_KEYWORDS: Record<string, string[]> = {
 export default function MirrorPage() {
   const [shards, setShards] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // ✅ 1. 引入语言状态
+  const [lang, setLang] = useState<LangType>('zh');
 
   useEffect(() => {
-    // 模拟从“神经云端”同步数据的过程
+    // 读取偏好语言
+    const saved = localStorage.getItem('toughlove_lang_preference');
+    if (saved) setLang(saved as LangType);
+
     setTimeout(() => {
       generateShardsFromMemory();
       setIsLoading(false);
     }, 800);
   }, []);
 
+  // ✅ 2. 获取字典
+  const t = getDict(lang);
+  
+  // ✅ 3. 定义页面内的多语言文本
+  const UI = {
+      system: lang === 'zh' ? '记忆结晶系统' : 'Memory Crystallization System',
+      syncing: lang === 'zh' ? '同步中...' : 'SYNCING...',
+      fragments: lang === 'zh' ? '记忆碎片' : 'FRAGMENTS',
+      emptyTitle: lang === 'zh' ? '未发现记忆数据' : 'NO MEMORY DATA FOUND',
+      emptyDesc: lang === 'zh' ? '去和他们聊聊，创造属于你们的回忆。' : 'Go chat with them to create memories.'
+  };
+
   // 🔥 核心逻辑：从 localStorage 的聊天记录中“挖掘”碎片
+  // (之前报错是因为缺了这个函数的定义)
   const generateShardsFromMemory = () => {
     const allShards: any[] = [];
+    // @ts-ignore
     const keys = Object.keys(PERSONAS); // ['Ash', 'Rin', ...]
 
     keys.forEach(personaKey => {
@@ -86,23 +108,23 @@ export default function MirrorPage() {
             <div className="flex items-center gap-2 mb-1">
                 <Sparkles size={16} className="text-fuchsia-500 animate-pulse" />
                 <h1 className="text-3xl font-black italic tracking-tighter text-white" style={{textShadow: '0 0 20px rgba(217,70,239,0.3)'}}>
-                MIRROR
+                {t.nav.mirror} {/* ✅ 使用字典标题: 镜面/MIRROR */}
                 </h1>
             </div>
             <p className="text-[10px] text-fuchsia-300/50 font-mono tracking-widest pl-1 uppercase">
-              Memory Crystallization System
+              {UI.system} {/* ✅ 多语言副标题 */}
             </p>
           </div>
           
           <div className="text-right">
              {isLoading ? (
                  <div className="flex items-center gap-2 text-xs text-gray-500 animate-pulse">
-                     <RefreshCw size={12} className="animate-spin" /> SYNCING...
+                     <RefreshCw size={12} className="animate-spin" /> {UI.syncing}
                  </div>
              ) : (
                  <>
                     <div className="text-2xl font-bold font-mono text-fuchsia-500">{shards.length}</div>
-                    <div className="text-[10px] text-gray-500 tracking-widest">FRAGMENTS</div>
+                    <div className="text-[10px] text-gray-500 tracking-widest">{UI.fragments}</div>
                  </>
              )}
           </div>
@@ -115,8 +137,8 @@ export default function MirrorPage() {
         {!isLoading && shards.length === 0 && (
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center opacity-50">
                 <Database size={48} className="mx-auto mb-4 text-gray-700" />
-                <p className="text-xs text-gray-500 tracking-widest">NO MEMORY DATA FOUND</p>
-                <p className="text-[10px] text-gray-600 mt-2">Go chat with them to create memories.</p>
+                <p className="text-xs text-gray-500 tracking-widest">{UI.emptyTitle}</p>
+                <p className="text-[10px] text-gray-600 mt-2">{UI.emptyDesc}</p>
             </div>
         )}
       </div>

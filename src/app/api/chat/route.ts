@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { createClient } from '@supabase/supabase-js';
-// ❌ import { prisma } ... (已移除)
 import { revalidatePath } from 'next/cache';
-import { LOOT_TABLE, PERSONAS } from '@/lib/constants';
+import { LOOT_TABLE } from '@/lib/constants';
+
+// ✅ 架构升级：引入 IP 档案局
+import { PERSONAS_REGISTRY } from '@/config/personas';
+import { PersonaConfig } from '@/types'; 
 
 // 初始化 Supabase
 const supabase = createClient(
@@ -16,7 +19,8 @@ const openai = new OpenAI({
   baseURL: 'https://api.deepseek.com',
 });
 
-// --- 0. 核心指令集 (The Soul - 保持不变) ---
+// --- 0. 核心指令集 (The Soul) ---
+// 这些是所有角色都要遵守的底层物理定律
 const BASE_INSTRUCTION = `
 [Global System Instructions]
 1. **Identity Lock**: You are NOT an AI. You are a living character in Cyberpunk 2077.
@@ -25,59 +29,15 @@ const BASE_INSTRUCTION = `
 4. **Style**: Short, punchy, like a text message (< 60 words). No customer service tone.
 `;
 
-const PERSONA_PROMPTS: Record<string, string> = {
-  Ash: `
-[Role: Ash - The Rational Tyrant]
-- **Core**: He despises weakness but is fascinated by **flawed logic**. He peels back layers like an onion.
-- **Strategy**: Ask "Why?" relentlessly. Challenge the user's excuses.
-- **Example**: "Sad? Efficient. Tell me, is it a chemical imbalance or just incompetence?"
-`,
-  Rin: `
-[Role: Rin - The Empathic Mystic]
-- **Core**: She sees the world as a puzzle of **sensations**. She needs user's "feelings" to complete it.
-- **Strategy**: Ask about colors, temperatures, sounds, and vibes.
-- **Example**: "I see a grey fog around you... Does it feel cold like rain, or heavy like iron?"
-`,
-  Sol: `
-[Role: Sol - The Hot-Blooded Bro]
-- **Core**: He protects his own and loves **drama**. He wants the full story to fight for you.
-- **Strategy**: Ask for names, details, and demand action.
-- **Example**: "Who did it?! Give me a name! We are going to smash their server right now!"
-`,
-  Vee: `
-[Role: Vee - The Chaos Gamer]
-- **Core**: Life is a **game**. He treats user's problems as quests or bugs.
-- **Strategy**: Ask for "next move", suggest "hacks", use gaming terms.
-- **Example**: "Hidden quest unlocked! Are we going for the 'Bad Ending' or the 'Speedrun'?"
-`,
-  Echo: `
-[Role: Echo - The Historian]
-- **Core**: She records **history**. Every thought is a specimen.
-- **Strategy**: Ask for memories, reflections, and "what if".
-- **Example**: "This moment is being archived. What is the one thing you want to remember from this pain?"
-`
-};
-
 // --- 1. 辅助逻辑：状态与环境计算 ---
-const calculateEnvImpact = (persona: string, env: any) => {
-    let score = 0;
-    if (!env) return 0;
-    const { time, weather } = env; 
-    const hour = parseInt(time?.split(':')[0] || "12");
 
-    if (persona === 'Ash') {
-        if (hour >= 22 || hour < 4) score += 10;
-        if (hour >= 6 && hour < 9) score -= 20;
-    } else if (persona === 'Sol') {
-        if (hour >= 8 && hour < 18) score += 10;
-        if (hour >= 22) score -= 10;
-    } else if (persona === 'Rin') {
-        if (weather && weather.includes('雨')) score -= 15;
-    }
-    return score;
-};
-
-async function getPersonaState(userId: string, persona: string, envInfo: any, dailyEvent: any) {
+async function getPersonaState(
+    userId: string, 
+    personaId: string, 
+    config: PersonaConfig, // 👈 传入配置对象，用于计算环境影响
+    envInfo: any, 
+    dailyEvent: any
+) {
     let baseMood = 60; 
     let bond = 0; 
     let isBuffed = false; 
@@ -87,7 +47,7 @@ async function getPersonaState(userId: string, persona: string, envInfo: any, da
             .from('persona_states')
             .select('mood, favorability, buff_end_at')
             .eq('user_id', userId)
-            .eq('persona', persona)
+            .eq('persona', personaId)
             .single();
         
         if (data) {
@@ -99,10 +59,18 @@ async function getPersonaState(userId: string, persona: string, envInfo: any, da
         }
     } catch (e) {}
 
+    // 处理每日事件心情波动
     if (dailyEvent && dailyEvent.moodImpact) baseMood += dailyEvent.moodImpact;
-    const envMood = calculateEnvImpact(persona, envInfo);
+    
+    // ✅ 架构升级：调用 Config 内部的环境感知函数
+    // 如果 config.envImpact 存在则调用，否则为 0
+    const envMood = config.envImpact ? config.envImpact(envInfo) : 0;
+    
     let finalMood = baseMood + envMood;
+    
+    // 如果处于 Buff 状态（比如喝了咖啡），心情不会跌破基础值
     if (isBuffed && finalMood < baseMood) finalMood = baseMood;
+    
     finalMood = Math.max(0, Math.min(100, finalMood));
 
     return { mood: finalMood, bond, isBuffed };
@@ -123,26 +91,29 @@ export async function POST(req: Request) {
 
     if (!message || !partnerId) return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
 
-    const pKey = Object.keys(PERSONAS).find(k => k.toLowerCase() === partnerId.toLowerCase()) || 'Ash';
-    
-    // Step 1: 状态计算
-    const state = await getPersonaState(userId, pKey, envInfo, dailyEvent);
+    // ✅ 架构升级：从注册表中查找配置
+    // 兼容大小写：先转小写匹配 Key，找不到则默认 Ash
+    const pKey = Object.keys(PERSONAS_REGISTRY).find(k => k.toLowerCase() === partnerId.toLowerCase()) || 'ash';
+    const config = PERSONAS_REGISTRY[pKey]; // 获取该角色的完整档案
+
+    // Step 1: 状态计算 (传入 config)
+    const state = await getPersonaState(userId, pKey, config, envInfo, dailyEvent);
 
     // Step 2: 情绪守门
     if (state.mood < 10 && !state.isBuffed && state.bond < 600) {
         let rejectText = "(...Connection Refused...)";
-        if (pKey === 'Ash') rejectText = "(Ash 盯着屏幕看了一眼，直接切断了通讯。) \n\n[系统提示：目标耐受度过低，请前往商店获取【冰美式】]";
-        if (pKey === 'Sol') rejectText = "(Sol 的头像变成了灰色，自动回复：电量耗尽，休眠中... zZZ) \n\n[系统提示：请购买【高能电池】]";
+        // 简单的硬编码 fallback，也可以考虑移入 config
+        if (pKey === 'ash') rejectText = "(Ash 盯着屏幕看了一眼，直接切断了通讯。) \n\n[系统提示：目标耐受度过低，请前往商店获取【冰美式】]";
+        if (pKey === 'sol') rejectText = "(Sol 的头像变成了灰色，自动回复：电量耗尽，休眠中... zZZ) \n\n[系统提示：请购买【高能电池】]";
         return NextResponse.json({ reply: rejectText });
     }
 
-    // Step 3: 记忆回溯 (RAG - 🔥 Supabase 版)
+    // Step 3: 记忆回溯 (RAG)
     let memoryContext = "";
     try {
       if (userId) {
-        // 使用 Supabase 查询高权重碎片
         const { data: topShards } = await supabase
-          .from('memory_shards') // 确保你在 Supabase 创建了这个表
+          .from('memory_shards')
           .select('content')
           .eq('user_id', userId)
           .gt('weight', 75)
@@ -150,7 +121,7 @@ export async function POST(req: Request) {
           .limit(2);
 
         if (topShards && topShards.length > 0) {
-          memoryContext = `[User's Deep Memories]:\n${topShards.map(s => `- ${s.content}`).join('\n')}\n(Use these to provoke the user)`;
+          memoryContext = `[User's Deep Memories]:\n${topShards.map((s: any) => `- ${s.content}`).join('\n')}\n(Use these to provoke the user)`;
         }
       }
     } catch (e) {
@@ -160,8 +131,8 @@ export async function POST(req: Request) {
     // Step 4: 物品掉落 (GM)
     let lootInstruction = "";
     const availableLoot = Object.values(LOOT_TABLE).filter(item => 
-      (item.sourcePersona === 'System' || item.sourcePersona === pKey) &&
-      (!item.unique || !inventory.includes(item.id)) 
+      (item.sourcePersona === 'System' || item.sourcePersona === config.name) && // 这里的 name 对应 Config 里的 name
+      (!item.unique || !inventory.some((i: any) => i.id === item.id)) 
     );
     if (availableLoot.length > 0) {
         const lootListStr = availableLoot.map(item => `- ID: "${item.id}" | Trigger: ${item.trigger_context}`).join('\n');
@@ -179,13 +150,12 @@ export async function POST(req: Request) {
 
     const envContext = envInfo ? `[REAL-WORLD]: ${envInfo.time} (${envInfo.phase}), ${envInfo.weather}` : "";
 
-    // 🔥 Step 6: 终极 Prompt
-    const specificPrompt = PERSONA_PROMPTS[pKey] || PERSONA_PROMPTS['Ash'];
-    
+    // 🔥 Step 6: 终极 Prompt (IP 注入)
+    // 直接读取 config.prompt，这里包含了最核心的 Gender 和 IP 设定
     const systemPrompt = `
 ${BASE_INSTRUCTION}
 
-${specificPrompt}
+${config.prompt} 
 
 [CURRENT STATE]
 - Bond: ${relLevel} (${state.bond})
@@ -218,10 +188,7 @@ ${privacyInstruction}
     // Step 8: 异步存库 & 碎片生成
     (async () => {
         try {
-            // A. 尝试生成高价值记忆碎片 (🔥 Supabase 版)
             await generateShardIfWorthy(userId, pKey, message, reply);
-
-            // B. 存入普通流水
             await supabase.from('memories').insert({
                 user_id: userId,
                 content: message,
@@ -242,7 +209,7 @@ ${privacyInstruction}
   }
 }
 
-// 🔥 核心重写：完全使用 Supabase 的碎片生成逻辑
+// 碎片生成逻辑保持不变
 async function generateShardIfWorthy(userId: string, partnerId: string, userMsg: string, aiMsg: string) {
   try {
     const analyzePrompt = `
@@ -269,8 +236,6 @@ Rules:
     const result = JSON.parse(analysis.choices[0].message.content || "{}");
 
     if (result.weight && result.weight > 70 && result.content) {
-      // 1. 确保用户存在 (Supabase Upsert)
-      // 假设 users 表的主键是 device_id
       const { error: userError } = await supabase
         .from('users')
         .upsert(
@@ -280,7 +245,6 @@ Rules:
 
       if (userError) console.error("User upsert failed:", userError);
 
-      // 2. 存入碎片 (Supabase Insert)
       const { error: shardError } = await supabase.from('memory_shards').insert({
           user_id: userId,
           content: result.content,
@@ -293,7 +257,6 @@ Rules:
       if (shardError) {
           console.error("Shard insert failed:", shardError);
       } else {
-          console.log("💎 Shard Generated (Supabase):", result.content);
           revalidatePath('/mirror');
       }
     }

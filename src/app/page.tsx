@@ -6,3 +6,4 @@ export default function Home() {
   // 那里将展示你原来的 Lobby 内容
   redirect('/resonance');
 }
+

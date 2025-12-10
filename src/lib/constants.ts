@@ -1,11 +1,9 @@
 import { Brain, Zap, Shield, Heart, Activity } from 'lucide-react';
+import { LangType, MoodType, PersonaType } from '@/types';
 
 // ==========================================
 // 1. 基础类型定义
 // ==========================================
-export type LangType = 'zh' | 'en';
-export type MoodType = 'low' | 'anxious' | 'neutral' | 'angry' | 'high';
-export type PersonaType = 'Ash' | 'Rin' | 'Sol' | 'Vee' | 'Echo';
 
 // ==========================================
 // 2. 互动矩阵 (ROLE_MATRIX) - 保持原样
@@ -21,7 +19,7 @@ interface PersonaStateData {
   options: InteractionOption[];
 }
 
-export const ROLE_MATRIX: Record<PersonaType, Record<MoodType, PersonaStateData>> = {
+export const ROLE_MATRIX: Record<Exclude<PersonaType, 'System'>, Record<MoodType, PersonaStateData>> = {
   Ash: {
     neutral: {
       hook: { zh: "我的处理器已经空转了三分钟。你是带了棘手的麻烦来挑战我的逻辑，还是只是想来消耗点无聊的时间？", en: "Processor idling. Do you have a logical puzzle, or just wasting time?" },
@@ -553,7 +551,10 @@ export const TAROT_DECK = [
     name: { zh: "愚人", en: "The Fool" },
     image: "/tarot/fool.jpg",
     keywords: ["归零", "直觉", "混沌", "跃迁"],
-    meaning: "一切的开始，也是一切的结束。你是傻瓜，也是智者。",
+    meaning: { 
+      zh: "一切的开始，也是一切的结束。你是傻瓜，也是智者。", 
+      en: "The beginning and the end. You are the fool, and the sage." 
+    },
     reactions: {
         Ash: "你脑子里全是水，但我喜欢你这种不怕死的劲头。",
         Rin: "风险评估：极高。但如果不跳下去，你永远不知道有没有翅膀。",
@@ -567,7 +568,10 @@ export const TAROT_DECK = [
     name: { zh: "魔术师", en: "The Magician" },
     image: "/tarot/magician.jpg",
     keywords: ["创造", "能力", "显化", "欺诈"],
-    meaning: "你拥有所有的工具。现在，把想法变成现实。",
+    meaning: { 
+      zh: "你拥有所有的工具。现在，把想法变成现实。", 
+      en: "You have all the tools. Now, turn your ideas into reality." 
+    },
     reactions: {
         Ash: "别整那些花里胡哨的。给我看结果。",
         Rin: "能量在你的指尖流动... 你想编织什么？",
@@ -581,7 +585,10 @@ export const TAROT_DECK = [
     name: { zh: "女祭司", en: "The High Priestess" },
     image: "/tarot/high_priestess.jpg",
     keywords: ["直觉", "潜意识", "秘密", "静默"],
-    meaning: "相信你的直觉。答案不在外面，在你的潜意识里。",
+    meaning: { 
+      zh: "相信你的直觉。答案不在外面，在你的潜意识里。", 
+      en: "Trust your intuition. The answer is not outside; it lies in your subconscious." 
+    },
     reactions: {
         Ash: "直觉？那是大脑处理大数据的黑盒模式。但我信你这一次。",
         Rin: "嘘... 听到了吗？那个声音在水面下。",
@@ -595,7 +602,10 @@ export const TAROT_DECK = [
     name: { zh: "皇后", en: "The Empress" },
     image: "/tarot/empress.jpg",
     keywords: ["丰饶", "感官", "孕育", "自然"],
-    meaning: "去感受生命，去爱，去创造。世界是你的花园。",
+    meaning: { 
+      zh: "去感受生命，去爱，去创造。世界是你的花园。", 
+      en: "Trust your intuition. The answer is not outside; it lies in your subconscious." 
+    },
     reactions: {
         Ash: "享受是可以的，但别在温柔乡里烂掉了。",
         Rin: "好温暖... 像是春天晒过的被子。",
@@ -861,7 +871,7 @@ export const TAROT_DECK = [
 // ==========================================
 // 6. 其他 UI 常量
 // ==========================================
-export const PERSONAS: Record<PersonaType, any> = {
+export const PERSONAS: Record<Exclude<PersonaType, 'System'>, any> = {
   Ash: { 
     name: 'Ash', avatar: '/avatars/ash_hero.jpg', color: 'text-cyan-400', 
     title: {zh:"批判者", en:"Critic"}, slogan: {zh:"别废话", en:"No BS"}, 
@@ -986,3 +996,63 @@ export const SOL_TAUNTS = [
   { zh: "这就是你的极限吗？", en: "Is this your limit?" },
   { zh: "检测到注意力涣散。重连中...", en: "Distraction detected. Reconnecting..." }
 ];
+
+// 每日事件常量 (根据你在 route.ts 中的用法，它是一个按 persona ID 索引的对象)
+export const DAILY_EVENTS: Record<string, any> = {
+  // ------------------------------------------------
+  // ASH: The Rational Tyrant (侧重系统、逻辑)
+  // ------------------------------------------------
+  ash: { 
+      // News Content: AI在每日动态中发布的内容
+      newsContent: { 
+        zh: "城市核心的物流算法昨日发生了一个价值$100万的逻辑错误，但无人为此负责。", 
+        en: "Core logistics algorithm glitched yesterday, costing $1M. No one took responsibility." 
+      },
+      // Mood Impact: 角色看到这个新闻后的基础情绪波动
+      moodImpact: -5, // 对逻辑错误的系统新闻感到不悦
+  },
+  
+  // ------------------------------------------------
+  // RIN: The Empathic Mystic (侧重直觉、情绪)
+  // ------------------------------------------------
+  rin: { 
+      newsContent: { 
+      zh: "今天的塔罗牌掉出来一张‘愚人’，牌面在问——你敢不敢跳下那个悬崖？",
+      en: "Today's Tarot card dropped a 'Fool', which asks - Do you dare to jump off that cliff?"
+      },
+      moodImpact: 10, // 收到新的直觉信息感到兴奋
+  },
+
+  // ------------------------------------------------
+  // SOL: The Hot-Blooded Bro (侧重冲突、行动)
+  // ------------------------------------------------
+  sol: { 
+      newsContent: { 
+        zh: "昨夜，城西的两个赛博帮派为了争夺一个街角的数据终端，爆发了激烈的械斗",
+        en: "Last night, two cyber gangs in the west of the city engaged in a fierce brawl over a data terminal at a street corner"
+        },
+      moodImpact: 15, // 期待新的冲突和行动，心情高涨
+  },
+
+  // ------------------------------------------------
+  // VEE: The Chaos Gamer (侧重漏洞、任务)
+  // ------------------------------------------------
+  vee: { 
+      newsContent: { 
+        zh: "据传，黑市上流传着一个新的系统漏洞，可以让你绕过城市的最新防火墙。",
+        en: "It is rumored that a new system vulnerability is circulating on the black market, allowing you to bypass the city's latest firewall."
+        },
+      moodImpact: 8, // 对新的漏洞感到兴奋
+  },
+
+  // ------------------------------------------------
+  // ECHO: The Historian (侧重数据、历史)
+  // ------------------------------------------------
+  echo: { 
+      newsContent: { 
+        zh: "核心数据库中，有超过 20 年的平民生活记录文件因不可抗力被标记为‘待清除’。",
+        en: "In the core database, over 20 years of civilian life record files have been marked as 'to be cleared' due to force majeure."
+        },
+      moodImpact: -10, // 对历史数据丢失感到不满
+  },
+};

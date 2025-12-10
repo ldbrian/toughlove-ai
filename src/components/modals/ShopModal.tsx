@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { X, ShoppingBag, Lock, Coffee, Image as ImageIcon, ShieldAlert, Zap, Loader2, PackageOpen, CreditCard, Sparkles } from 'lucide-react';
 import { SHOP_CATALOG, ShopItem, PERSONAS, LOOT_TABLE } from '@/lib/constants';
+import { LangType } from '@/types';
 
 interface ShopModalProps {
   show: boolean;
   onClose: () => void;
   userRin: number;
   onBalanceUpdate: (newBalance: number) => void; // 购买成功后回调更新余额
-  lang: 'zh' | 'en';
+  lang: LangType;
 }
 
 export const ShopModal = ({ show, onClose, userRin, onBalanceUpdate, lang }: ShopModalProps) => {

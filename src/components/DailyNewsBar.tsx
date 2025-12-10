@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { generateDailyFeed, DailyStatus } from '@/lib/dailyGenerator';
 import { PERSONAS } from '@/lib/constants';
 import { ChevronRight, Zap, AlertCircle } from 'lucide-react';
+import { useContent } from '@/contexts/ContentContext';
 
 interface DailyNewsBarProps {
   onItemClick: (status: DailyStatus) => void;

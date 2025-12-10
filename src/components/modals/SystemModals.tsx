@@ -1,4 +1,9 @@
 import { X, Mic, MicOff, AlertTriangle, Coffee, Globe, UserPen, Bug, Download, Share, PlusSquare } from 'lucide-react';
+import { SUPPORTED_LANGUAGES } from '@/lib/i18n/config'; // 引入配置
+import { getDict } from '@/lib/i18n/dictionaries'; // 导入 getDict
+import { LangType } from '@/types';
+
+
 
 // --- Focus Offer Modal ---
 export const FocusOfferModal = ({ show, lang, onStart, onCancel }: any) => {
@@ -29,20 +34,41 @@ export const FocusOfferModal = ({ show, lang, onStart, onCancel }: any) => {
 };
 
 // --- Lang Setup Modal ---
-export const LangSetupModal = ({ show, lang, onConfirm }: any) => {
+// Define ModalProps type
+type ModalProps = {
+  show: boolean;
+  lang: LangType;
+  onConfirm: (code: LangType) => void;
+};
+
+export const LangSetupModal = ({ show, lang, onConfirm }: ModalProps & { onConfirm: (code: LangType) => void }) => {
   if (!show) return null;
+  const t = getDict(lang);
+
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95 p-6">
-      <div className="text-center space-y-8 animate-[slideUp_0.4s_ease-out]">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95 p-6 animate-[fadeIn_0.3s_ease-out]">
+      <div className="w-full max-w-md text-center space-y-6">
         <Globe size={48} className="mx-auto text-[#7F5CFF] animate-pulse" />
-        <h2 className="text-2xl font-bold text-white tracking-widest">SELECT LANGUAGE</h2>
-        <div className="flex flex-col gap-4 w-64 mx-auto">
-          <button onClick={() => onConfirm('zh')} className={`py-4 rounded-xl border transition-all ${lang === 'zh' ? 'bg-white text-black border-white font-bold scale-105' : 'bg-transparent text-gray-500 border-white/10 hover:border-white/50'}`}>
-            中文 (Chinese)
-          </button>
-          <button onClick={() => onConfirm('en')} className={`py-4 rounded-xl border transition-all ${lang === 'en' ? 'bg-white text-black border-white font-bold scale-105' : 'bg-transparent text-gray-500 border-white/10 hover:border-white/50'}`}>
-            English
-          </button>
+        <h2 className="text-xl font-bold text-white tracking-widest uppercase">{t.modal.lang.title}</h2>
+        
+        {/* 使用 Grid 布局展示所有语言 */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[60vh] overflow-y-auto px-2 custom-scrollbar">
+          {SUPPORTED_LANGUAGES.map((option) => (
+            <button 
+              key={option.code}
+              onClick={() => onConfirm(option.code)} 
+              className={`
+                flex flex-col items-center justify-center gap-2 py-4 rounded-xl border transition-all duration-200
+                ${lang === option.code 
+                  ? 'bg-white text-black border-white font-bold scale-105 shadow-xl' 
+                  : 'bg-white/5 text-gray-400 border-white/5 hover:bg-white/10 hover:border-white/20'
+                }
+              `}
+            >
+              <span className="text-2xl filter drop-shadow-md">{option.flag}</span>
+              <span className="text-xs font-medium tracking-wide">{option.nativeName}</span>
+            </button>
+          ))}
         </div>
       </div>
     </div>

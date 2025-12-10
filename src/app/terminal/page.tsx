@@ -3,50 +3,12 @@
 import { useState, useEffect } from 'react';
 import { 
   Package, User, CreditCard, Shield, Battery, 
-  Lock, Scroll, ImageOff, Brain, Activity, Fingerprint 
+  Lock, Scroll, Brain, Activity, Fingerprint 
 } from 'lucide-react';
-// 引入常量
-import { LOOT_TABLE, TAROT_DECK, UI_TEXT, LangType, PERSONAS } from '@/lib/constants';
-
-// --- 局部翻译配置 ---
-const TERMINAL_UI = {
-  zh: {
-    assets: '总资产',
-    inventory: '背包物品',
-    psyche: '精神档案',
-    id_linked: '已连接',
-    id_guest: '访客模式',
-    dominant: '主导人格',
-    metrics: '心理维度监测',
-    dim_reality: '现实感 (REALITY)',
-    dim_chaos: '混乱度 (CHAOS)',
-    dim_empathy: '共情力 (EMPATHY)',
-    dim_ego: '自我意识 (EGO)',
-    security: '安全等级',
-    device: '设备状态',
-    online: '在线',
-    unknown_item: '未知物品',
-    daily_tarot: '每日塔罗'
-  },
-  en: {
-    assets: 'TOTAL ASSETS',
-    inventory: 'INVENTORY',
-    psyche: 'PSYCH_DATA',
-    id_linked: 'LINKED',
-    id_guest: 'GUEST',
-    dominant: 'DOMINANT ARCHETYPE',
-    metrics: 'PSYCHOMETRICS',
-    dim_reality: 'REALITY',
-    dim_chaos: 'CHAOS',
-    dim_empathy: 'EMPATHY',
-    dim_ego: 'EGO',
-    security: 'SECURITY',
-    device: 'DEVICE',
-    online: 'ONLINE',
-    unknown_item: 'Unknown Item',
-    daily_tarot: 'Daily Tarot'
-  }
-};
+// ✅ 1. 引入多语言工具和类型
+import { LOOT_TABLE, TAROT_DECK, PERSONAS } from '@/lib/constants';
+import { LangType } from '@/types';
+import { getDict, getContentText } from '@/lib/i18n/dictionaries';
 
 // 获取本地存储
 const getLocalData = () => {
@@ -67,17 +29,28 @@ const getLocalData = () => {
 export default function TerminalPage() {
   const [activeTab, setActiveTab] = useState<'inventory' | 'profile'>('inventory');
   const [data, setData] = useState<any>({ inventory: [], balance: 0, user: 'Traveler', profile: null });
+  
+  // ✅ 2. 语言状态管理 (带监听)
   const [lang, setLang] = useState<LangType>('zh');
 
   useEffect(() => {
+    // 数据加载
     setData(getLocalData());
-    const savedLang = localStorage.getItem('toughlove_lang_preference');
-    if (savedLang === 'en' || savedLang === 'zh') setLang(savedLang as LangType);
+
+    // 语言同步逻辑
+    const updateLang = () => {
+        const saved = localStorage.getItem('toughlove_lang_preference');
+        if (saved) setLang(saved as LangType);
+    };
+    updateLang();
+    
+    // 监听语言切换事件
+    window.addEventListener('toughlove_lang_change', updateLang);
+    return () => window.removeEventListener('toughlove_lang_change', updateLang);
   }, []);
 
-  const t = TERMINAL_UI[lang]; // 使用局部翻译
-  // @ts-ignore
-  const commonT = UI_TEXT[lang]; // 备用通用翻译
+  // ✅ 3. 获取字典
+  const t = getDict(lang);
 
   // --- 逻辑：计算心理维度 ---
   const calculateStats = () => {
@@ -90,7 +63,6 @@ export default function TerminalPage() {
           if (counts[val] !== undefined) counts[val]++;
       });
 
-      // 归一化为百分比 (简单算法)
       return {
           ego: Math.min(100, Math.round((counts.ego / total) * 100) + 20),
           chaos: Math.min(100, Math.round((counts.chaos / total) * 100) + 20),
@@ -106,8 +78,13 @@ export default function TerminalPage() {
 
   // --- 逻辑：构建物品列表 ---
   const currentTarotId = data.inventory.find((id: string) => id.startsWith('tarot_'));
+  
+  // 构建每日塔罗占位符
   let tarotSlotItem: any = LOOT_TABLE['placeholder_tarot'] || {
-      id: 'placeholder_tarot', name: { zh: '每日塔罗', en: 'Daily Tarot' }, iconSvg: 'TAROT_PLACEHOLDER', rarity: 'epic'
+      id: 'placeholder_tarot', 
+      name: { zh: '每日塔罗', en: 'Daily Tarot' }, 
+      iconSvg: 'TAROT_PLACEHOLDER', 
+      rarity: 'epic'
   };
 
   if (currentTarotId) {
@@ -117,7 +94,9 @@ export default function TerminalPage() {
           if (card) {
               tarotSlotItem = {
                   id: currentTarotId,
-                  name: card.name,
+                  // 这里 card.name 已经是 {zh, en} 结构，可以直接用
+                  name: card.name, 
+                  // 这里简单处理描述，如果 card.meaning 是纯字符串，则暂时作为通用描述
                   description: { zh: card.meaning, en: card.meaning },
                   iconSvg: card.image,
                   rarity: 'legendary',
@@ -165,14 +144,16 @@ export default function TerminalPage() {
                     </h1>
                     <div className="flex items-center gap-2 text-[10px] text-gray-500 font-mono tracking-widest bg-white/5 px-2 py-1 rounded w-fit border border-white/5">
                         <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_5px_#22c55e]"></span>
-                        ID: {data.profile ? t.id_linked : t.id_guest}
+                        {/* ✅ 使用字典: 已连接 / 访客 */}
+                        ID: {data.profile ? t.terminal.id_linked : t.terminal.id_guest}
                     </div>
                 </div>
             </div>
             
             <div className="text-right">
                 <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1 flex items-center justify-end gap-1">
-                    <CreditCard size={10} /> {t.assets}
+                    {/* ✅ 使用字典: 总资产 */}
+                    <CreditCard size={10} /> {t.terminal.assets}
                 </div>
                 <div className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-cyan-400 font-mono tracking-tighter">
                     {data.balance.toLocaleString()} <span className="text-xs text-gray-500 font-bold">RIN</span>
@@ -186,14 +167,16 @@ export default function TerminalPage() {
                 onClick={() => setActiveTab('inventory')}
                 className={`pb-3 text-[10px] font-black tracking-[0.2em] transition-all relative flex items-center gap-2 ${activeTab === 'inventory' ? 'text-white' : 'text-gray-600 hover:text-gray-400'}`}
             >
-                <Package size={14} /> {t.inventory}
+                {/* ✅ 使用字典: 背包物品 */}
+                <Package size={14} /> {t.terminal.inventory}
                 {activeTab === 'inventory' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-white shadow-[0_0_15px_white]" />}
             </button>
             <button 
                 onClick={() => setActiveTab('profile')}
                 className={`pb-3 text-[10px] font-black tracking-[0.2em] transition-all relative flex items-center gap-2 ${activeTab === 'profile' ? 'text-white' : 'text-gray-600 hover:text-gray-400'}`}
             >
-                <Brain size={14} /> {t.psyche}
+                {/* ✅ 使用字典: 精神档案 */}
+                <Brain size={14} /> {t.terminal.psyche}
                 {activeTab === 'profile' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-white shadow-[0_0_15px_white]" />}
             </button>
         </div>
@@ -219,6 +202,7 @@ export default function TerminalPage() {
                 `}
               >
                 <div className="flex-1 flex items-center justify-center w-full h-full relative">
+                    {/* ... 图标渲染逻辑保持不变 ... */}
                     {isTarot ? (
                         item.iconSvg?.startsWith('/') ? (
                             <>
@@ -260,7 +244,8 @@ export default function TerminalPage() {
 
                 <div className="absolute bottom-0 left-0 right-0 p-1.5 bg-gradient-to-t from-black/90 to-transparent flex flex-col items-center">
                     <span className={`text-[8px] font-bold uppercase tracking-wider truncate w-full text-center ${isUnlocked ? 'text-gray-300' : 'text-gray-600'}`}>
-                        {lang === 'zh' ? item.name.zh : item.name.en}
+                        {/* ✅ 修复：使用 getContentText 智能获取物品名称 */}
+                        {getContentText(item.name, lang)}
                     </span>
                 </div>
               </div>
@@ -288,14 +273,15 @@ export default function TerminalPage() {
           }`}>
               <div className="flex justify-between items-start mb-4 relative z-10">
                   <div>
-                      <div className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">{t.dominant}</div>
+                      <div className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">{t.terminal.dominant}</div>
                       <h2 className={`text-3xl font-black italic uppercase tracking-tighter ${
                           matchedPersona.color ? `text-${matchedPersona.color.split('-')[1]}-400` : 'text-white'
                       }`}>
                           {matchedPersona.name}
                       </h2>
                       <div className="text-xs text-gray-400 mt-1 font-mono">
-                          {lang === 'zh' ? matchedPersona.title.zh : matchedPersona.title.en} // {lang === 'zh' ? matchedPersona.slogan.zh : matchedPersona.slogan.en}
+                          {/* ✅ 修复：使用 getContentText 获取头衔和口号 */}
+                          {getContentText(matchedPersona.title, lang)} // {getContentText(matchedPersona.slogan, lang)}
                       </div>
                   </div>
                   <div className="w-12 h-12 rounded-full border border-white/10 overflow-hidden">
@@ -312,13 +298,14 @@ export default function TerminalPage() {
           <div className="bg-zinc-900/50 border border-white/5 rounded-xl p-6">
               <div className="flex items-center gap-2 mb-6 text-gray-400">
                   <Activity size={14} />
-                  <span className="text-[10px] font-bold tracking-widest uppercase">{t.metrics}</span>
+                  <span className="text-[10px] font-bold tracking-widest uppercase">{t.terminal.metrics}</span>
               </div>
               
               <div className="space-y-4 font-mono text-xs">
                   <div>
                       <div className="flex justify-between mb-1 text-gray-400">
-                          <span>{t.dim_reality}</span>
+                          {/* ✅ 使用字典: 现实感 */}
+                          <span>{t.terminal.dim_reality}</span>
                           <span>{stats.reality}%</span>
                       </div>
                       <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
@@ -327,7 +314,8 @@ export default function TerminalPage() {
                   </div>
                   <div>
                       <div className="flex justify-between mb-1 text-gray-400">
-                          <span>{t.dim_chaos}</span>
+                          {/* ✅ 使用字典: 混乱度 */}
+                          <span>{t.terminal.dim_chaos}</span>
                           <span>{stats.chaos}%</span>
                       </div>
                       <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
@@ -336,7 +324,8 @@ export default function TerminalPage() {
                   </div>
                   <div>
                       <div className="flex justify-between mb-1 text-gray-400">
-                          <span>{t.dim_empathy}</span>
+                          {/* ✅ 使用字典: 共情力 */}
+                          <span>{t.terminal.dim_empathy}</span>
                           <span>{stats.empathy}%</span>
                       </div>
                       <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
@@ -345,7 +334,8 @@ export default function TerminalPage() {
                   </div>
                   <div>
                       <div className="flex justify-between mb-1 text-gray-400">
-                          <span>{t.dim_ego}</span>
+                          {/* ✅ 使用字典: 自我意识 */}
+                          <span>{t.terminal.dim_ego}</span>
                           <span>{stats.ego}%</span>
                       </div>
                       <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
@@ -359,13 +349,13 @@ export default function TerminalPage() {
           <div className="grid grid-cols-2 gap-3">
               <div className="bg-zinc-900/50 border border-white/5 rounded-xl p-4 flex flex-col items-center justify-center text-center">
                   <Shield size={20} className="text-gray-600 mb-2" />
-                  <div className="text-[10px] text-gray-500">{t.security}</div>
+                  <div className="text-[10px] text-gray-500">{t.terminal.security}</div>
                   <div className="text-lg font-bold text-white">LV.4</div>
               </div>
               <div className="bg-zinc-900/50 border border-white/5 rounded-xl p-4 flex flex-col items-center justify-center text-center">
                   <Battery size={20} className="text-gray-600 mb-2" />
-                  <div className="text-[10px] text-gray-500">{t.device}</div>
-                  <div className="text-lg font-bold text-white">{t.online}</div>
+                  <div className="text-[10px] text-gray-500">{t.terminal.device}</div>
+                  <div className="text-lg font-bold text-white">{t.terminal.online}</div>
               </div>
           </div>
 

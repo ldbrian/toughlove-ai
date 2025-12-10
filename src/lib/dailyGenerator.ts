@@ -1,5 +1,5 @@
 import { DAILY_NEWS_DATA } from '@/data/dailyNewsData';
-import { PersonaType } from '@/lib/constants';
+import { PersonaType } from '@/types/index';
 
 export interface DailyStatus {
   persona: PersonaType;
@@ -33,7 +33,7 @@ export const generateDailyFeed = (): DailyStatus[] => {
   const personas: PersonaType[] = ['Ash', 'Rin', 'Sol', 'Vee', 'Echo'];
   
   return personas.map(p => {
-    const data = DAILY_NEWS_DATA[p];
+    const data = DAILY_NEWS_DATA[p as Exclude<PersonaType, 'System'>];
     // 防御性检查：防止数据缺失导致报错
     if (!data) return { persona: p, type: 'routine', content: '...', moodLabel: '未知', moodImpact: 0 };
 

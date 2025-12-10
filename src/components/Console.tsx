@@ -1,12 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { Terminal, ChevronRight, Zap, MessageSquare } from 'lucide-react';
-import { ROLE_MATRIX, LangType, MoodType, PersonaType } from '@/lib/constants';
+// ⚠️ 请确认这里的路径！如果不确定，请检查你的 ROLE_MATRIX 到底定义在哪里
+// 如果是在 src/constants/personas.ts，请改为 import { ROLE_MATRIX } from '@/constants/personas';
+import { ROLE_MATRIX } from '@/lib/constants'; 
+import { LangType, MoodType, PersonaType } from '@/types';
 
 interface ConsoleProps {
   currentRole: string; 
   currentMood: string;
   onAction: (id: string, label: string, context: string) => void;
-  customText: string | null; // 这是传入的“最后一条聊天记录”
+  customText: string | null; 
   onContinue: () => void;
   lang: LangType;
   inventoryItems?: string[]; 
@@ -20,34 +23,61 @@ export default function Console({
   const [isTyping, setIsTyping] = useState(false);
   const indexRef = useRef(0);
 
-  // 1. 获取配置 (Hook & Options)
-  const roleKey = currentRole as PersonaType;
+  // 1. 安全获取当前角色的配置
+  const safeRole = (currentRole === 'System' ? 'Ash' : currentRole);
+  const roleKey = safeRole as Exclude<PersonaType, 'System'>;
   const moodKey = currentMood as MoodType;
+  // 防御性编程：如果找不到对应的 Mood，回退到 neutral
   const personaState = ROLE_MATRIX[roleKey]?.[moodKey] || ROLE_MATRIX['Ash']['neutral'];
 
-  // 2. 判定当前模式：是否有记忆
-  // 如果 customText 存在，说明是“老熟人”，进入记忆模式
-  const isMemoryMode = !!customText;
+  // ----------------------------------------------------------------------
+  // 🔥 核心修复逻辑 (The Fix)
+  // ----------------------------------------------------------------------
+  
+  const defaultHookZh = personaState.hook.zh;
+  const defaultHookEn = personaState.hook.en;
 
-  // 3. 决定显示的文本
-  const rawText = customText || (lang === 'zh' ? personaState.hook.zh : personaState.hook.en);
-  const targetText = rawText.replace(/\[.*?\]/g, '').trim();
+  // 🕵️‍♂️ 侦探逻辑：判断传入的 customText 是否看起来像“默认开场白”
+  // 我们不再要求完全相等，只要前 15 个字母对得上，就认为是开场白
+  // 这样能忽略空格、换行符或细微标点的差异
+  const isLooksLikeGreeting = customText && (
+      customText.trim().startsWith(defaultHookEn.substring(0, 15).trim()) || 
+      customText.trim().startsWith(defaultHookZh.substring(0, 15).trim())
+  );
+
+  // 决定最终显示的文本：
+  // 如果是开场白（无论中英），或者是空文本 -> 强制根据当前 lang 显示
+  // 只有当它完全不像开场白时，才认为是真正的“历史记录”，原样显示
+  const finalContent = (isLooksLikeGreeting || !customText) 
+      ? (lang === 'zh' ? defaultHookZh : defaultHookEn)
+      : customText;
+
+  // 决定模式：如果最终显示的是默认开场白，就不算 Memory Recall
+  const isMemoryMode = !!customText && !isLooksLikeGreeting;
+
+  // 清理文本中的动作标记 [action]
+  const targetText = finalContent.replace(/\[.*?\]/g, '').trim();
+
+  // ----------------------------------------------------------------------
 
   useEffect(() => {
+    // 每次内容变化重置打字机
     setDisplayedText('');
     setIsTyping(true);
     indexRef.current = 0;
 
     const interval = setInterval(() => {
-        setDisplayedText(targetText.slice(0, indexRef.current + 1));
-        indexRef.current++;
-        if (indexRef.current >= targetText.length) {
+        // 防止数组越界
+        if (indexRef.current < targetText.length) {
+            setDisplayedText(targetText.slice(0, indexRef.current + 1));
+            indexRef.current++;
+        } else {
             clearInterval(interval);
             setIsTyping(false);
         }
-    }, 30);
+    }, 30); 
     return () => clearInterval(interval);
-  }, [targetText, currentRole, currentMood]);
+  }, [targetText]); // 依赖项改为 targetText，确保切语言时重打
 
   return (
     <div className="w-full max-w-md mx-auto p-4 animate-in slide-in-from-bottom-4 duration-500">
@@ -58,25 +88,25 @@ export default function Console({
            <div className="flex items-center gap-2">
                <div className={`w-2 h-2 rounded-full ${isTyping ? 'bg-green-500 animate-pulse' : 'bg-green-500/50'}`}></div>
                <span className="text-[10px] text-gray-500 tracking-[0.2em] uppercase font-bold">
-                   {/* 区分显示模式状态 */}
-                   {isMemoryMode ? 'MEMORY_RECALL' : `LINK: ${currentRole} // ${currentMood.toUpperCase()}`}
+                   {/* 根据状态显示不同标题 */}
+                   {isMemoryMode ? 'MEMORY_RECALL' : `LINK: ${currentRole.toUpperCase()} // ${currentMood.toUpperCase()}`}
                </span>
            </div>
            <span className="text-[9px] text-gray-600 tracking-widest opacity-50">SYS_READY</span>
         </div>
 
-        {/* Content Area */}
+        {/* Console Screen */}
         <div className="px-6 py-8 min-h-[140px] flex flex-col justify-center relative">
-            <div className="text-gray-200 text-base leading-loose font-medium tracking-wide">
+            <div className="text-gray-200 text-sm leading-normal font-medium tracking-wide">
                 {displayedText}
-                <span className={`inline-block w-2 h-5 bg-white/50 align-middle ml-1 ${isTyping ? 'animate-pulse' : 'opacity-0'}`}></span>
+                <span className={`inline-block w-2 h-4 bg-white/50 align-middle ml-1 ${isTyping ? 'animate-pulse' : 'opacity-0'}`}></span>
             </div>
         </div>
 
-        {/* 🔥 Footer Buttons Logic Fix 🔥 */}
+        {/* Footer Buttons */}
         <div className="grid grid-cols-2 gap-4 p-6 pt-0">
            
-           {/* 情况 A: 初次见面 (无记忆) -> 显示 Hook 的两个选项 */}
+           {/* 情况 A: 只要不是那种特别老的历史记录，就显示互动按钮 */}
            {!isMemoryMode && personaState.options.map((opt, idx) => (
              <button 
                key={opt.id}
@@ -96,7 +126,7 @@ export default function Console({
              </button>
            ))}
            
-           {/* 情况 B: 记忆模式 (有记忆) OR 异常情况 -> 只显示一个“继续”按钮 */}
+           {/* 情况 B: 真正的历史记录才显示 Continue */}
            {(isMemoryMode || personaState.options.length === 0) && (
                <button 
                    onClick={onContinue}
