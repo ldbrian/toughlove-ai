@@ -393,13 +393,9 @@ export default function ResonancePage() {
   return (
     // 🔥 修复 Console 遮挡 1: 移除冗余 class，使用 style 属性确保安全区域留白
     <div 
-        className="relative flex flex-col h-full w-full bg-black text-white overflow-hidden" 
+        className="relative flex flex-col h-screen w-full bg-black text-white overflow-hidden pb-[130px]" 
         onTouchStart={onTouchStart} 
         onTouchEnd={onTouchEnd}
-        style={{
-            // 🏆 稳健修复：增大 base padding (16rem = 64 * 0.25rem) 并加上 env() 变量
-            paddingBottom: 'calc(16rem + env(safe-area-inset-bottom))' 
-        }}
     >
         {isLocked && <AccessGate onUnlock={handleUnlock} />}
         <OnboardingModal show={showOnboarding} onFinish={handleOnboardingFinish} lang={lang} />
@@ -518,8 +514,7 @@ export default function ResonancePage() {
         </div>
 
         {/* UI 区域 2: Main Content */}
-        <div className="flex-1 relative z-10 flex flex-col items-center justify-center gap-4 pt-24"> 
-            <div className="w-full mb-2 animate-[fadeIn_0.5s_ease-out_0.5s_forwards]">
+        <div className="flex-1 relative z-10 flex flex-col items-center justify-center gap-4 pt-24"><div className="w-full mb-2 animate-[fadeIn_0.5s_ease-out_0.5s_forwards]">
                 <DailyNewsBar onItemClick={handleNewsClick} />
             </div>
             <div className="absolute inset-x-4 top-[40%] -translate-y-1/2 flex justify-between items-center pointer-events-none">
@@ -544,8 +539,7 @@ export default function ResonancePage() {
             </div>
             
             {/* 🔥 修复 Console 遮挡 2: 减小 pt-12 到 pt-6，收紧 Console 区域 */}
-            <div className={`w-full relative z-30 px-6 pt-6 mt-auto transition-opacity duration-200 ${isSwitching ? 'opacity-0' : 'opacity-100'}`}>
-                <Console 
+            <div className={`w-full relative z-30 px-6 mt-auto transition-opacity duration-200 ${isSwitching ? 'opacity-0' : 'opacity-100'}`}><Console 
                     key={activePersona} 
                     currentRole={activePersona}
                     currentMood={currentMood}
