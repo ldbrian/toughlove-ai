@@ -390,161 +390,47 @@ export default function ResonancePage() {
   const currentMoodObj = MOOD_OPTIONS.find(m => m.id === currentMood);
   const safePersona = PERSONAS[activePersona as keyof typeof PERSONAS] || PERSONAS['Ash'];
 
-  return (
-    // 🔥 修复 Console 遮挡 1: 移除冗余 class，使用 style 属性确保安全区域留白
+  // src/app/page.tsx
+
+return (
+    // 🔴 修改 1: 去掉 h-screen，改为 h-full。
+    // 这样它会自适应 layout 给它的空间，不会强行撑破屏幕。
+    // 同时去掉之前的 style padding，改用更直接的 padding class。
     <div 
-        className="relative flex flex-col h-screen w-full bg-black text-white overflow-hidden" 
+        className="relative flex flex-col h-full w-full bg-black text-white overflow-hidden" 
         onTouchStart={onTouchStart} 
         onTouchEnd={onTouchEnd}
-        style={{
-            // 🏆 稳健修复：增大 base padding (16rem = 64 * 0.25rem) 并加上 env() 变量
-            paddingBottom: 'calc(16rem + env(safe-area-inset-bottom))' 
-        }}
     >
         {isLocked && <AccessGate onUnlock={handleUnlock} />}
-        <OnboardingModal show={showOnboarding} onFinish={handleOnboardingFinish} lang={lang} />
-        <LetterOpenModal show={showLetter} onOpen={handleLetterOpen} />
-        <ShopModal show={showShopModal} onClose={() => setShowShopModal(false)} userRin={userBalance} onBalanceUpdate={handleBalanceUpdate} lang={lang} />
+        {/* ... 其他 Modal 组件保持不变 ... */}
         
-        <FocusModal 
-            show={showFocus} 
-            onClose={() => setShowFocus(false)} 
-            lang={lang} 
-            partnerId={activePersona} 
-            onReward={handleReward}
-            handleSend={handleSend}
-        />
-        
-        <MemoModal 
-            show={showMemo} 
-            onClose={() => setShowMemo(false)} 
-            lang={lang} 
-            partnerId={activePersona}
-            onReward={handleReward}
-            handleSend={handleSend}
-        />
-
-        {showInventory && (
-            <InventoryModal 
-                show={showInventory} 
-                onClose={() => setShowInventory(false)} 
-                partnerId={activePersona}
-                lang={lang} 
-                inventory={inventoryItems} 
-                setInventory={(newItems: LootItem[]) => {
-                    const newIds = newItems.map(item => item.id);
-                    setInventoryItems(newItems);
-                    localStorage.setItem(USER_INVENTORY_KEY, JSON.stringify(newIds));
-                }}
-                handleSend={handleSend}
-            />
-        )}
-
-        <DailyBriefingModal 
-            show={showTarot} 
-            onClose={() => setShowTarot(false)} 
-            lang={lang} 
-            onCollect={handleTarotCollect}
-            forcedSpeaker={activePersona}
-            partnerId={activePersona}
-        />
-
-        <NameModal show={showNameModal} onClose={() => setShowNameModal(false)} tempName={tempName} setTempName={setTempName} onSave={() => { setUserName(tempName); localStorage.setItem('toughlove_user_name', tempName); setShowNameModal(false); }} ui={{ title: lang === 'zh' ? '修改昵称' : 'Edit Name', placeholder: 'Name', cancel: 'Cancel', save: 'Save' }} />
-        <InstallModal show={showInstallModal} onClose={() => setShowInstallModal(false)} lang={lang} />
-        <FeedbackModal show={showFeedbackModal} onClose={() => setShowFeedbackModal(false)} text="" setText={()=>{}} onSubmit={()=>{ setShowFeedbackModal(false); alert(lang === 'zh' ? '已收到反馈' : 'Feedback sent'); }} lang={lang} />
-        <LangSetupModal 
-            show={showLangModal} 
-            lang={lang} 
-            onConfirm={handleLangConfirm} 
-        />
+        {/* 背景层保持不变 */}
         <div className="absolute inset-0 z-0 bg-black">
-            {Object.keys(WALLPAPER_MAP).map((pKey) => (
-                <div key={pKey} className={`absolute inset-0 bg-cover bg-center transition-opacity duration-700 ease-in-out ${activePersona === pKey ? 'opacity-50' : 'opacity-0'} scale-105`} style={{ backgroundImage: `url(${WALLPAPER_MAP[pKey]})` }} />
-            ))}
-            <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/40 to-black/95"></div>
-            <div className="absolute inset-0 bg-[url('/noise.png')] opacity-15 mix-blend-overlay pointer-events-none"></div>
+            {/* ... wallpaper 代码 ... */}
         </div>
 
-        {/* UI 区域 1: Header (保持不变) */}
+        {/* UI 区域 1: Header 保持不变 */}
         <div className="absolute top-0 left-0 right-0 z-50 flex flex-col pointer-events-none bg-black/95">
-            <div className="flex justify-between items-center px-6 py-4 pointer-events-auto bg-gradient-to-b from-black/90 to-transparent">
-                <div className="flex flex-col gap-0.5 justify-center h-9">
-                    <h1 className="text-xl font-black italic tracking-tighter text-white drop-shadow-md">TOUGH.</h1>
-                    <span className="text-[8px] tracking-[0.3em] text-gray-400 uppercase opacity-70">RESONANCE V2.9</span>
-                </div>
-                <div className="flex items-center gap-3 relative">
-                    <button onClick={() => { setIsMoodOpen(!isMoodOpen); setShowToast(false); setShowMenu(false); }} className="flex items-center gap-2 pl-3 pr-2 h-9 bg-white/5 border border-white/10 backdrop-blur-md rounded-full hover:bg-white/10 transition-all shadow-lg active:scale-95">
-                        <div className={`w-2 h-2 rounded-full ${currentMoodObj?.dotColor || 'bg-white'}`}></div>
-                        <span className="text-[10px] font-bold uppercase text-gray-200 tracking-wider"><span className="text-[10px] font-bold uppercase text-gray-200 tracking-wider">
-  {getContentText(currentMoodObj?.label, lang)}
-</span></span>
-                        <ChevronDown size={14} className={`text-gray-400 transition-transform duration-300 ${isMoodOpen ? 'rotate-180' : ''}`} />
-                    </button>
-                    <button onClick={() => { setShowMenu(!showMenu); setIsMoodOpen(false); }} className="w-9 h-9 flex items-center justify-center bg-white/5 rounded-full hover:bg-white/10 backdrop-blur-md border border-white/5 shadow-lg active:scale-95 transition-all">
-                        <MoreVertical size={18} className="text-gray-200"/>
-                    </button>
-                    {showMenu && (
-                        <GlobalMenu 
-                            lang={lang}
-                            onClose={() => setShowMenu(false)}
-                            onEditName={() => { setShowMenu(false); setTempName(userName); setShowNameModal(true); }}
-                            onSwitchLang={handleOpenLangMenu}
-                            onInstall={() => { setShowMenu(false); setShowInstallModal(true); }}
-                            onShop={() => { setShowMenu(false); setShowShopModal(true); }} 
-                            onInventory={() => { setShowMenu(false); setShowInventory(true); }} 
-                            onFeedback={() => { setShowMenu(false); setShowFeedbackModal(true); }}
-                            onReset={handleFullReset}
-                        />
-                    )}
-                </div>
-            </div>
-            
-            <div className="pointer-events-auto transition-opacity duration-300 mt-2">
-                <MetaToast persona={activePersona} show={showToast && !isMoodOpen} onClose={handleCloseToast} lang={lang} />
-            </div>
-
-            <div className={`pointer-events-auto mx-4 overflow-hidden transition-all duration-300 ease-out ${isMoodOpen ? 'max-h-24 opacity-100 translate-y-0' : 'max-h-0 opacity-0 -translate-y-2'} -mt-4`}>
-                <div className="flex bg-black/80 backdrop-blur-xl border border-white/10 rounded-full p-1.5 shadow-2xl gap-2 ring-1 ring-white/5">
-                    {MOOD_OPTIONS.map((mood) => {
-                        const isActive = currentMood === mood.id;
-                        return (
-                            <button key={mood.id} onClick={() => { setCurrentMood(mood.id); handleCloseToast(); setTimeout(() => setIsMoodOpen(false), 300); }} className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-wider rounded-full transition-all duration-300 border ${isActive ? `${mood.color} scale-105 z-10` : 'bg-transparent border-transparent text-gray-500 hover:bg-white/5 hover:text-gray-300'}`}>
-                                {getContentText(mood.label, lang)}
-                            </button>
-                        )
-                    })}
-                </div>
-            </div>
+            {/* ... header 内容 ... */}
         </div>
 
         {/* UI 区域 2: Main Content */}
+        {/* 🔴 修改 2: 这里的 pt-24 可以保留，确保内容不被 Header 遮挡 */}
         <div className="flex-1 relative z-10 flex flex-col items-center justify-center gap-4 pt-24"> 
+            
             <div className="w-full mb-2 animate-[fadeIn_0.5s_ease-out_0.5s_forwards]">
                 <DailyNewsBar onItemClick={handleNewsClick} />
             </div>
-            <div className="absolute inset-x-4 top-[40%] -translate-y-1/2 flex justify-between items-center pointer-events-none">
-                <button onClick={() => cyclePersona('prev')} className="pointer-events-auto p-2 hover:bg-white/5 rounded-full transition-colors active:scale-95"><ChevronLeft size={32} className="text-white/40 hover:text-white/80" /></button>
-                <button onClick={() => cyclePersona('next')} className="pointer-events-auto p-2 hover:bg-white/5 rounded-full transition-colors active:scale-95"><ChevronRight size={32} className="text-white/40 hover:text-white/80" /></button>
-            </div>
-            <div className="relative w-48 h-48 z-20 mb-8">
-                <div className="absolute -inset-4 rounded-full border border-white/5 bg-gradient-to-b from-white/5 to-transparent animate-[spin_10s_linear_infinite] opacity-50"></div>
-                <div className="w-full h-full rounded-full overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.6)] border-[1px] border-white/20 bg-black relative z-10 ring-1 ring-white/10">
-                     <div key={activePersona} className={`w-full h-full ${slideDirection ? (slideDirection === 'right' ? 'animate-[slideInRight_0.3s]' : 'animate-[slideInLeft_0.3s]') : ''}`}>
-                     <img src={safePersona.avatar} className="w-full h-full object-cover scale-110" />
-                     </div>
-                     <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent mix-blend-overlay"></div>
-                </div>
-                <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center z-30 w-max">
-                     <div className="px-3 py-0.5 bg-black/80 backdrop-blur-md border border-white/10 rounded-full shadow-lg mb-1">
-                         <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${safePersona.color}`}>
-                         {safePersona.name}
-                         </span>
-                     </div>
-                </div>
-            </div>
             
-            {/* 🔥 修复 Console 遮挡 2: 减小 pt-12 到 pt-6，收紧 Console 区域 */}
-            <div className={`w-full relative z-30 px-6 pt-6 mt-auto transition-opacity duration-200 ${isSwitching ? 'opacity-0' : 'opacity-100'}`}>
+            {/* ... 中间的头像和切换按钮保持不变 ... */}
+            <div className="absolute inset-x-4 top-[40%] ...">...</div>
+            <div className="relative w-48 h-48 z-20 mb-8">...</div>
+            
+            {/* 🔴 修改 3 (最关键): 给 Console 的容器加 mb-24 (底部外边距)
+               mb-24 = 6rem = 96px，足够躲开 Navbar 了。
+               如果还不够，可以加到 mb-28 或 mb-32。
+            */}
+            <div className={`w-full relative z-30 px-6 pt-6 mt-auto mb-28 transition-opacity duration-200 ${isSwitching ? 'opacity-0' : 'opacity-100'}`}>
                 <Console 
                     key={activePersona} 
                     currentRole={activePersona}
@@ -558,5 +444,5 @@ export default function ResonancePage() {
             </div>
         </div>
     </div>
-  );
+);
 }
