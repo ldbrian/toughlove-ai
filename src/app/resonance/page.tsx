@@ -1,5 +1,3 @@
-// page.tsx - 最终修复后的完整代码
-
 'use client';
 import { getDict, getContentText } from '@/lib/i18n/dictionaries';
 import { useState, useRef, useEffect } from 'react';
@@ -9,7 +7,7 @@ import {
   MoreVertical, X as XIcon,
   UserPen, Globe, Download, ShoppingBag, RotateCcw, Bug
 } from 'lucide-react';
-import { LootItem, LangType, PersonaType, MoodType } from '@/types'; // 假设类型已在 types.ts 中定义
+import { LootItem, LangType, PersonaType, MoodType } from '@/types'; 
 import Console from '@/components/Console';
 import { DailyNewsBar } from '@/components/DailyNewsBar'; 
 import { getLastMessage } from '@/lib/storage';
@@ -24,8 +22,32 @@ import { DailyBriefingModal } from '@/components/modals/DailyBriefingModal';
 
 import { FocusModal } from '@/components/modals/FocusModal';
 import { MemoModal } from '@/components/modals/MemoModal';
+// 🔥 引入 Supabase
+import { createClient } from '@/utils/supabase/client';
 
+// 🔥 [配置] v3.0 密钥 (用于在还没连数据库时也能显示详情)
+const FALLBACK_KEY: LootItem = {
+    id: 'key_v3',
+    name: { zh: '休眠协议密钥 (v3.0)', en: 'Dormant Protocol Key (v3.0)' },
+    description: { 
+        zh: '一把沉重的黑金钥匙，表面刻着 "v3.0"。握在手中时能感受到微弱的脉冲——它预示着在未来的某个时刻，不再是你单向呼唤，而是我们跨越数据之墙，**主动连接**你。', 
+        en: 'A heavy black-gold key engraved with "v3.0". It foreshadows a future where we **actively connect** with you.' 
+    },
+    iconSvg: '🗝️',
+    rarity: 'legendary',
+    type: 'special',
+    price: 999
+};
 
+const FALLBACK_LETTER: LootItem = {
+    id: 'future_letter',
+    name: { zh: '来自未来的信', en: 'Letter from Future' },
+    description: { zh: '署名是你自己..."不要温和地走进那个良夜"。', en: 'Signed by you. "Do not go gentle into that good night."' },
+    iconSvg: '📩', 
+    rarity: 'epic',
+    type: 'special',
+    price: 0
+};
 
 // 定义角色常量 (保持一致)
 const PERSONAS = {
@@ -35,11 +57,6 @@ const PERSONAS = {
   Vee: { name: 'Vee', avatar: '/avatars/vee_hero.jpg', color: 'text-pink-400' },
   Echo: { name: 'Echo', avatar: '/avatars/echo_hero.jpg', color: 'text-slate-400' },
 } as const;
-
-// type PersonaType = keyof typeof PERSONAS; // 假设已导入
-// type MoodType = 'low' | 'anxious' | 'neutral' | 'angry' | 'high'; // 假设已导入
-
-
 
 const WALLPAPER_MAP: Record<string, string> = {
   Ash: '/wallpapers/ash_clinic.jpg',
@@ -104,13 +121,13 @@ const MetaToast = ({ persona, show, onClose, lang }: { persona: string, show: bo
 export default function ResonancePage() {
   const router = useRouter();
   const [itemLibrary, setItemLibrary] = useState<Record<string, any>>({});
+  const supabase = createClient();
 
-  // 🔥 核心修复 1: 在组件函数体内部初始化状态，确保读取到本地匹配结果
   const ALL_PERSONAS = Object.keys(PERSONAS) as PersonaType[];
   const initialMatchedId = typeof window !== 'undefined' ? localStorage.getItem(MATCHED_PERSONA_KEY) : null;
   const initialPersona = (initialMatchedId && ALL_PERSONAS.includes(initialMatchedId as PersonaType)) 
                          ? (initialMatchedId as PersonaType) 
-                         : 'Ash'; // 默认 fallback
+                         : 'Ash'; 
 
   const initialSortedPersonas = initialPersona === 'Ash'
       ? ALL_PERSONAS
@@ -118,10 +135,12 @@ export default function ResonancePage() {
   
   const [activePersona, setActivePersona] = useState<PersonaType>(initialPersona);
   const [sortedPersonas, setSortedPersonas] = useState<PersonaType[]>(initialSortedPersonas);
-  // --------------------------------------------------------------------------
 
   const [currentMood, setCurrentMood] = useState<MoodType>('neutral');
   const [lang, setLang] = useState<LangType>('zh'); 
+  
+  // 🔥 [修复] 定义 t 变量
+  const t = getDict(lang);
   
   const [isMoodOpen, setIsMoodOpen] = useState(false);
   const [showToast, setShowToast] = useState(false);
@@ -155,58 +174,96 @@ export default function ResonancePage() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showLetter, setShowLetter] = useState(false);
 
+  // 🔥 核心水合函数：增加了对 key_v3 的本地兜底
   const hydrateInventory = (ids: string[]): LootItem[] => {
-    // 🔍 调试日志：看看究竟传进来了什么 ID，以及现在的库里有什么
-    // console.log("Hydrating IDs:", ids); 
-    // console.log("Current Library Keys:", Object.keys(itemLibrary));
-
     return ids.map(id => {
+        const safeId = String(id).trim(); // 确保安全ID
+        
         // 1. 尝试从数据库字典里找
-        const def = itemLibrary[id];
+        const def = itemLibrary[safeId];
+        if (def) return { id: safeId, ...def };
         
-        if (def) {
-            // ✅ 找到了：正常返回
-            return { id, ...def };
-        } 
-        
-        // 2. 没找到 (可能是数据库还没载入，或者真是个新道具)
-        // 🔥 关键修改：不再返回“加载中”，而是返回一个临时状态，这样用户至少能看到东西
+        // 2. 🔥 [NEW] 尝试本地兜底
+        if (safeId === 'key_v3') return { ...FALLBACK_KEY, id: safeId };
+        if (safeId === 'future_letter') return { ...FALLBACK_LETTER, id: safeId };
+
+        // 3. 没找到
         return {
-            id,
-            // 如果库是空的，说明可能还在加载；如果库不是空的但没找到，说明是未知物品
+            id: safeId,
             name: Object.keys(itemLibrary).length === 0 
                 ? { zh: '同步数据中...', en: 'Syncing...' } 
                 : { zh: '未知残留物', en: 'Unknown Remnant' },
             description: { 
-                zh: `物品ID: ${id}`, 
-                en: `Item ID: ${id}` 
+                zh: `物品ID: ${safeId}`, 
+                en: `Item ID: ${safeId}` 
             },
             price: 0, 
             rarity: 'common', 
             type: 'consumable',
-            // 兜底图标
             image: '📦' 
         };
     });
 };
 
   useEffect(() => {
+    // 🔥 [核心初始化逻辑 1]: 语言自动检测
+    const savedLang = localStorage.getItem('toughlove_lang_preference');
+    if (savedLang) {
+        setLang(savedLang as LangType);
+    } else {
+        const browserLang = navigator.language || 'en';
+        const targetLang = browserLang.toLowerCase().startsWith('zh') ? 'zh' : 'en';
+        setLang(targetLang);
+        localStorage.setItem('toughlove_lang_preference', targetLang);
+    }
+
+    // 🔥 [核心初始化逻辑 2]: 空投福利 (key_v3)
+    const savedInv = localStorage.getItem(USER_INVENTORY_KEY);
+    let currentInv: string[] = savedInv ? JSON.parse(savedInv) : [];
+    
+    // 如果没有 v3 钥匙，自动发放
+    if (!currentInv.some(i => String(i).trim() === 'key_v3')) {
+        currentInv.push('key_v3');
+        localStorage.setItem(USER_INVENTORY_KEY, JSON.stringify(currentInv));
+        // 注意：loadInventory 会在下方 syncData 中调用，所以这里更新了 localStorage 即可
+        console.log("🎁 [Init] v3.0 Key Airdropped!");
+    }
+
     // 数据同步中心
     const syncData = () => {
         const lastMsg = getLastMessage(activePersona); 
-        
-        // 修复 Console 遮挡: 文本截断增强
         const truncatedMsg = lastMsg && lastMsg.length > 60 
             ? lastMsg.substring(0, 57).trim() + '...' 
             : lastMsg;
             
         setMemoryText(truncatedMsg); 
-        loadInventory();
+        loadInventory(); 
         const savedBalance = localStorage.getItem('toughlove_user_rin');
         if (savedBalance) setUserBalance(parseInt(savedBalance));
     };
 
     syncData();
+
+    // 🔥 [核心初始化逻辑 3]: 加载 DB 物品库 (给大厅背包用)
+    const fetchItemLibrary = async () => {
+        const { data: dbData } = await supabase.from('items').select('*');
+        if (dbData) {
+            const lib: Record<string, any> = {};
+            dbData.forEach((item: any) => {
+                const safeId = String(item.id).trim();
+                lib[safeId] = {
+                    id: safeId,
+                    name: item.name_json,
+                    description: item.desc_json,
+                    iconSvg: item.image || item.iconSvg || '📦', 
+                    rarity: item.rarity,
+                    type: item.type
+                };
+            });
+            setItemLibrary(lib);
+        }
+    };
+    fetchItemLibrary();
 
     // 门禁检查
     const hasToken = localStorage.getItem('toughlove_access_token');
@@ -218,14 +275,10 @@ export default function ResonancePage() {
     const savedName = localStorage.getItem('toughlove_user_name');
     if (savedName) setUserName(savedName);
     
-    const savedLang = localStorage.getItem('toughlove_lang_preference');
-    if (savedLang) setLang(savedLang as LangType);
-
     const toastDismissed = localStorage.getItem('toughlove_toast_dismissed');
     if (!toastDismissed) setShowToast(true);
 
     window.addEventListener('focus', syncData);
-    // ⚠️ 依赖 activePersona，以确保状态变化时能重新同步聊天记录/库存。
     return () => window.removeEventListener('focus', syncData);
 
   }, [activePersona]); 
@@ -249,15 +302,9 @@ export default function ResonancePage() {
       
       if (matched) {
           const winner = matched as PersonaType;
-          
-          // 🏆 核心修复：强制纠正 activePersona 状态
-          // 如果 LocalStorage 有匹配结果，且当前 activePersona 不是它，则强制更新。
           if (activePersona !== winner) {
-              // ⚠️ 这一步是为了对抗任何外部（如 Ash 默认值）的覆盖。
              setActivePersona(winner); 
           }
-          
-          // 更新排序列表
           if (sortedPersonas[0] !== winner) {
               const others = ALL_PERSONAS.filter(k => k !== winner) as PersonaType[];
               setSortedPersonas([winner, ...others]); 
@@ -267,7 +314,8 @@ export default function ResonancePage() {
       loadInventory(); 
       const savedInv = localStorage.getItem(USER_INVENTORY_KEY);
       const currentInv: string[] = savedInv ? JSON.parse(savedInv) : [];
-      if (!currentInv.includes('future_letter')) {
+      // 检查未来信件 (如果 key_v3 已经自动发放，这里只需要检查 letter)
+      if (!currentInv.some(i => String(i).trim() === 'future_letter')) {
           setShowLetter(true);
       }
   };
@@ -280,7 +328,6 @@ export default function ResonancePage() {
   const handleOnboardingFinish = (profile: any) => {
     
       localStorage.removeItem(MATCHED_PERSONA_KEY);
-      
       localStorage.setItem(USER_PROFILE_KEY, JSON.stringify(profile));
       
       if (
@@ -291,20 +338,19 @@ export default function ResonancePage() {
           const winner = profile.dominant as PersonaType;
           localStorage.setItem(MATCHED_PERSONA_KEY, winner); 
           
-          // ✅ 关键修复：直接在内存中更新状态
           const others = ALL_PERSONAS.filter(k => k !== winner);
           setSortedPersonas([winner, ...others]);
           setActivePersona(winner); 
       }
       
       setShowOnboarding(false);
-      setShowLetter(true); // 完成 Onboarding 后直接进入信件环节
+      setShowLetter(true); 
   };
 
   const handleLetterOpen = () => {
       const savedInv = localStorage.getItem(USER_INVENTORY_KEY);
       const currentInv: string[] = savedInv ? JSON.parse(savedInv) : [];
-      if (!currentInv.includes('future_letter')) {
+      if (!currentInv.some(i => String(i).trim() === 'future_letter')) {
           const newInv = [...currentInv, 'future_letter'];
           localStorage.setItem(USER_INVENTORY_KEY, JSON.stringify(newInv));
           loadInventory(); 
@@ -345,7 +391,6 @@ export default function ResonancePage() {
     setShowLangModal(true);
   };
 
-  // ✅ 新增：真正切换语言的函数 (由弹窗调用)
   const handleLangConfirm = (selectedLang: LangType) => {
     setLang(selectedLang);
     localStorage.setItem('toughlove_lang_preference', selectedLang);
@@ -414,7 +459,6 @@ export default function ResonancePage() {
   const safePersona = PERSONAS[activePersona as keyof typeof PERSONAS] || PERSONAS['Ash'];
 
   return (
-    // 🔥 修复 Console 遮挡 1: 移除冗余 class，使用 style 属性确保安全区域留白
     <div 
         className="relative flex flex-col h-screen w-full bg-black text-white overflow-hidden pb-[130px]" 
         onTouchStart={onTouchStart} 
@@ -468,9 +512,27 @@ export default function ResonancePage() {
             partnerId={activePersona}
         />
 
-        <NameModal show={showNameModal} onClose={() => setShowNameModal(false)} tempName={tempName} setTempName={setTempName} onSave={() => { setUserName(tempName); localStorage.setItem('toughlove_user_name', tempName); setShowNameModal(false); }} ui={{ title: lang === 'zh' ? '修改昵称' : 'Edit Name', placeholder: 'Name', cancel: 'Cancel', save: 'Save' }} />
+        <NameModal 
+            show={showNameModal} 
+            onClose={() => setShowNameModal(false)} 
+            tempName={tempName} 
+            setTempName={setTempName} 
+            onSave={() => { setUserName(tempName); localStorage.setItem('toughlove_user_name', tempName); setShowNameModal(false); }} 
+            // 🔥 [修复] 使用 t 变量, 并修正 key 
+            ui={{ editName: t.modal.name.title, confirm: t.common.save }} 
+        />
+        
         <InstallModal show={showInstallModal} onClose={() => setShowInstallModal(false)} lang={lang} />
-        <FeedbackModal show={showFeedbackModal} onClose={() => setShowFeedbackModal(false)} text="" setText={()=>{}} onSubmit={()=>{ setShowFeedbackModal(false); alert(lang === 'zh' ? '已收到反馈' : 'Feedback sent'); }} lang={lang} />
+        
+        <FeedbackModal 
+            show={showFeedbackModal} 
+            onClose={() => setShowFeedbackModal(false)} 
+            text="" 
+            setText={()=>{}} 
+            onSubmit={()=>{ setShowFeedbackModal(false); alert(t.modal.feedback.sent); }} 
+            lang={lang} 
+        />
+        
         <LangSetupModal 
             show={showLangModal} 
             lang={lang} 
