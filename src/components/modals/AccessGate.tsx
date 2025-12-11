@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Lock, Terminal, ArrowRight, AlertTriangle } from 'lucide-react';
+import { getDeviceId } from '@/lib/utils';
 
 interface AccessGateProps {
   onUnlock: () => void;
@@ -19,7 +20,7 @@ export const AccessGate = ({ onUnlock }: AccessGateProps) => {
 
   useEffect(() => {
     // 仅在客户端挂载后执行读取
-    const id = localStorage.getItem('toughlove_device_id');
+    const id = getDeviceId();
     if (id) {
         setDeviceId(id.slice(0,8).toUpperCase());
     } else {
@@ -49,7 +50,6 @@ export const AccessGate = ({ onUnlock }: AccessGateProps) => {
 
   return (
     <div className={`fixed inset-0 z-[999] bg-black flex flex-col items-center justify-center p-6 transition-opacity duration-1000 ${glitch ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-      <div className="absolute inset-0 bg-[url('/noise.png')] opacity-20 pointer-events-none"></div>
       <div className="absolute top-0 left-0 w-full h-1 bg-green-500/50 shadow-[0_0_20px_#22c55e] animate-scan"></div>
 
       <div className="w-full max-w-sm relative z-10 space-y-8">

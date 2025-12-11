@@ -8,9 +8,15 @@ import {
   UserPen, Globe, Download, Coffee, RotateCcw, X as XIcon, Bug,
   MessageSquarePlus, Zap, Heart, Flame, Activity
 } from 'lucide-react';
+// 🔥 1. 引入 Supabase
+import { createClient } from '@supabase/supabase-js';
+import { getDeviceId } from '@/lib/utils';
+
 import { getMemory, saveMemory } from '@/lib/storage';
 import { getLocalTimeInfo, getSimpleWeather } from '@/lib/env'; 
 import { LootItem } from '@/types'; 
+// ❌ 移除 LOOT_TABLE 常量引用，强制使用数据库
+// import { LOOT_TABLE } from '@/lib/constants'; 
 
 // Modals
 import { DonateModal, NameModal, FeedbackModal, InstallModal } from '@/components/modals/SystemModals';
@@ -19,13 +25,19 @@ import { InventoryModal } from '@/components/modals/InventoryModal';
 import { FocusModal } from '@/components/modals/FocusModal';
 import { MemoModal } from '@/components/modals/MemoModal';
 
+// 🔥 2. 初始化 Supabase 客户端
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
 // 消息类型定义
 interface Message {
   role: string;
   content: string;
 }
 
-// 常量
+// 常量 (Persona配置属于静态配置，保留)
 const PERSONAS: Record<string, any> = {
   ash: { name: 'Ash', avatar: '/avatars/ash_hero.jpg', color: 'text-cyan-400' },
   rin: { name: 'Rin', avatar: '/avatars/rin_hero.jpg', color: 'text-purple-400' },
@@ -104,7 +116,6 @@ const LootCard = ({ itemId, lang }: { itemId: string, lang: LangType }) => {
   );
 };
 
-// GlobalMenu
 interface GlobalMenuProps { onClose: () => void; onEditName: () => void; onSwitchLang: () => void; onInstall: () => void; onDonate: () => void; onReset: () => void; onFeedback: () => void; lang: LangType; }
 const GlobalMenu = ({ onClose, onEditName, onSwitchLang, onInstall, onDonate, onReset, onFeedback, lang }: GlobalMenuProps) => {
   const t = UI_TEXT[lang]; 
@@ -157,20 +168,126 @@ export default function ChatRoomPage() {
   const [userName, setUserName] = useState('Traveler');
   const [userBalance, setUserBalance] = useState(100);
 
-  const [inventoryItems, setInventoryItems] = useState<LootItem[]>([]);
-  const [dynamicReply, setDynamicReply] = useState('');
+  const [inventoryItems, setInventoryItems] = useState<any[]>([]); // 暂存本地ID
+  
+  // 🔥 新增：物品库状态 & 加载状态
+  const [itemLibrary, setItemLibrary] = useState<Record<string, any>>({}); 
+  const [isCatalogLoading, setIsCatalogLoading] = useState(true); // 默认为 true，开始加载
 
+  const [dynamicReply, setDynamicReply] = useState('');
   const [stats, setStats] = useState({ favorability: 0, moodValue: 50 });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const initRef = useRef(false);
   const isInitialScrollDone = useRef(false);
 
+  // 🔥 4. 页面加载时拉取数据库字典 (严格逻辑)
+  useEffect(() => {
+    const fetchItemLibrary = async () => {
+      try {
+        setIsCatalogLoading(true);
+        // 清空旧数据防止混淆
+        // setItemLibrary({}); 
+        
+        const { data, error } = await supabase.from('items').select('*');
+        
+        if (error) {
+            console.error("❌ [Chat] DB Error:", error);
+            // 即使出错，也要允许流程继续，否则 UI 会永久 Loading
+            return; 
+        }
+
+        if (data && data.length > 0) {
+            const lib: Record<string, any> = {};
+            data.forEach((item: any) => {
+                // 数据库字段映射
+                const nameObj = {
+                    zh: item.name_zh || item.name_json?.zh || item.name?.zh || '未知',
+                    en: item.name_en || item.name_json?.en || item.name?.en || 'Unknown'
+                };
+                const descObj = {
+                    zh: item.desc_zh || item.desc_json?.zh || item.description?.zh || '...',
+                    en: item.desc_en || item.desc_json?.en || item.description?.en || '...'
+                };
+
+                lib[item.id] = {
+                    name: nameObj,        
+                    description: descObj, 
+                    image: item.image,
+                    rarity: item.rarity,
+                    type: item.type,
+                    metadata: item.metadata,
+                    price: item.price
+                };
+            });
+            setItemLibrary(lib);
+            console.log("✅ [Chat] Item Library Loaded from DB:", Object.keys(lib).length);
+        } else {
+            console.warn("⚠️ [Chat] DB connected but 'items' table is empty.");
+        }
+      } catch (err) {
+          console.error("❌ [Chat] Fetch Exception:", err);
+      } finally {
+          // 🔥 关键：无论成功失败，都必须结束 loading 状态
+          setIsCatalogLoading(false);
+      }
+    };
+
+    fetchItemLibrary();
+  }, []);
+
   const loadInventory = () => {
       const savedInv = localStorage.getItem('toughlove_inventory');
       if (savedInv) {
-          setInventoryItems(JSON.parse(savedInv));
+          try {
+              const parsed = JSON.parse(savedInv);
+              setInventoryItems(parsed);
+          } catch(e) {
+              setInventoryItems([]);
+          }
       }
+  };
+
+  // 🔥 [FIX] 纯净版水合函数：只用 DB，不用常量
+  const hydrateInventory = (items: any[]): LootItem[] => {
+      if (!items || !Array.isArray(items)) return [];
+      
+      return items.map(item => {
+          const id = typeof item === 'string' ? item : item.id;
+          
+          // 1. 尝试从 DB 字典中获取
+          const dbItem = itemLibrary[id];
+          if (dbItem) {
+              return { id, ...dbItem } as LootItem;
+          }
+
+          // 2. 如果字典正在加载，显示“加载中”
+          if (isCatalogLoading) {
+              return {
+                  id,
+                  name: { zh: '数据库同步中...', en: 'Syncing DB...' },
+                  description: { zh: '请稍候...', en: 'Please wait...' },
+                  image: '⏳', // 沙漏
+                  rarity: 'common',
+                  sourcePersona: 'System', 
+                  price: 0,
+                  type: 'special'
+              } as LootItem;
+          }
+
+          // 3. 如果字典已加载完但还是找不到，说明是“未知/残留/被删除”的物品
+          // 不再回退到 LOOT_TABLE，完全诚实地显示为“未知”
+          return {
+              id,
+              name: { zh: `未知残留物 (${id})`, en: `Unknown Remnant (${id})` },
+              description: { zh: '该物品数据似乎已从数据库丢失。', en: 'Item data missing from database.' },
+              image: '❓',
+              rarity: 'common',
+              sourcePersona: 'System', 
+              price: 0,
+              type: 'special'
+          } as LootItem;
+      });
   };
 
   const handleReset = () => {
@@ -186,6 +303,7 @@ export default function ChatRoomPage() {
   };
 
   const updateStats = (type: 'chat' | 'gift' | 'event' | 'toxic', value?: number) => {
+    let currentNewStats = { favorability: 0, moodValue: 50 };
       setStats(prev => {
           let newFav = prev.favorability;
           let newMood = prev.moodValue;
@@ -209,6 +327,7 @@ export default function ChatRoomPage() {
           newMood = Math.floor(newMood);
 
           const newStats = { favorability: newFav, moodValue: newMood };
+          currentNewStats = newStats; 
           localStorage.setItem(`toughlove_stats_${partnerId}`, JSON.stringify(newStats));
           return newStats;
       });
@@ -228,7 +347,6 @@ export default function ChatRoomPage() {
       return lang === 'zh' ? '崩溃' : 'BROKEN';
   };
 
-  // 🔥 修复：找回了 handleSwitchLang 函数！
   const handleSwitchLang = () => {
     const newLang = lang === 'zh' ? 'en' : 'zh';
     setLang(newLang);
@@ -237,36 +355,26 @@ export default function ChatRoomPage() {
     window.location.reload(); 
   };
 
-  // 🔥 核心逻辑：渲染消息内容，检测名字并生成跳转按钮
-  // 🔥 核心逻辑：渲染消息内容，检测名字并生成跳转按钮
   const renderMessageContent = (content: string, isAI: boolean) => {
-    // 提取所有的人格名字 (忽略大小写)
     const names = Object.keys(PERSONAS); 
     const regex = new RegExp(`(${names.join('|')})`, 'gi');
     
-    // 切割字符串
     const parts = content.split(regex);
 
     return (
       <div className={`markdown-body ${isAI ? '' : 'text-white'}`}>
         {parts.map((part, i) => {
           const lowerPart = part.toLowerCase();
-          // 如果这部分是个人名，且存在于配置中
           if (names.includes(lowerPart)) {
              const targetPersona = PERSONAS[lowerPart];
-             
-             // 🎨 动态样式逻辑
-             // AI 侧：保持原样 (深色背景，紫色高亮字)
              const aiStyle = "bg-white/10 hover:bg-white/20 text-[#7F5CFF] hover:text-[#9f85ff] border-white/10";
-             // 用户侧：高对比度 (紫色背景，白色高亮字，白色半透底)
              const userStyle = "bg-white/20 hover:bg-white/30 text-white border-white/30 shadow-sm";
 
              return (
                <button 
                  key={i}
                  onClick={(e) => {
-                    e.stopPropagation(); // 防止触发其他点击
-                    // 💾 保存当前状态，跳转到目标人格
+                    e.stopPropagation(); 
                     router.push(`/chat/${lowerPart}`);
                  }}
                  className={`mx-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md font-bold text-xs transition-colors border -translate-y-0.5 cursor-pointer select-none align-middle ${isAI ? aiStyle : userStyle}`}
@@ -369,11 +477,12 @@ export default function ChatRoomPage() {
 
     if (!isHidden) {
         const isToxic = TOXIC_KEYWORDS.some(k => textToSend.includes(k));
+        let newStats; 
         if (isToxic) {
-            updateStats('toxic');
-        } else {
-            updateStats('chat');
-        }
+          newStats = updateStats('toxic');
+      } else {
+          newStats = updateStats('chat');
+      }
     }
 
     let newHistory = messages;
@@ -396,7 +505,10 @@ export default function ChatRoomPage() {
       
       const dailyData = JSON.parse(localStorage.getItem('toughlove_daily_feed_v1') || '{}');
       const myDaily = dailyData.data?.find((d: any) => d.persona === config.name);
-
+      
+      // 🔥 使用 DB 水合后的库存传给后端（虽然类型是 any，但已经包含 name 等信息）
+      const fullInventory = hydrateInventory(inventoryItems);
+      const realUserId = getDeviceId();
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -404,8 +516,8 @@ export default function ChatRoomPage() {
             message: textToSend, 
             history: newHistory.slice(-12), 
             partnerId: partnerId, 
-            userId: "user_01",
-            inventory: inventoryItems,
+            userId: realUserId,
+            inventory: fullInventory, 
             envInfo, 
             dailyEvent: myDaily 
         })
@@ -413,7 +525,22 @@ export default function ChatRoomPage() {
 
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
+
+      // 1. 先显示 AI 回复
       setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
+
+      // 2. 检测后端返回的碎片信号
+      if (data.fragmentTriggered) {
+          if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 200]);
+          const shardMsg = lang === 'zh'
+            ? `[✨灵魂共鸣-捕获记忆碎片✨]`
+            : `[✨Soul Resonance-Memory Fragment Captured✨]`;
+          setTimeout(() => {
+             setMessages(prev => [...prev, { role: 'assistant', content: shardMsg }]);
+          }, 600);
+          localStorage.setItem('has_new_shard', 'true');
+      }
+
     } catch (error) {
       console.error(error);
       setMessages(prev => [...prev, { role: 'assistant', content: `🔴 ${t.error}` }]);
@@ -452,12 +579,13 @@ export default function ChatRoomPage() {
             onCollect={loadInventory}
         />
         
+        {/* 🔥 6. 传递处理过的完整数据给 Modal */}
         <InventoryModal 
             show={showInventory} 
             onClose={() => setShowInventory(false)} 
             lang={lang} 
             partnerId={partnerId} 
-            inventory={inventoryItems}
+            inventory={hydrateInventory(inventoryItems)}
             setInventory={setInventoryItems}
             handleSend={handleSend}
         />
@@ -483,7 +611,6 @@ export default function ChatRoomPage() {
         <div className="absolute inset-0 z-0 bg-black">
              <div className="absolute inset-0 bg-cover bg-center transition-opacity opacity-100" style={{ backgroundImage: `url(${wallpaper})` }} />
              <div className="absolute inset-0 bg-black/40" />
-             <div className="absolute inset-0 bg-[url('/noise.png')] opacity-10 mix-blend-overlay pointer-events-none"></div>
         </div>
 
         {/* Header */}
@@ -557,14 +684,12 @@ export default function ChatRoomPage() {
                             )}
                             {!isAI ? (
                                 <div className="px-5 py-3 text-sm bg-gradient-to-br from-[#7F5CFF] to-[#6242db] text-white rounded-[1.2rem] rounded-tr-sm shadow-[0_4px_15px_rgba(127,92,255,0.3)] border border-white/10 break-words whitespace-pre-wrap min-w-0">
-                                    {/* 用户消息支持提及跳转 */}
                                     {renderMessageContent(msg.content.replace(/\[.*?\]/g, '').trim(), false)}
                                 </div>
                             ) : (
                                 <>
                                     <div className="px-6 py-4 text-sm leading-relaxed shadow-lg backdrop-blur-xl rounded-[1.2rem] rounded-tl-sm bg-[#1a1a1a]/85 border border-white/10 text-gray-100 relative overflow-hidden group break-words whitespace-pre-wrap min-w-0">
                                         <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
-                                        {/* AI 消息内容渲染 */}
                                         {parts.map((part, pIdx) => {
                                             if (part.startsWith('{{icon:') && part.endsWith('}}')) return null;
                                             return <div key={pIdx}>{renderMessageContent(part, true)}</div>;

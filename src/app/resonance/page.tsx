@@ -103,6 +103,7 @@ const MetaToast = ({ persona, show, onClose, lang }: { persona: string, show: bo
 
 export default function ResonancePage() {
   const router = useRouter();
+  const [itemLibrary, setItemLibrary] = useState<Record<string, any>>({});
 
   // 🔥 核心修复 1: 在组件函数体内部初始化状态，确保读取到本地匹配结果
   const ALL_PERSONAS = Object.keys(PERSONAS) as PersonaType[];
@@ -155,17 +156,39 @@ export default function ResonancePage() {
   const [showLetter, setShowLetter] = useState(false);
 
   const hydrateInventory = (ids: string[]): LootItem[] => {
-    return ids.map(id => ({
-        id,
-        name: { zh: id, en: id }, 
-        description: { zh: '...', en: '...' },
-        price: 0,
-        rarity: 'common',
-        type: 'consumable',
-        sourcePersona: undefined, 
-        trigger_context: undefined, 
-    }));
-  };
+    // 🔍 调试日志：看看究竟传进来了什么 ID，以及现在的库里有什么
+    // console.log("Hydrating IDs:", ids); 
+    // console.log("Current Library Keys:", Object.keys(itemLibrary));
+
+    return ids.map(id => {
+        // 1. 尝试从数据库字典里找
+        const def = itemLibrary[id];
+        
+        if (def) {
+            // ✅ 找到了：正常返回
+            return { id, ...def };
+        } 
+        
+        // 2. 没找到 (可能是数据库还没载入，或者真是个新道具)
+        // 🔥 关键修改：不再返回“加载中”，而是返回一个临时状态，这样用户至少能看到东西
+        return {
+            id,
+            // 如果库是空的，说明可能还在加载；如果库不是空的但没找到，说明是未知物品
+            name: Object.keys(itemLibrary).length === 0 
+                ? { zh: '同步数据中...', en: 'Syncing...' } 
+                : { zh: '未知残留物', en: 'Unknown Remnant' },
+            description: { 
+                zh: `物品ID: ${id}`, 
+                en: `Item ID: ${id}` 
+            },
+            price: 0, 
+            rarity: 'common', 
+            type: 'consumable',
+            // 兜底图标
+            image: '📦' 
+        };
+    });
+};
 
   useEffect(() => {
     // 数据同步中心
@@ -458,7 +481,6 @@ export default function ResonancePage() {
                 <div key={pKey} className={`absolute inset-0 bg-cover bg-center transition-opacity duration-700 ease-in-out ${activePersona === pKey ? 'opacity-50' : 'opacity-0'} scale-105`} style={{ backgroundImage: `url(${WALLPAPER_MAP[pKey]})` }} />
             ))}
             <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/40 to-black/95"></div>
-            <div className="absolute inset-0 bg-[url('/noise.png')] opacity-15 mix-blend-overlay pointer-events-none"></div>
         </div>
 
         {/* UI 区域 1: Header (保持不变) */}

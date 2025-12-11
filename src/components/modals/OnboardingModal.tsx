@@ -103,7 +103,6 @@ export const OnboardingModal = ({ show, onFinish, lang }: OnboardingModalProps) 
   return (
     <div className="fixed inset-0 z-[900] bg-black flex flex-col items-center justify-center font-mono p-6 text-green-500 overflow-y-auto">
       {/* 噪点背景 */}
-      <div className="absolute inset-0 bg-[url('/noise.png')] opacity-10 pointer-events-none fixed"></div>
       
       {/* Step 0: Boot */}
       {step === 0 && (

@@ -1,47 +1,55 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pgPool } from '@/lib/db-pg';
-import { SHOP_CATALOG, LOOT_TABLE } from '@/lib/constants';
 
-// 🎲 抽奖概率配置 (The Gacha Logic)
-const rollLoot = (inventory: string[]): string | null => {
+// 🎲 盲盒逻辑：也需要改为读库
+async function rollLoot(inventory: string[], client: any) {
+  // 1. 获取所有可掉落物品 (假设 type != 'special' 且不是密钥)
+  // 这里简化逻辑：随机抽一个 rarity=common/rare/epic 的物品
   const rand = Math.random();
   let targetRarity = 'common';
-  
-  if (rand > 0.99) targetRarity = 'legendary'; // 1% 传奇
-  else if (rand > 0.90) targetRarity = 'epic';     // 9% 史诗
-  else if (rand > 0.60) targetRarity = 'rare';     // 30% 稀有
-  // 剩余 60% 为 common
+  if (rand > 0.99) targetRarity = 'legendary';
+  else if (rand > 0.90) targetRarity = 'epic';
+  else if (rand > 0.60) targetRarity = 'rare';
 
-  // 筛选符合稀有度 且 (非唯一 或 未拥有) 的物品
-  const pool = Object.values(LOOT_TABLE).filter(item => 
-    item.rarity === targetRarity && 
-    (!item.unique || !inventory.includes(item.id))
+  // 查询符合稀有度的物品
+  const res = await client.query(
+    "SELECT * FROM items WHERE rarity = $1 AND id NOT LIKE 'tarot%' AND id NOT LIKE 'key_v3'", 
+    [targetRarity]
   );
+  
+  let pool = res.rows;
+  
+  // 过滤掉已拥有的 unique 物品 (假设数据库有 unique 字段，如果没有，暂时忽略或全部视为可重复)
+  // 如果 items 表没有 unique 字段，我们可以假设所有非消耗品都是 unique
+  // 这里简单处理：过滤掉背包里已有的 ID
+  pool = pool.filter((i: any) => !inventory.includes(i.id));
 
-  // 如果该稀有度池子空了（比如传奇全齐了），降级处理
+  // 降级兜底
   if (pool.length === 0) {
-      // 降级到 common 池子
-      const commonPool = Object.values(LOOT_TABLE).filter(i => i.rarity === 'common');
-      if (commonPool.length === 0) return null; // 极罕见
-      return commonPool[Math.floor(Math.random() * commonPool.length)].id;
+      const commonRes = await client.query("SELECT * FROM items WHERE rarity = 'common'");
+      pool = commonRes.rows;
   }
-
+  
+  if (pool.length === 0) return null;
   const selected = pool[Math.floor(Math.random() * pool.length)];
-  return selected.id;
-};
+  return selected; // 返回完整对象以便前端展示
+}
 
 export async function POST(req: NextRequest) {
   try {
     const { userId, itemId, currentInventory = [] } = await req.json();
     
-    // 1. 校验商品
-    const shopItem = SHOP_CATALOG.find(i => i.id === itemId);
-    if (!shopItem) return NextResponse.json({ error: 'Item not found' }, { status: 400 });
-
     const client = await pgPool.connect();
 
     try {
       await client.query('BEGIN');
+
+      // 1. 🔥 [FIX] 从数据库查询商品信息，不再查 constants
+      const itemRes = await client.query('SELECT * FROM items WHERE id = $1', [itemId]);
+      if (itemRes.rows.length === 0) {
+          throw new Error('Item not found');
+      }
+      const shopItem = itemRes.rows[0];
 
       // 2. 查余额并锁行
       const userRes = await client.query(
@@ -49,9 +57,12 @@ export async function POST(req: NextRequest) {
         [userId]
       );
       
-      if (userRes.rows.length === 0) throw new Error('Wallet not found');
+      if (userRes.rows.length === 0) {
+          // 容错：如果用户没钱包，尝试创建一个
+          await client.query(`INSERT INTO user_wallets (user_id, rin_balance) VALUES ($1, 0) ON CONFLICT DO NOTHING`, [userId]);
+          throw new Error('Insufficient funds (New Wallet)');
+      }
       
-      // 注意：pg 返回的 numeric 类型可能是 string，需转 float
       const balance = parseFloat(userRes.rows[0].rin_balance);
 
       // 3. 余额检查
@@ -67,18 +78,17 @@ export async function POST(req: NextRequest) {
       );
 
       // 5. 处理盲盒掉落
-      let droppedItemId = null;
-      let logData = {};
+      let droppedItem = null;
+      let logData: any = { type: 'direct_buy' };
 
       if (itemId === 'supply_crate_v1') {
-          droppedItemId = rollLoot(currentInventory);
-          logData = { type: 'gacha', dropped: droppedItemId };
-      } else {
-          // 普通商品购买
-          logData = { type: 'direct_buy' };
+          droppedItem = await rollLoot(currentInventory, client);
+          if (droppedItem) {
+             logData = { type: 'gacha', dropped: droppedItem.id };
+          }
       }
 
-      // 6. 记录购买日志 (防作弊/客服查询用)
+      // 6. 记录购买日志
       await client.query(
         `INSERT INTO purchases (user_id, item_id, cost, metadata) VALUES ($1, $2, $3, $4)`,
         [userId, itemId, shopItem.price, JSON.stringify(logData)]
@@ -86,12 +96,11 @@ export async function POST(req: NextRequest) {
 
       await client.query('COMMIT');
       
-      // 返回结果：前端根据 droppedItemId 判断是否弹窗展示开箱动画
       return NextResponse.json({ 
           success: true, 
           newBalance: balance - shopItem.price,
-          droppedItemId: droppedItemId, 
-          message: droppedItemId ? 'Gacha success' : 'Purchase success'
+          droppedItem: droppedItem, // 返回完整对象
+          message: droppedItem ? 'Gacha success' : 'Purchase success'
       });
 
     } catch (e) {
@@ -101,8 +110,8 @@ export async function POST(req: NextRequest) {
       client.release();
     }
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Shop Buy Error:', error);
-    return NextResponse.json({ error: 'Transaction failed' }, { status: 500 });
+    return NextResponse.json({ error: error.message || 'Transaction failed' }, { status: 500 });
   }
 }
