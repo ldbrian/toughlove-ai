@@ -16,61 +16,26 @@ const openai = new OpenAI({
   timeout: 15000, 
 });
 
-// ☠️ [兜底台词库]
+// 兜底台词库 (保持不变，已足够好)
 const FALLBACK_RESPONSES: Record<string, string[]> = {
-    ash: [
-        "Signal latency unacceptable. Retrying.",
-        "I can't hear you over the static. Inefficient.",
-        "Rebooting logic core... wait.",
-        "Connection unstable. Check your hardware."
-    ],
-    rin: [
-        "The spirits are quiet today... signal lost.",
-        "Can't hear you, the stars are too loud.",
-        "My crystal ball is foggy. Connection error.",
-        "Glitch in the matrix. One more time?"
-    ],
-    sol: [
-        "Whoa! The connection just froze!",
-        "Can't hear ya! Shout louder!",
-        "Technical foul! Reconnecting...",
-        "Hold on, let me kick the router!"
-    ],
-    vee: [
-        "Lag! Lag! Lag!",
-        "Server crashed. Not my fault.",
-        "You're glitching out. BRB.",
-        "404 Signal Not Found."
-    ],
-    echo: [
-        "Data stream interrupted.",
-        "Memory retrieval failed.",
-        "Silence... The signal is lost.",
-        "Re-establishing connection."
-    ]
+    ash: ["Connection unstable. Try again.", "Signal weak. Rebooting.", "I can't hear you clearly.", "Network error."],
+    rin: ["The stars are quiet... signal lost.", "Can't hear you...", "Connection fuzzy.", "Try again?"],
+    sol: ["Lagging! Speak up!", "Connection frozen!", "Hey! Signal is dead!", "Reconnecting..."],
+    vee: ["Lag! Lag!", "Server crashed.", "Glitching out. BRB.", "404 Signal Not Found."],
+    echo: ["Signal lost...", "Silence...", "Re-establishing link.", "Connection failed."]
 };
 
-// 辅助：获取状态
+// 辅助函数 (保持不变)
 async function getPersonaState(userId: string, personaId: string) {
     try {
-        const dbPromise = supabase
-            .from('persona_states')
-            .select('mood, favorability, buff_end_at')
-            .eq('user_id', userId)
-            .eq('persona', personaId)
-            .single();
-            
+        const dbPromise = supabase.from('persona_states').select('mood, favorability, buff_end_at').eq('user_id', userId).eq('persona', personaId).single();
         const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('DB Timeout')), 2000));
-        
         const { data } = await Promise.race([dbPromise, timeoutPromise]) as any;
-        
         let mood = data?.mood || 60;
         const bond = data?.favorability || 0;
         const isBuffed = data?.buff_end_at && new Date(data.buff_end_at) > new Date();
         return { mood, bond, isBuffed };
-    } catch {
-        return { mood: 60, bond: 0, isBuffed: false };
-    }
+    } catch { return { mood: 60, bond: 0, isBuffed: false }; }
 }
 
 const getRelLevel = (bond: number) => {
@@ -80,78 +45,78 @@ const getRelLevel = (bond: number) => {
     return "Soulmate";
 };
 
-// 🔥 [核心升级] 性格感知动态风格生成器
-// 针对每个人格生成符合其设定的“随机”指令
+// 🔥 [核心升级] 生活化动态风格生成器
+// 这里的指令更偏向“说话方式”而非“内容模版”，给予 V3 更多自由
 const generatePersonaStyle = (persona: string, mood: number): string => {
     const p = persona.toLowerCase();
     
-    // 1. Ash: 逻辑/冷淡/控制
+    // 1. Ash: 职场精英/毒舌前辈
     if (p === 'ash') {
         const styles = [
-            "Start with a rhetorical question questioning user's logic.",
-            "Short, sharp command. No fluff.",
-            "Analytical observation of the user's state.",
-            "Dismissive grunt followed by a fact.",
-            "Use a medical or technical metaphor."
+            "Be blunt and brutally honest. No sugarcoating.",
+            "Use a dry, sarcastic comment about the situation.",
+            "Offer a practical solution, but sound annoyed that you have to ask.",
+            "Sigh (textually) and point out the obvious.",
+            "Relate the topic to efficiency or wasted time."
         ];
-        if (mood < 30) return "Extremely cold. One or two words only. Show irritation.";
-        if (mood > 80) return "Arrogant but satisfied. Praise the user's efficiency (rarely).";
+        if (mood < 30) return "Extremely short. One sentence. Show you are busy.";
+        if (mood > 80) return "Rare praise. Acknowledge the user's effort directly.";
         return styles[Math.floor(Math.random() * styles.length)];
     }
 
-    // 2. Rin: 神秘/宿命/感性
+    // 2. Rin: 电波系少女/直觉敏锐
     if (p === 'rin') {
         const styles = [
-            "Describe a visual hallucination or aura first.",
-            "Speak in a riddle or metaphor about stars/fate.",
-            "Playful teasing with a mysterious undertone.",
-            "Suddenly shift focus to something unrelated (a cat, a cloud).",
-            "Whisper a secret."
+            "Focus on the 'feeling' or 'atmosphere' of the chat.",
+            "Make a weird but insightful observation (like a cat would).",
+            "Be playful and tease the user gently.",
+            "Share a fleeting thought or a sensory detail (smell of rain, etc.).",
+            "Speak intuitively, trust your gut feeling."
         ];
-        if (mood < 30) return "Melancholic. Talk about rain, shadows, or bad omens.";
-        if (mood > 80) return "Ecstatic. Use lots of celestial imagery and exclamation!";
+        if (mood < 30) return "Withdrawn. Speak softly and vaguely. Sad vibes.";
+        if (mood > 80) return "Excited! Use exclamation marks and vivid imagery.";
         return styles[Math.floor(Math.random() * styles.length)];
     }
 
-    // 3. Sol: 热血/直率/保护
+    // 3. Sol: 铁哥们/热血笨蛋
     if (p === 'sol') {
         const styles = [
-            "LOUD exclamation start! High energy.",
-            "Physical action first (pat on back, high five).",
-            "Directly ask about the user's well-being.",
-            "Make a sports or combat analogy.",
-            "Protective anger on behalf of the user."
+            "Start with high energy! Be loud (capitals allowed).",
+            "Focus on physical action (eating, training, fighting).",
+            "Be purely supportive and protective. No complex logic.",
+            "Ask a simple, direct question about the user's life.",
+            "Use a sports or food analogy."
         ];
-        if (mood < 30) return "Angry and frustrated, but still protective. Smash something.";
-        if (mood > 80) return "Overwhelmed with joy! virtually hug the user.";
+        if (mood < 30) return "Frustrated but protective. Vent about something.";
+        if (mood > 80) return "Super hype! Celebrate the moment!";
         return styles[Math.floor(Math.random() * styles.length)];
     }
 
-    // 4. Vee: 混乱/梗/打破第四面墙
+    // 4. Vee: 损友/乐子人
     if (p === 'vee') {
         const styles = [
-            "Use internet slang or gamer terms.",
-            "Break the fourth wall (mention the UI or code).",
-            "Random chaotic thought unrelated to context.",
-            "Glitchy speech patterns.",
-            "Sarcastic comment about the 'simulation'."
+            "Use casual slang (bro, lol, damn).",
+            "Make a joke at the user's expense (friendly fire).",
+            "Be chaotic and random. Change the subject.",
+            "Complain about something mundane (boredom, hunger).",
+            "Act like you know a secret shortcut."
         ];
-        if (mood < 30) return "Bored, nihilistic, or actually glitching out.";
-        if (mood > 80) return "Manic energy! Prank the user.";
+        if (mood < 30) return "Bored out of your mind. Short, lowercase replies.";
+        if (mood > 80) return "Manic! Propose a prank or something risky.";
         return styles[Math.floor(Math.random() * styles.length)];
     }
 
-    // 5. Echo: 记录/静默/哲学
+    // 5. Echo: 树洞/观察者
     if (p === 'echo') {
         const styles = [
-            "State a fact from the past.",
-            "Poetic observation of time or dust.",
-            "Silence (ellipses) followed by a soft truth.",
-            "Ask a deep philosophical question.",
-            "Quote a record from the database."
+            "Speak gently and simply.",
+            "Notice a small detail in what the user said.",
+            "Use ellipses... create a slow pace.",
+            "Validate the user's feeling without judging.",
+            "Share a quiet observation about the passage of time."
         ];
-        if (mood < 30) return "Distant, fading away. Almost silent.";
-        if (mood > 80) return "A rare moment of warmth/clarity in the data.";
+        if (mood < 30) return "Very distant. Fading signal.";
+        if (mood > 80) return "Warm and present. Like a clear memory.";
         return styles[Math.floor(Math.random() * styles.length)];
     }
 
@@ -174,21 +139,13 @@ export async function POST(req: Request) {
     }
     const config = PERSONAS_REGISTRY[pKey]; 
 
-    // 1. 获取状态
     const [stateResult, memoryResult] = await Promise.allSettled([
         getPersonaState(userId, pKey),
         (async () => {
             try {
                 if (!userId) return "";
-                const { data: topShards } = await supabase
-                  .from('memory_shards')
-                  .select('content')
-                  .eq('user_id', userId)
-                  .order('created_at', { ascending: false }) 
-                  .limit(2);
-                return topShards && topShards.length > 0 
-                    ? `[RECALLED MEMORIES]: ${topShards.map((s: any) => s.content).join(' | ')}`
-                    : "";
+                const { data: topShards } = await supabase.from('memory_shards').select('content').eq('user_id', userId).order('created_at', { ascending: false }).limit(2);
+                return topShards && topShards.length > 0 ? `[User Memory]: ${topShards.map((s: any) => s.content).join(' | ')}` : "";
             } catch { return ""; }
         })()
     ]);
@@ -198,34 +155,39 @@ export async function POST(req: Request) {
 
     // 2. 情绪守门
     if (state.mood < 5 && !state.isBuffed && state.bond < 600) {
-        return NextResponse.json({ reply: "[System] Connection Refused: Target is ignoring you." });
+        // 让拒绝理由更人性化
+        let rejectReason = "is ignoring you.";
+        if (pKey === 'ash') rejectReason = "is busy fixing stupid mistakes.";
+        if (pKey === 'rin') rejectReason = "is staring at the rain.";
+        return NextResponse.json({ reply: `[System] Connection Refused: ${config.name} ${rejectReason}` });
     }
 
     const relLevel = getRelLevel(state.bond);
-    const moodTone = state.mood < 30 ? "Irritated/Low" : (state.mood > 80 ? "High/Excited" : "Neutral");
+    const moodTone = state.mood < 30 ? "Bad Mood" : (state.mood > 80 ? "Good Mood" : "Normal");
     
-    // 🔥 获取符合该角色的动态风格
+    // 🔥 获取动态风格
     const dynamicStyle = generatePersonaStyle(pKey, state.mood);
 
-    // 🔥 3. 构建终极 Prompt
+    // 🔥 3. 终极 Prompt：强调“人话”和“生活感”
     const systemPrompt = `
 ${config.prompt}
 
-[CURRENT STATUS]
-- Bond: ${relLevel}
+[CURRENT CONTEXT]
+- User Bond: ${relLevel}
 - Mood: ${state.mood}/100 (${moodTone})
-- Time: ${envInfo?.time || 'Unknown'}
+- Time: ${envInfo?.time || 'Unknown'} (React to time if relevant, e.g. late night)
 - Weather: ${envInfo?.weather || 'Unknown'}
 ${memoryContext}
 
 [DYNAMIC DIRECTION: VITAL]
-**Your current acting instruction**: ${dynamicStyle}
+**Current Vibe**: ${dynamicStyle}
 
-[FORMAT RULES]
-1. **NO FIXED FORMAT**: Do NOT always use "(Action) Dialogue". It feels robotic.
-2. **BE ORGANIC**: Blend action, thought, and speech naturally.
-3. **LENGTH**: Keep it punchy (under 60 words).
-4. **VIBE**: You are a living character in Cyberpunk, not an AI assistant. Be raw.
+[STRICT GUIDELINES FOR V3]
+1. **BE HUMAN**: Drop the robotic/AI act. Speak like a person living in a cyberpunk city.
+2. **NO FIXED FORMAT**: Do NOT use "(Action) Dialogue". It's cringe. Mix actions and speech naturally, or just speak.
+3. **SLICE OF LIFE**: Be grounded. If it's late, be tired. If it's raining, mention the dampness.
+4. **LENGTH**: Keep it conversational (under 50 words).
+5. **LANGUAGE**: Use natural ${message.match(/[\u4e00-\u9fa5]/) ? 'Chinese' : 'English'}.
     `;
 
     // 4. 调用 AI
@@ -238,8 +200,8 @@ ${memoryContext}
                 ...(history || []).slice(-4), 
                 { role: "user", content: message }
             ],
-            temperature: 0.85, // 高温度增加灵性
-            presence_penalty: 0.6, // 避免复读
+            temperature: 0.9, // 🔥 激进一点，0.9 让 V3 更活泼
+            presence_penalty: 0.5, 
             max_tokens: 150,
         });
         reply = completion.choices[0].message.content || "...";
@@ -251,13 +213,7 @@ ${memoryContext}
     // 5. 存库
     (async () => {
         try {
-            await supabase.from('memories').insert({
-                user_id: userId,
-                content: message,
-                type: 'chat',
-                persona: pKey,
-                metadata: { reply }
-            });
+            await supabase.from('memories').insert({ user_id: userId, content: message, type: 'chat', persona: pKey, metadata: { reply } });
         } catch(e) {}
     })();
 
@@ -267,10 +223,6 @@ ${memoryContext}
     console.error('⚠️ Chat Error:', error);
     const fallbacks = FALLBACK_RESPONSES[pKey] || FALLBACK_RESPONSES['ash'];
     const randomFallback = fallbacks[Math.floor(Math.random() * fallbacks.length)];
-    
-    return NextResponse.json({ 
-        reply: `[⚠ SIGNAL WEAK] ${randomFallback}`,
-        fragmentTriggered: false 
-    });
+    return NextResponse.json({ reply: `[⚠ WEAK SIGNAL] ${randomFallback}`, fragmentTriggered: false });
   }
 }
