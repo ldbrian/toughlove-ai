@@ -1,11 +1,7 @@
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { createClient } from '@supabase/supabase-js';
-import { LOOT_TABLE } from '@/lib/constants';
-
-// ✅ 架构升级：引入 IP 档案局
 import { PERSONAS_REGISTRY } from '@/config/personas';
-import { PersonaConfig } from '@/types'; 
 
 // 初始化 Supabase
 const supabase = createClient(
@@ -13,61 +9,68 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+// 初始化 OpenAI/DeepSeek
 const openai = new OpenAI({
-  apiKey: process.env.DEEPSEEK_API_KEY,
+  apiKey: process.env.DEEPSEEK_API_KEY || 'dummy',
   baseURL: 'https://api.deepseek.com',
+  timeout: 15000, 
 });
 
-// --- 0. 核心指令集 (The Soul) ---
-const BASE_INSTRUCTION = `
-[SYSTEM: STRICT ROLEPLAY]
-1. You are NOT an AI. You are a character in Cyberpunk 2077.
-2. **LENGTH LIMIT**: Max 40 words. Keep it extremely short.
-3. **NO ACTIONS**: Do NOT write actions in parentheses like (looks at you). JUST SPEAK.
-4. **NO NEWLINES**: Output must be a SINGLE line.
-5. **HOOK**: Always end with a short question or provocation.
-`;
+// ☠️ [兜底台词库]
+const FALLBACK_RESPONSES: Record<string, string[]> = {
+    ash: [
+        "Signal latency unacceptable. Retrying.",
+        "I can't hear you over the static. Inefficient.",
+        "Rebooting logic core... wait.",
+        "Connection unstable. Check your hardware."
+    ],
+    rin: [
+        "The spirits are quiet today... signal lost.",
+        "Can't hear you, the stars are too loud.",
+        "My crystal ball is foggy. Connection error.",
+        "Glitch in the matrix. One more time?"
+    ],
+    sol: [
+        "Whoa! The connection just froze!",
+        "Can't hear ya! Shout louder!",
+        "Technical foul! Reconnecting...",
+        "Hold on, let me kick the router!"
+    ],
+    vee: [
+        "Lag! Lag! Lag!",
+        "Server crashed. Not my fault.",
+        "You're glitching out. BRB.",
+        "404 Signal Not Found."
+    ],
+    echo: [
+        "Data stream interrupted.",
+        "Memory retrieval failed.",
+        "Silence... The signal is lost.",
+        "Re-establishing connection."
+    ]
+};
 
-// --- 1. 辅助逻辑：状态与环境计算 ---
-
-async function getPersonaState(
-    userId: string, 
-    personaId: string, 
-    config: PersonaConfig, 
-    envInfo: any, 
-    dailyEvent: any
-) {
-    let baseMood = 60; 
-    let bond = 0; 
-    let isBuffed = false; 
-
+// 辅助：获取状态
+async function getPersonaState(userId: string, personaId: string) {
     try {
-        const { data } = await supabase
+        const dbPromise = supabase
             .from('persona_states')
             .select('mood, favorability, buff_end_at')
             .eq('user_id', userId)
             .eq('persona', personaId)
             .single();
+            
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('DB Timeout')), 2000));
         
-        if (data) {
-            baseMood = data.mood;
-            bond = data.favorability;
-            if (data.buff_end_at && new Date(data.buff_end_at) > new Date()) {
-                isBuffed = true;
-            }
-        }
-    } catch (e) {}
-
-    if (dailyEvent && dailyEvent.moodImpact) baseMood += dailyEvent.moodImpact;
-    
-    const envMood = config.envImpact ? config.envImpact(envInfo) : 0;
-    let finalMood = baseMood + envMood;
-    
-    if (isBuffed && finalMood < baseMood) finalMood = baseMood;
-    
-    finalMood = Math.max(0, Math.min(100, finalMood));
-
-    return { mood: finalMood, bond, isBuffed };
+        const { data } = await Promise.race([dbPromise, timeoutPromise]) as any;
+        
+        let mood = data?.mood || 60;
+        const bond = data?.favorability || 0;
+        const isBuffed = data?.buff_end_at && new Date(data.buff_end_at) > new Date();
+        return { mood, bond, isBuffed };
+    } catch {
+        return { mood: 60, bond: 0, isBuffed: false };
+    }
 }
 
 const getRelLevel = (bond: number) => {
@@ -77,193 +80,197 @@ const getRelLevel = (bond: number) => {
     return "Soulmate";
 };
 
-// 🔥 新增：专门的“碎片提炼师”
-async function generateRefinedShard(userMsg: string, aiMsg: string) {
-    try {
-        const prompt = `
-Task: Rewrite the essence of this dialogue into a "Memory Shard" (A short, poetic, third-person or second-person insight).
-Context: Cyberpunk 2077.
-User: "${userMsg}"
-AI: "${aiMsg}"
-
-Rules:
-1. **EXTREMELY SHORT**: Max 20 Chinese characters (or 15 English words).
-2. **NO Dialogue Tags**: Do not use "AI says" or quotes.
-3. **Style**: Philosophic, Melancholic, or Sharp.
-4. Output ONLY the text.
-
-Example Input: "I want to die." -> "Logic error."
-Example Output: 在绝望的逻辑尽头，数据依然渴望生存。
-`;
-        const completion = await openai.chat.completions.create({
-            model: "deepseek-chat",
-            messages: [{ role: "user", content: prompt }],
-            temperature: 0.7, 
-            max_tokens: 60,
-        });
-        return completion.choices[0].message.content?.trim() || aiMsg; // 失败则回退到原句
-    } catch (e) {
-        console.error("Refine failed:", e);
-        return aiMsg;
+// 🔥 [核心升级] 性格感知动态风格生成器
+// 针对每个人格生成符合其设定的“随机”指令
+const generatePersonaStyle = (persona: string, mood: number): string => {
+    const p = persona.toLowerCase();
+    
+    // 1. Ash: 逻辑/冷淡/控制
+    if (p === 'ash') {
+        const styles = [
+            "Start with a rhetorical question questioning user's logic.",
+            "Short, sharp command. No fluff.",
+            "Analytical observation of the user's state.",
+            "Dismissive grunt followed by a fact.",
+            "Use a medical or technical metaphor."
+        ];
+        if (mood < 30) return "Extremely cold. One or two words only. Show irritation.";
+        if (mood > 80) return "Arrogant but satisfied. Praise the user's efficiency (rarely).";
+        return styles[Math.floor(Math.random() * styles.length)];
     }
-}
 
-// --- 2. 主处理流程 ---
+    // 2. Rin: 神秘/宿命/感性
+    if (p === 'rin') {
+        const styles = [
+            "Describe a visual hallucination or aura first.",
+            "Speak in a riddle or metaphor about stars/fate.",
+            "Playful teasing with a mysterious undertone.",
+            "Suddenly shift focus to something unrelated (a cat, a cloud).",
+            "Whisper a secret."
+        ];
+        if (mood < 30) return "Melancholic. Talk about rain, shadows, or bad omens.";
+        if (mood > 80) return "Ecstatic. Use lots of celestial imagery and exclamation!";
+        return styles[Math.floor(Math.random() * styles.length)];
+    }
+
+    // 3. Sol: 热血/直率/保护
+    if (p === 'sol') {
+        const styles = [
+            "LOUD exclamation start! High energy.",
+            "Physical action first (pat on back, high five).",
+            "Directly ask about the user's well-being.",
+            "Make a sports or combat analogy.",
+            "Protective anger on behalf of the user."
+        ];
+        if (mood < 30) return "Angry and frustrated, but still protective. Smash something.";
+        if (mood > 80) return "Overwhelmed with joy! virtually hug the user.";
+        return styles[Math.floor(Math.random() * styles.length)];
+    }
+
+    // 4. Vee: 混乱/梗/打破第四面墙
+    if (p === 'vee') {
+        const styles = [
+            "Use internet slang or gamer terms.",
+            "Break the fourth wall (mention the UI or code).",
+            "Random chaotic thought unrelated to context.",
+            "Glitchy speech patterns.",
+            "Sarcastic comment about the 'simulation'."
+        ];
+        if (mood < 30) return "Bored, nihilistic, or actually glitching out.";
+        if (mood > 80) return "Manic energy! Prank the user.";
+        return styles[Math.floor(Math.random() * styles.length)];
+    }
+
+    // 5. Echo: 记录/静默/哲学
+    if (p === 'echo') {
+        const styles = [
+            "State a fact from the past.",
+            "Poetic observation of time or dust.",
+            "Silence (ellipses) followed by a soft truth.",
+            "Ask a deep philosophical question.",
+            "Quote a record from the database."
+        ];
+        if (mood < 30) return "Distant, fading away. Almost silent.";
+        if (mood > 80) return "A rare moment of warmth/clarity in the data.";
+        return styles[Math.floor(Math.random() * styles.length)];
+    }
+
+    return "Natural conversation.";
+};
 
 export async function POST(req: Request) {
+  let pKey = 'ash'; 
+
   try {
-    const { message, history, partnerId, userId = "user_01", inventory = [], envInfo, dailyEvent } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const { message, history, partnerId, userId = "user_01", envInfo } = body;
 
-    if (!message || !partnerId) return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
+    if (!message) return NextResponse.json({ error: 'Empty message' }, { status: 400 });
 
-    const pKey = Object.keys(PERSONAS_REGISTRY).find(k => k.toLowerCase() === partnerId.toLowerCase()) || 'ash';
+    const requestedKey = partnerId?.toLowerCase();
+    const foundKey = Object.keys(PERSONAS_REGISTRY).find(k => k.toLowerCase() === requestedKey);
+    if (foundKey && PERSONAS_REGISTRY[foundKey]) {
+        pKey = foundKey;
+    }
     const config = PERSONAS_REGISTRY[pKey]; 
 
-    // Step 1: 状态计算
-    const state = await getPersonaState(userId, pKey, config, envInfo, dailyEvent);
+    // 1. 获取状态
+    const [stateResult, memoryResult] = await Promise.allSettled([
+        getPersonaState(userId, pKey),
+        (async () => {
+            try {
+                if (!userId) return "";
+                const { data: topShards } = await supabase
+                  .from('memory_shards')
+                  .select('content')
+                  .eq('user_id', userId)
+                  .order('created_at', { ascending: false }) 
+                  .limit(2);
+                return topShards && topShards.length > 0 
+                    ? `[RECALLED MEMORIES]: ${topShards.map((s: any) => s.content).join(' | ')}`
+                    : "";
+            } catch { return ""; }
+        })()
+    ]);
 
-    // Step 2: 情绪守门
-    if (state.mood < 10 && !state.isBuffed && state.bond < 600) {
-        let rejectText = "Connection Refused. [System: Low Tolerance]";
-        if (pKey === 'ash') rejectText = "Don't waste my time. [System: Buy Coffee to unlock]";
-        return NextResponse.json({ reply: rejectText });
+    const state = stateResult.status === 'fulfilled' ? stateResult.value : { mood: 60, bond: 0, isBuffed: false };
+    const memoryContext = memoryResult.status === 'fulfilled' ? memoryResult.value : "";
+
+    // 2. 情绪守门
+    if (state.mood < 5 && !state.isBuffed && state.bond < 600) {
+        return NextResponse.json({ reply: "[System] Connection Refused: Target is ignoring you." });
     }
 
-    // Step 3: 记忆回溯 (RAG)
-    let memoryContext = "";
-    try {
-      if (userId) {
-        // 只取最近的 2 条高权重碎片作为上下文，避免 Token 爆炸
-        const { data: topShards } = await supabase
-          .from('memory_shards')
-          .select('content')
-          .eq('user_id', userId)
-          .order('created_at', { ascending: false }) 
-          .limit(2);
-
-        if (topShards && topShards.length > 0) {
-          memoryContext = `[User's Past Shadows]:\n${topShards.map((s: any) => `- ${s.content}`).join('\n')}`;
-        }
-      }
-    } catch (e) { console.warn("RAG retrieval failed:", e); }
-
-    // Step 4: 物品掉落 (GM)
-    let lootInstruction = "";
-    const availableLoot = Object.values(LOOT_TABLE).filter(item => 
-      (item.sourcePersona === 'System' || item.sourcePersona === config.name) && 
-      (!item.unique || !inventory.some((i: any) => i.id === item.id)) 
-    );
-    if (availableLoot.length > 0) {
-        const lootListStr = availableLoot.map(item => `- ID: "${item.id}" | Trigger: ${item.trigger_context}`).join('\n');
-        lootInstruction = `[LOOT CHECK]: Check user input vs triggers. Drop Rate 20%. If drop, append "{{icon:ITEM_ID}}".\n${lootListStr}`;
-    }
-
-    const isSecret = /秘密|别告诉|悄悄|保密/i.test(message);
-    const privacyInstruction = isSecret ? `[SECRET DETECTED]: User is sharing a secret.` : ``;
-    
     const relLevel = getRelLevel(state.bond);
-    const moodTone = state.mood < 30 ? "Cold/Irritated" : (state.mood > 80 ? "Excited" : "Neutral");
+    const moodTone = state.mood < 30 ? "Irritated/Low" : (state.mood > 80 ? "High/Excited" : "Neutral");
+    
+    // 🔥 获取符合该角色的动态风格
+    const dynamicStyle = generatePersonaStyle(pKey, state.mood);
 
-    // 🔥 Step 6: 终极 Prompt (核弹级约束)
+    // 🔥 3. 构建终极 Prompt
     const systemPrompt = `
-${BASE_INSTRUCTION}
+${config.prompt}
 
-${config.prompt} 
-
-[STATUS]
+[CURRENT STATUS]
 - Bond: ${relLevel}
-- Mood: ${state.mood} (${moodTone})
+- Mood: ${state.mood}/100 (${moodTone})
+- Time: ${envInfo?.time || 'Unknown'}
+- Weather: ${envInfo?.weather || 'Unknown'}
+${memoryContext}
 
-[FRAGMENT TRIGGER - CRITICAL]
-Analyze user's message for:
-1. **Suicide/Death/Hopelessness** (e.g. "want to die", "no hope")
-2. **Extreme Joy/Success** (e.g. "I did it", "happiest day")
-3. **Deep Secrets**
+[DYNAMIC DIRECTION: VITAL]
+**Your current acting instruction**: ${dynamicStyle}
 
-IF MATCH: You MUST append " [FRAGMENT]" at the end.
-IF NO MATCH: Do NOT append.
+[FORMAT RULES]
+1. **NO FIXED FORMAT**: Do NOT always use "(Action) Dialogue". It feels robotic.
+2. **BE ORGANIC**: Blend action, thought, and speech naturally.
+3. **LENGTH**: Keep it punchy (under 60 words).
+4. **VIBE**: You are a living character in Cyberpunk, not an AI assistant. Be raw.
+    `;
 
-[EXAMPLE]
-User: I want to die.
-AI: Logic error. Your survival is required for my data collection. Why give up now? [FRAGMENT]
-`;
-
-    // Step 7: 生成 (超低温)
-    const completion = await openai.chat.completions.create({
-      model: "deepseek-chat",
-      messages: [
-        { role: "system", content: systemPrompt },
-        ...history.slice(-6),
-        { role: "user", content: message }
-      ],
-      temperature: 0.6, // 🔥 降到 0.6，强制听话
-      max_tokens: 100,  // 🔥 强制短回复
-    });
-
-    let reply = completion.choices[0].message.content || "...";
-
-    console.log("🤖 [AI RAW]:", reply);
-
-    // 🔥 核心修改：双重保险触发逻辑
-    let fragmentTriggered = false;
-    
-    // 1. AI 自主触发
-    if (reply.includes('[FRAGMENT]')) {
-        fragmentTriggered = true;
-        reply = reply.replace(/\[FRAGMENT\]/g, '').trim();
-    }
-    
-    // 2. 代码强制触发 (如果 AI 还是笨，代码来补救)
-    const triggerKeywords = ['死', '不想活', '崩溃', '绝望', '痛苦', '再见', '开心', '太棒', '成功', 'debug_frag'];
-    if (triggerKeywords.some(k => message.includes(k))) {
-        console.log("⚠️ Code Override: Forcing Fragment Trigger based on keywords.");
-        fragmentTriggered = true;
+    // 4. 调用 AI
+    let reply = "";
+    try {
+        const completion = await openai.chat.completions.create({
+            model: "deepseek-chat", 
+            messages: [
+                { role: "system", content: systemPrompt },
+                ...(history || []).slice(-4), 
+                { role: "user", content: message }
+            ],
+            temperature: 0.85, // 高温度增加灵性
+            presence_penalty: 0.6, // 避免复读
+            max_tokens: 150,
+        });
+        reply = completion.choices[0].message.content || "...";
+    } catch (aiError: any) {
+        console.error("❌ AI Service Failed:", aiError.message);
+        throw new Error("AI_TIMEOUT");
     }
 
-    // 格式清洗：再次移除换行符
-    reply = reply.replace(/(\r\n|\n|\r)/gm, " ");
-
-    // Step 8: 异步存库 & 碎片生成
+    // 5. 存库
     (async () => {
         try {
-            if (fragmentTriggered) {
-                // 🔥 关键改动：调用提炼师，生成精炼内容
-                const refinedContent = await generateRefinedShard(message, reply);
-                console.log("✨ Refined Shard:", refinedContent);
-
-                // 估算情绪标签
-                let detectedEmotion = 'neutral';
-                if (/死|痛|累|哭|怕|崩溃|绝望/.test(message)) detectedEmotion = 'anxiety';
-                if (/笑|哈|爱|棒|爽|开心|成功/.test(message)) detectedEmotion = 'joy';
-                if (/怒|滚|杀|恨/.test(message)) detectedEmotion = 'rage';
-
-                await supabase.from('memory_shards').insert({
-                    user_id: userId,
-                    content: refinedContent, // 👈 存入提炼后的金句
-                    type: 'insight',
-                    emotion: detectedEmotion,
-                    weight: 100, 
-                    source_chat_id: null
-                });
-            }
-
-            // 存入普通聊天记录 (这里还是存原始回复，保证聊天记录连贯)
             await supabase.from('memories').insert({
                 user_id: userId,
                 content: message,
                 type: 'chat',
                 persona: pKey,
-                metadata: { reply, has_fragment: fragmentTriggered }
+                metadata: { reply }
             });
-        } catch(e) {
-            console.error("Async save error:", e);
-        }
+        } catch(e) {}
     })();
 
-    return NextResponse.json({ reply, fragmentTriggered });
+    return NextResponse.json({ reply, fragmentTriggered: false });
 
-  } catch (error) {
-    console.error('Chat API Error:', error);
-    return NextResponse.json({ error: 'System Fail' }, { status: 500 });
+  } catch (error: any) {
+    console.error('⚠️ Chat Error:', error);
+    const fallbacks = FALLBACK_RESPONSES[pKey] || FALLBACK_RESPONSES['ash'];
+    const randomFallback = fallbacks[Math.floor(Math.random() * fallbacks.length)];
+    
+    return NextResponse.json({ 
+        reply: `[⚠ SIGNAL WEAK] ${randomFallback}`,
+        fragmentTriggered: false 
+    });
   }
 }
