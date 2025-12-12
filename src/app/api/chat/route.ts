@@ -2,22 +2,19 @@ import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { createClient } from '@supabase/supabase-js';
 import { PERSONAS_REGISTRY } from '@/config/personas';
+import { processRollingMemory } from '@/lib/memory';
 
-// 初始化 Supabase (使用 Service Role 也就是管理员权限，确保能写入)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// 初始化 OpenAI/DeepSeek
 const openai = new OpenAI({
   apiKey: process.env.DEEPSEEK_API_KEY || 'dummy',
   baseURL: 'https://api.deepseek.com',
-  // 🔥 [超时保护] 9秒熔断，防止 Vercel 杀进程导致前端红屏
   timeout: 9000, 
 });
 
-// 兜底台词库 (故障时的剧场版回复)
 const FALLBACK_RESPONSES: Record<string, string[]> = {
     ash: ["Connection unstable. Retrying.", "Signal weak. Rebooting.", "I can't hear you clearly.", "Network error."],
     rin: ["The stars are quiet... signal lost.", "Can't hear you...", "Connection fuzzy.", "Try again?"],
@@ -26,12 +23,9 @@ const FALLBACK_RESPONSES: Record<string, string[]> = {
     echo: ["Signal lost...", "Silence...", "Re-establishing link.", "Connection failed."]
 };
 
-// 辅助：获取状态
 async function getPersonaState(userId: string, personaId: string) {
     try {
-        const dbPromise = supabase.from('persona_states').select('mood, favorability, buff_end_at').eq('user_id', userId).eq('persona', personaId).single();
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('DB Timeout')), 2000));
-        const { data } = await Promise.race([dbPromise, timeoutPromise]) as any;
+        const { data } = await supabase.from('persona_states').select('mood, favorability, buff_end_at').eq('user_id', userId).eq('persona', personaId).single();
         let mood = data?.mood || 60;
         const bond = data?.favorability || 0;
         const isBuffed = data?.buff_end_at && new Date(data.buff_end_at) > new Date();
@@ -46,7 +40,6 @@ const getRelLevel = (bond: number) => {
     return "Soulmate";
 };
 
-// 动态风格生成器
 const generatePersonaStyle = (persona: string, mood: number): string => {
     const p = persona.toLowerCase();
     if (p === 'ash') return mood < 30 ? "Cold, one word answers." : "Analytical, sarcastic.";
@@ -68,12 +61,10 @@ export async function POST(req: Request) {
 
     const requestedKey = partnerId?.toLowerCase();
     const foundKey = Object.keys(PERSONAS_REGISTRY).find(k => k.toLowerCase() === requestedKey);
-    if (foundKey && PERSONAS_REGISTRY[foundKey]) {
-        pKey = foundKey;
-    }
+    if (foundKey) pKey = foundKey;
     const config = PERSONAS_REGISTRY[pKey]; 
 
-    // 1. 获取状态
+    // 1. 获取状态 (只读操作，并行没问题)
     const [stateResult, memoryResult] = await Promise.allSettled([
         getPersonaState(userId, pKey),
         (async () => {
@@ -88,7 +79,6 @@ export async function POST(req: Request) {
     const state = stateResult.status === 'fulfilled' ? stateResult.value : { mood: 60, bond: 0, isBuffed: false };
     const memoryContext = memoryResult.status === 'fulfilled' ? memoryResult.value : "";
 
-    // 2. 情绪守门
     if (state.mood < 5 && !state.isBuffed && state.bond < 600) {
         return NextResponse.json({ reply: `[System] Connection Refused: ${config.name} is ignoring you.` });
     }
@@ -96,7 +86,6 @@ export async function POST(req: Request) {
     const relLevel = getRelLevel(state.bond);
     const dynamicStyle = generatePersonaStyle(pKey, state.mood);
 
-    // 3. 构建 Prompt
     const systemPrompt = `
 ${config.prompt}
 
@@ -107,57 +96,59 @@ ${memoryContext}
 
 [STYLE GUIDE]
 - Vibe: ${dynamicStyle}
-- Rule: Speak like a real person in 2077. No robotic formats like "(looks at you)".
+- Rule: Speak like a real person in 2077. No robotic formats.
 - Length: Short (under 50 words).
 - Language: Use natural ${message.match(/[\u4e00-\u9fa5]/) ? 'Chinese' : 'English'}.
     `;
 
-    // 4. 调用 AI
-    let reply = "";
-    try {
-        const completion = await openai.chat.completions.create({
-            model: "deepseek-chat", 
-            messages: [
-                { role: "system", content: systemPrompt },
-                ...(history || []).slice(-4), 
-                { role: "user", content: message }
-            ],
-            temperature: 0.9, 
-            presence_penalty: 0.5, 
-            max_tokens: 150,
-        });
-        reply = completion.choices[0].message.content || "...";
-    } catch (aiError: any) {
-        console.error("❌ AI Error:", aiError.message);
-        throw new Error("AI_TIMEOUT");
+    // 2. 调用 AI 生成回复
+    const completion = await openai.chat.completions.create({
+        model: "deepseek-chat", 
+        messages: [
+            { role: "system", content: systemPrompt },
+            ...(history || []).slice(-4), 
+            { role: "user", content: message }
+        ],
+        temperature: 0.9, 
+        max_tokens: 150,
+    });
+    const reply = completion.choices[0].message.content || "...";
+
+    const currentConversationContext = [
+        ...(history || []),
+        { role: 'user', content: message },
+        { role: 'assistant', content: reply }
+    ];
+
+    // 🔥🔥🔥 关键修复：第一步，必须先确保用户存在！🔥🔥🔥
+    // 把这一步从 Promise.allSettled 里拿出来，变成同步等待
+    // 只有这一步成功了，数据库里才有这个 userId，后面的 memory_shards 插入才不会报错
+    const { error: profileError } = await supabase.from('profiles').upsert({
+        id: userId,
+        last_active: new Date().toISOString()
+    }, { onConflict: 'id' });
+
+    if (profileError) {
+        // 如果这里报错，说明数据库连不上或者权限有问题，打印日志但尝试继续
+        console.error("❌ Profile Update Failed:", profileError.message);
     }
 
-    // 5. 存库 & 🔥 [统计修复] 活跃度打卡
-    (async () => {
-        try {
-            // A. 更新用户活跃时间 (仪表盘统计靠这个！)
-            // 使用 upsert 确保用户不存在时会自动创建
-            const { error: profileError } = await supabase.from('profiles').upsert({
-                id: userId,
-                last_active: new Date().toISOString()
-            }, { onConflict: 'id' });
-            
-            if (profileError) console.error("❌ Profile Update Failed:", profileError.message);
+    // 3. 第二步：用户户口解决了，现在可以放心地并行存聊天记录和生成碎片了
+    const [saveRes, shardRes] = await Promise.allSettled([
+        supabase.from('memories').insert({ 
+            user_id: userId, content: message, type: 'chat', persona: pKey, metadata: { reply } 
+        }),
+        // 这时候再调用，因为上面已经 await 了 profile upsert，所以这里肯定安全
+        processRollingMemory(userId, pKey, currentConversationContext)
+    ]);
 
-            // B. 存聊天记录
-            await supabase.from('memories').insert({ 
-                user_id: userId, 
-                content: message, 
-                type: 'chat', 
-                persona: pKey, 
-                metadata: { reply } 
-            });
-        } catch(e) {
-            console.error("Async Save Error:", e);
-        }
-    })();
+    // 4. 判断是否触发了碎片
+    const fragmentTriggered = shardRes.status === 'fulfilled' && shardRes.value.triggered;
 
-    return NextResponse.json({ reply, fragmentTriggered: false });
+    return NextResponse.json({ 
+        reply, 
+        fragmentTriggered 
+    });
 
   } catch (error: any) {
     console.error('Chat Crash:', error);

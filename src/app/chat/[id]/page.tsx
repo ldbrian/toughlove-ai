@@ -9,27 +9,23 @@ import {
   MessageSquarePlus, Zap, Heart, Flame, Activity
 } from 'lucide-react';
 // 🔥 1. 引入 Supabase
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@/utils/supabase/client';
 import { getDeviceId } from '@/lib/utils';
 
 import { getMemory, saveMemory } from '@/lib/storage';
 import { getLocalTimeInfo, getSimpleWeather } from '@/lib/env'; 
-import { LootItem } from '@/types'; 
-// ❌ 移除 LOOT_TABLE 常量引用，强制使用数据库
-// import { LOOT_TABLE } from '@/lib/constants'; 
+// 🔥 引入全局类型 LangType
+import { LootItem, LangType } from '@/types'; 
 
 // Modals
-import { DonateModal, NameModal, FeedbackModal, InstallModal } from '@/components/modals/SystemModals';
+import { DonateModal, NameModal, FeedbackModal, InstallModal, LangSetupModal } from '@/components/modals/SystemModals';
 import { DailyBriefingModal } from '@/components/modals/DailyBriefingModal'; 
 import { InventoryModal } from '@/components/modals/InventoryModal'; 
 import { FocusModal } from '@/components/modals/FocusModal';
 import { MemoModal } from '@/components/modals/MemoModal';
 
 // 🔥 2. 初始化 Supabase 客户端
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const supabase = createClient(); 
 
 // 消息类型定义
 interface Message {
@@ -54,14 +50,13 @@ const WALLPAPER_MAP: Record<string, string> = {
   echo: '/wallpapers/echo_room.jpg',
 };
 
-type LangType = 'zh' | 'en';
-
 // 负面词库
 const TOXIC_KEYWORDS = ['滚', '傻', '闭嘴', '废物', '讨厌', '去死', 'fuck', 'stupid', 'shut up', 'hate'];
 
-const UI_TEXT: Record<LangType, any> = {
+// 这里只定义了 zh 和 en，后续组件里我们会做 fallback 处理
+const UI_TEXT: Record<'zh' | 'en', any> = {
   zh: { 
-    menu: '菜单', editName: '修改昵称', lang: '切换语言 (EN)', install: '安装应用', donate: '请喝咖啡', feedback: '反馈 Bug', reset: '重置数据', 
+    menu: '菜单', editName: '修改昵称', lang: '切换语言', install: '安装应用', donate: '请喝咖啡', feedback: '反馈 Bug', reset: '重置数据', 
     resetConfirm: '⚠️ 警告：确认重置记忆？这将清除聊天记录、背包和塔罗牌，系统将重启并重新进行心理测试。',
     modalTitle: '修改昵称', placeholderName: '请输入昵称', cancel: '取消', save: '保存', feedbackSent: '已收到反馈',
     online: '在线', typing: '对方正在输入...', placeholder: '输入信号...', error: '信号中断', systemInit: '神经连接已建立。',
@@ -70,7 +65,7 @@ const UI_TEXT: Record<LangType, any> = {
     actionRin: '能量补给', actionSol: '绝对专注' 
   },
   en: { 
-    menu: 'MENU', editName: 'Edit Name', lang: 'Language (中)', install: 'Install App', donate: 'Buy Coffee', feedback: 'Feedback', reset: 'Reset Data', 
+    menu: 'MENU', editName: 'Edit Name', lang: 'Language', install: 'Install App', donate: 'Buy Coffee', feedback: 'Feedback', reset: 'Reset Data', 
     resetConfirm: '⚠️ WARNING: Reset memory? This will wipe chat history, inventory and tarot cards. System will reboot to psychological test.',
     modalTitle: 'Edit Name', placeholderName: 'Enter Name', cancel: 'Cancel', save: 'Save', feedbackSent: 'Feedback sent',
     online: 'ONLINE', typing: 'Typing...', placeholder: 'Enter signal...', error: 'Signal Lost', systemInit: 'Neural link established.',
@@ -81,20 +76,26 @@ const UI_TEXT: Record<LangType, any> = {
 };
 
 const getDynamicSuggestion = (lastMsg: string, lang: LangType): string => {
-  if (!lastMsg) return lang === 'zh' ? '...' : '...';
+  if (!lastMsg) return '...';
   const text = lastMsg.toLowerCase();
+  
+  // 简单判断是不是中文环境
+  const isZh = lang === 'zh' || lang === 'tw';
+
   if (text.endsWith('?') || text.endsWith('？')) {
-      const answers = lang === 'zh' ? ['不知道', '也许吧', '你猜？', '看心情'] : ['Maybe', 'I guess', 'Who knows', 'Depends'];
+      const answers = isZh ? ['不知道', '也许吧', '你猜？', '看心情'] : ['Maybe', 'I guess', 'Who knows', 'Depends'];
       return answers[Math.floor(Math.random() * answers.length)];
   }
-  if (text.length < 10) return lang === 'zh' ? '这就完了？' : 'That\'s it?';
-  const randoms = lang === 'zh' ? ['确实', '有道理', '我不同意', '有点意思', '然后呢'] : ['True', 'Makes sense', 'Interesting', 'Then what?'];
+  if (text.length < 10) return isZh ? '这就完了？' : 'That\'s it?';
+  const randoms = isZh ? ['确实', '有道理', '我不同意', '有点意思', '然后呢'] : ['True', 'Makes sense', 'Interesting', 'Then what?'];
   return randoms[Math.floor(Math.random() * randoms.length)];
 };
 
 const LootCard = ({ itemId, lang }: { itemId: string, lang: LangType }) => {
   const [accepted, setAccepted] = useState(false);
-  const t = UI_TEXT[lang];
+  // Fallback: 如果不是中文，就用英文文案
+  const t = (lang === 'zh' || lang === 'tw') ? UI_TEXT.zh : UI_TEXT.en;
+  
   return (
     <div className="my-2 w-full max-w-[240px]">
       <div className={`relative overflow-hidden rounded-xl border ${accepted ? 'border-green-500/30 bg-green-500/5' : 'border-[#7F5CFF]/30 bg-[#7F5CFF]/10'} backdrop-blur-md transition-all duration-300`}>
@@ -118,7 +119,8 @@ const LootCard = ({ itemId, lang }: { itemId: string, lang: LangType }) => {
 
 interface GlobalMenuProps { onClose: () => void; onEditName: () => void; onSwitchLang: () => void; onInstall: () => void; onDonate: () => void; onReset: () => void; onFeedback: () => void; lang: LangType; }
 const GlobalMenu = ({ onClose, onEditName, onSwitchLang, onInstall, onDonate, onReset, onFeedback, lang }: GlobalMenuProps) => {
-  const t = UI_TEXT[lang]; 
+  // Fallback
+  const t = (lang === 'zh' || lang === 'tw') ? UI_TEXT.zh : UI_TEXT.en;
   return (
     <div className="absolute top-16 right-6 w-48 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl z-[100] flex flex-col p-1 animate-in fade-in zoom-in-95 duration-200 pointer-events-auto">
         <div className="flex justify-between items-center px-4 py-2 border-b border-white/5">
@@ -157,22 +159,24 @@ export default function ChatRoomPage() {
   const [showFocus, setShowFocus] = useState(false);
   const [showMemo, setShowMemo] = useState(false);
 
+  // 语言设置
   const [lang, setLang] = useState<LangType>('zh'); 
-  const t = UI_TEXT[lang]; 
+  // 根据 lang 获取文案 (fallback)
+  const t = (lang === 'zh' || lang === 'tw') ? UI_TEXT.zh : UI_TEXT.en;
 
   const [showNameModal, setShowNameModal] = useState(false);
   const [showDonateModal, setShowDonateModal] = useState(false);
   const [showInstallModal, setShowInstallModal] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [showLangModal, setShowLangModal] = useState(false); 
+
   const [tempName, setTempName] = useState('');
   const [userName, setUserName] = useState('Traveler');
   const [userBalance, setUserBalance] = useState(100);
 
-  const [inventoryItems, setInventoryItems] = useState<any[]>([]); // 暂存本地ID
-  
-  // 🔥 新增：物品库状态 & 加载状态
+  const [inventoryItems, setInventoryItems] = useState<any[]>([]); 
   const [itemLibrary, setItemLibrary] = useState<Record<string, any>>({}); 
-  const [isCatalogLoading, setIsCatalogLoading] = useState(true); // 默认为 true，开始加载
+  const [isCatalogLoading, setIsCatalogLoading] = useState(true);
 
   const [dynamicReply, setDynamicReply] = useState('');
   const [stats, setStats] = useState({ favorability: 0, moodValue: 50 });
@@ -181,180 +185,7 @@ export default function ChatRoomPage() {
   const initRef = useRef(false);
   const isInitialScrollDone = useRef(false);
 
-  // 🔥 4. 页面加载时拉取数据库字典 (严格逻辑)
-  useEffect(() => {
-    const fetchItemLibrary = async () => {
-      try {
-        setIsCatalogLoading(true);
-        // 清空旧数据防止混淆
-        // setItemLibrary({}); 
-        
-        const { data, error } = await supabase.from('items').select('*');
-        
-        if (error) {
-            console.error("❌ [Chat] DB Error:", error);
-            // 即使出错，也要允许流程继续，否则 UI 会永久 Loading
-            return; 
-        }
-
-        if (data && data.length > 0) {
-            const lib: Record<string, any> = {};
-            data.forEach((item: any) => {
-                // 数据库字段映射
-                const nameObj = {
-                    zh: item.name_zh || item.name_json?.zh || item.name?.zh || '未知',
-                    en: item.name_en || item.name_json?.en || item.name?.en || 'Unknown'
-                };
-                const descObj = {
-                    zh: item.desc_zh || item.desc_json?.zh || item.description?.zh || '...',
-                    en: item.desc_en || item.desc_json?.en || item.description?.en || '...'
-                };
-
-                lib[item.id] = {
-                    name: nameObj,        
-                    description: descObj, 
-                    image: item.image,
-                    rarity: item.rarity,
-                    type: item.type,
-                    metadata: item.metadata,
-                    price: item.price
-                };
-            });
-            setItemLibrary(lib);
-            console.log("✅ [Chat] Item Library Loaded from DB:", Object.keys(lib).length);
-        } else {
-            console.warn("⚠️ [Chat] DB connected but 'items' table is empty.");
-        }
-      } catch (err) {
-          console.error("❌ [Chat] Fetch Exception:", err);
-      } finally {
-          // 🔥 关键：无论成功失败，都必须结束 loading 状态
-          setIsCatalogLoading(false);
-      }
-    };
-
-    fetchItemLibrary();
-  }, []);
-
-  const loadInventory = () => {
-      const savedInv = localStorage.getItem('toughlove_inventory');
-      if (savedInv) {
-          try {
-              const parsed = JSON.parse(savedInv);
-              setInventoryItems(parsed);
-          } catch(e) {
-              setInventoryItems([]);
-          }
-      }
-  };
-
-  // 🔥 [FIX] 纯净版水合函数：只用 DB，不用常量
-  const hydrateInventory = (items: any[]): LootItem[] => {
-      if (!items || !Array.isArray(items)) return [];
-      
-      return items.map(item => {
-          const id = typeof item === 'string' ? item : item.id;
-          
-          // 1. 尝试从 DB 字典中获取
-          const dbItem = itemLibrary[id];
-          if (dbItem) {
-              return { id, ...dbItem } as LootItem;
-          }
-
-          // 2. 如果字典正在加载，显示“加载中”
-          if (isCatalogLoading) {
-              return {
-                  id,
-                  name: { zh: '数据库同步中...', en: 'Syncing DB...' },
-                  description: { zh: '请稍候...', en: 'Please wait...' },
-                  image: '⏳', // 沙漏
-                  rarity: 'common',
-                  sourcePersona: 'System', 
-                  price: 0,
-                  type: 'special'
-              } as LootItem;
-          }
-
-          // 3. 如果字典已加载完但还是找不到，说明是“未知/残留/被删除”的物品
-          // 不再回退到 LOOT_TABLE，完全诚实地显示为“未知”
-          return {
-              id,
-              name: { zh: `未知残留物 (${id})`, en: `Unknown Remnant (${id})` },
-              description: { zh: '该物品数据似乎已从数据库丢失。', en: 'Item data missing from database.' },
-              image: '❓',
-              rarity: 'common',
-              sourcePersona: 'System', 
-              price: 0,
-              type: 'special'
-          } as LootItem;
-      });
-  };
-
-  const handleReset = () => {
-    if (confirm(t.resetConfirm)) {
-      localStorage.removeItem('toughlove_user_profile');
-      localStorage.removeItem('toughlove_inventory');
-      localStorage.removeItem('toughlove_daily_tarot_log');
-      localStorage.removeItem('toughlove_user_name');
-      localStorage.removeItem(`toughlove_chat_${partnerId}`);
-      localStorage.removeItem(`toughlove_stats_${partnerId}`);
-      window.location.href = '/resonance';
-    }
-  };
-
-  const updateStats = (type: 'chat' | 'gift' | 'event' | 'toxic', value?: number) => {
-    let currentNewStats = { favorability: 0, moodValue: 50 };
-      setStats(prev => {
-          let newFav = prev.favorability;
-          let newMood = prev.moodValue;
-
-          if (type === 'chat') newFav += 0.5;
-          else if (type === 'gift') newFav += (value || 10);
-          else if (type === 'toxic') newFav -= 5;
-
-          let fluctuation = (Math.random() * 4) - 2; 
-          
-          if (type === 'gift') newMood += 15;
-          else if (type === 'event') {
-              const impact = value || (Math.random() * 30 - 15);
-              newMood += impact;
-          } else if (type === 'toxic') newMood -= 20; 
-          else newMood += fluctuation;
-
-          newMood = Math.max(0, Math.min(100, newMood));
-          newFav = Math.max(0, Math.min(100, newFav));
-          newFav = Math.floor(newFav * 10) / 10;
-          newMood = Math.floor(newMood);
-
-          const newStats = { favorability: newFav, moodValue: newMood };
-          currentNewStats = newStats; 
-          localStorage.setItem(`toughlove_stats_${partnerId}`, JSON.stringify(newStats));
-          return newStats;
-      });
-  };
-
-  const handleReward = (amount: number) => {
-    const newBalance = userBalance + amount;
-    setUserBalance(newBalance);
-    localStorage.setItem('toughlove_user_rin', newBalance.toString());
-  };
-
-  const getMoodLabel = (val: number) => {
-      if (val >= 80) return lang === 'zh' ? '狂喜' : 'EUPHORIC';
-      if (val >= 60) return lang === 'zh' ? '开心' : 'HAPPY';
-      if (val >= 40) return lang === 'zh' ? '平静' : 'CALM';
-      if (val >= 20) return lang === 'zh' ? '焦虑' : 'ANXIOUS';
-      return lang === 'zh' ? '崩溃' : 'BROKEN';
-  };
-
-  const handleSwitchLang = () => {
-    const newLang = lang === 'zh' ? 'en' : 'zh';
-    setLang(newLang);
-    localStorage.setItem('toughlove_lang_preference', newLang);
-    setShowMenu(false);
-    window.location.reload(); 
-  };
-
+  // 🔥 修复：找回丢失的 renderMessageContent 函数
   const renderMessageContent = (content: string, isAI: boolean) => {
     const names = Object.keys(PERSONAS); 
     const regex = new RegExp(`(${names.join('|')})`, 'gi');
@@ -389,6 +220,173 @@ export default function ChatRoomPage() {
     );
   };
 
+  const handleOpenLangMenu = () => {
+    setShowMenu(false);
+    setShowLangModal(true);
+  };
+
+  const handleLangConfirm = (selectedLang: LangType) => {
+    setLang(selectedLang);
+    localStorage.setItem('toughlove_lang_preference', selectedLang);
+    setShowLangModal(false);
+    window.dispatchEvent(new Event('toughlove_lang_change'));
+  };
+
+  useEffect(() => {
+    const fetchItemLibrary = async () => {
+      try {
+        setIsCatalogLoading(true);
+        const { data, error } = await supabase.from('items').select('*');
+        
+        if (error) {
+            console.error("❌ [Chat] DB Error:", error);
+            return; 
+        }
+
+        if (data && data.length > 0) {
+            const lib: Record<string, any> = {};
+            data.forEach((item: any) => {
+                const nameObj = {
+                    zh: item.name_zh || item.name_json?.zh || item.name?.zh || '未知',
+                    en: item.name_en || item.name_json?.en || item.name?.en || 'Unknown'
+                };
+                const descObj = {
+                    zh: item.desc_zh || item.desc_json?.zh || item.description?.zh || '...',
+                    en: item.desc_en || item.desc_json?.en || item.description?.en || '...'
+                };
+
+                lib[item.id] = {
+                    name: nameObj,        
+                    description: descObj, 
+                    image: item.image,
+                    rarity: item.rarity,
+                    type: item.type,
+                    metadata: item.metadata,
+                    price: item.price
+                };
+            });
+            setItemLibrary(lib);
+            console.log("✅ [Chat] Item Library Loaded from DB:", Object.keys(lib).length);
+        } else {
+            console.warn("⚠️ [Chat] DB connected but 'items' table is empty.");
+        }
+      } catch (err) {
+          console.error("❌ [Chat] Fetch Exception:", err);
+      } finally {
+          setIsCatalogLoading(false);
+      }
+    };
+
+    fetchItemLibrary();
+  }, []);
+
+  const loadInventory = () => {
+      const savedInv = localStorage.getItem('toughlove_inventory');
+      if (savedInv) {
+          try {
+              const parsed = JSON.parse(savedInv);
+              setInventoryItems(parsed);
+          } catch(e) {
+              setInventoryItems([]);
+          }
+      }
+  };
+
+  const hydrateInventory = (items: any[]): LootItem[] => {
+      if (!items || !Array.isArray(items)) return [];
+      
+      return items.map(item => {
+          const id = typeof item === 'string' ? item : item.id;
+          const dbItem = itemLibrary[id];
+          if (dbItem) {
+              return { id, ...dbItem } as LootItem;
+          }
+          if (isCatalogLoading) {
+              return {
+                  id,
+                  name: { zh: '数据库同步中...', en: 'Syncing DB...' },
+                  description: { zh: '请稍候...', en: 'Please wait...' },
+                  image: '⏳',
+                  rarity: 'common',
+                  sourcePersona: 'System', 
+                  price: 0,
+                  type: 'special'
+              } as LootItem;
+          }
+          return {
+              id,
+              name: { zh: `未知残留物 (${id})`, en: `Unknown Remnant (${id})` },
+              description: { zh: '该物品数据似乎已从数据库丢失。', en: 'Item data missing from database.' },
+              image: '❓',
+              rarity: 'common',
+              sourcePersona: 'System', 
+              price: 0,
+              type: 'special'
+          } as LootItem;
+      });
+  };
+
+  const handleReset = () => {
+    if (confirm(t.resetConfirm)) {
+      localStorage.removeItem('toughlove_user_profile');
+      localStorage.removeItem('toughlove_inventory');
+      localStorage.removeItem('toughlove_daily_tarot_log');
+      localStorage.removeItem('toughlove_user_name');
+      localStorage.removeItem(`toughlove_chat_${partnerId}`);
+      localStorage.removeItem(`toughlove_stats_${partnerId}`);
+      window.location.href = '/resonance';
+    }
+  };
+
+  const updateStats = (type: 'chat' | 'gift' | 'event' | 'toxic', value?: number) => {
+      setStats(prev => {
+          let newFav = prev.favorability;
+          let newMood = prev.moodValue;
+
+          if (type === 'chat') newFav += 0.5;
+          else if (type === 'gift') newFav += (value || 10);
+          else if (type === 'toxic') newFav -= 5;
+
+          let fluctuation = (Math.random() * 4) - 2; 
+          
+          if (type === 'gift') newMood += 15;
+          else if (type === 'event') {
+              const impact = value || (Math.random() * 30 - 15);
+              newMood += impact;
+          } else if (type === 'toxic') newMood -= 20; 
+          else newMood += fluctuation;
+
+          newMood = Math.max(0, Math.min(100, newMood));
+          newFav = Math.max(0, Math.min(100, newFav));
+          newFav = Math.floor(newFav * 10) / 10;
+          newMood = Math.floor(newMood);
+
+          const newStats = { favorability: newFav, moodValue: newMood };
+          localStorage.setItem(`toughlove_stats_${partnerId}`, JSON.stringify(newStats));
+          return newStats;
+      });
+  };
+
+  const handleReward = (amount: number) => {
+    const newBalance = userBalance + amount;
+    setUserBalance(newBalance);
+    localStorage.setItem('toughlove_user_rin', newBalance.toString());
+  };
+
+  const getMoodLabel = (val: number) => {
+      // 简单判断
+      const isZh = lang === 'zh' || lang === 'tw';
+      if (val >= 80) return isZh ? '狂喜' : 'EUPHORIC';
+      if (val >= 60) return isZh ? '开心' : 'HAPPY';
+      if (val >= 40) return isZh ? '平静' : 'CALM';
+      if (val >= 20) return isZh ? '焦虑' : 'ANXIOUS';
+      return isZh ? '崩溃' : 'BROKEN';
+  };
+
+  const handleSwitchLang = () => {
+    handleOpenLangMenu();
+  };
+
   useEffect(() => {
     if (initRef.current) return;
     initRef.current = true;
@@ -396,7 +394,7 @@ export default function ChatRoomPage() {
     const savedName = localStorage.getItem('toughlove_user_name');
     if (savedName) setUserName(savedName);
     const savedLang = localStorage.getItem('toughlove_lang_preference');
-    if (savedLang === 'zh' || savedLang === 'en') setLang(savedLang as LangType);
+    if (savedLang) setLang(savedLang as LangType);
     const savedBalance = localStorage.getItem('toughlove_user_rin');
     if (savedBalance) setUserBalance(parseInt(savedBalance));
     loadInventory();
@@ -439,7 +437,9 @@ export default function ChatRoomPage() {
             textToSend = actionText;
         }
     } else if (initialMsgs.length === 0) {
-        const localizedInit = savedLang === 'en' ? UI_TEXT.en.systemInit : UI_TEXT.zh.systemInit;
+        // Init message
+        const isZh = lang === 'zh' || lang === 'tw';
+        const localizedInit = isZh ? UI_TEXT.zh.systemInit : UI_TEXT.en.systemInit;
         initialMsgs = [{ role: 'assistant', content: `[SYSTEM] ${config.name} ${localizedInit}` }];
     }
 
@@ -447,7 +447,7 @@ export default function ChatRoomPage() {
     setIsReady(true);
     
     const lastAi = initialMsgs.slice().reverse().find(m => m.role !== 'user');
-    setDynamicReply(getDynamicSuggestion(lastAi?.content || '', savedLang as LangType || 'zh'));
+    setDynamicReply(getDynamicSuggestion(lastAi?.content || '', lang));
 
     if (shouldTriggerSend && textToSend) {
         setTimeout(() => handleSend(textToSend, false), 100);
@@ -477,12 +477,11 @@ export default function ChatRoomPage() {
 
     if (!isHidden) {
         const isToxic = TOXIC_KEYWORDS.some(k => textToSend.includes(k));
-        let newStats; 
         if (isToxic) {
-          newStats = updateStats('toxic');
-      } else {
-          newStats = updateStats('chat');
-      }
+          updateStats('toxic');
+        } else {
+          updateStats('chat');
+        }
     }
 
     let newHistory = messages;
@@ -506,7 +505,6 @@ export default function ChatRoomPage() {
       const dailyData = JSON.parse(localStorage.getItem('toughlove_daily_feed_v1') || '{}');
       const myDaily = dailyData.data?.find((d: any) => d.persona === config.name);
       
-      // 🔥 使用 DB 水合后的库存传给后端（虽然类型是 any，但已经包含 name 等信息）
       const fullInventory = hydrateInventory(inventoryItems);
       const realUserId = getDeviceId();
       const response = await fetch('/api/chat', {
@@ -526,13 +524,12 @@ export default function ChatRoomPage() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
 
-      // 1. 先显示 AI 回复
       setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
 
-      // 2. 检测后端返回的碎片信号
       if (data.fragmentTriggered) {
           if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 200]);
-          const shardMsg = lang === 'zh'
+          const isZh = lang === 'zh' || lang === 'tw';
+          const shardMsg = isZh
             ? `[✨灵魂共鸣-捕获记忆碎片✨]`
             : `[✨Soul Resonance-Memory Fragment Captured✨]`;
           setTimeout(() => {
@@ -564,11 +561,18 @@ export default function ChatRoomPage() {
   return (
     <div className="relative flex flex-col h-screen supports-[height:100dvh]:h-[100dvh] bg-[#050505] text-gray-100 font-sans overflow-hidden">
         {/* Modals */}
-        <NameModal show={showNameModal} onClose={() => setShowNameModal(false)} tempName={tempName} setTempName={setTempName} onSave={() => { setUserName(tempName); localStorage.setItem('toughlove_user_name', tempName); setShowNameModal(false); }} ui={{ title: t.modalTitle, placeholder: t.placeholderName, cancel: t.cancel, save: t.save }} />
+        <NameModal show={showNameModal} onClose={() => setShowNameModal(false)} tempName={tempName} setTempName={setTempName} onSave={() => { setUserName(tempName); localStorage.setItem('toughlove_user_name', tempName); setShowNameModal(false); }} ui={{ editName: t.modalTitle, confirm: t.save }} />
         <DonateModal show={showDonateModal} onClose={() => setShowDonateModal(false)} lang={lang} currentP={PERSONAS[displayKey]} onBribe={()=>{}} onExternal={()=>{}} />
         <InstallModal show={showInstallModal} onClose={() => setShowInstallModal(false)} lang={lang} />
         <FeedbackModal show={showFeedbackModal} onClose={() => setShowFeedbackModal(false)} text="" setText={()=>{}} onSubmit={()=>{ setShowFeedbackModal(false); alert(t.feedbackSent); }} lang={lang} />
         
+        {/* 🔥 LangSetupModal */}
+        <LangSetupModal 
+            show={showLangModal} 
+            lang={lang} 
+            onConfirm={handleLangConfirm} 
+        />
+
         <DailyBriefingModal 
             show={showTarot} 
             onClose={() => setShowTarot(false)} 
@@ -579,7 +583,6 @@ export default function ChatRoomPage() {
             onCollect={loadInventory}
         />
         
-        {/* 🔥 6. 传递处理过的完整数据给 Modal */}
         <InventoryModal 
             show={showInventory} 
             onClose={() => setShowInventory(false)} 
