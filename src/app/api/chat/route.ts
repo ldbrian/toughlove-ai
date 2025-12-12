@@ -210,12 +210,19 @@ ${memoryContext}
         throw new Error("AI_TIMEOUT");
     }
 
+    
+
     // 5. 存库
     (async () => {
         try {
+            await supabase.from('profiles').upsert({
+                id: userId,
+                last_active: new Date().toISOString()
+            }, { onConflict: 'id' });
             await supabase.from('memories').insert({ user_id: userId, content: message, type: 'chat', persona: pKey, metadata: { reply } });
         } catch(e) {}
     })();
+    
 
     return NextResponse.json({ reply, fragmentTriggered: false });
 

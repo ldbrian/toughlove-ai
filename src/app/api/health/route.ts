@@ -2,8 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import OpenAI from 'openai';
 
-// 移除 Edge Runtime，因为某些 OpenAI 库在 Edge 上可能表现不同
-// export const runtime = 'edge'; 
+export const runtime = 'edge'; // 使用 Edge Runtime 提高响应速度
 
 export async function GET() {
   const start = Date.now();
@@ -12,30 +11,54 @@ export async function GET() {
     database: 'checking',
     ai_service: 'checking',
     latency: 0,
-    details: ''
+    details: '',
+    // 🔥 新增：用户统计字段
+    user_stats: {
+        total: 0,
+        active_10min: 0
+    }
   };
 
   try {
-    // 1. 检查数据库
+    // 1. 初始化 Supabase (Service Role 权限，用于读取所有用户数据)
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
-    const { error: dbError } = await supabase.from('items').select('id').limit(1);
-    healthStatus.database = dbError ? 'offline' : 'online';
 
-    // 2. 🚀 真实检查 AI 服务 (发起一个极小的请求)
+    // 2. 数据库健康检查 & 用户统计 (并行执行以提速)
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    
+    const [dbCheck, activeCount, totalCount] = await Promise.all([
+        // A. 查一行数据测连通性
+        supabase.from('items').select('id').limit(1),
+        // B. 查活跃人数 (head: true 只返回数量，不返回数据体，极快)
+        supabase.from('profiles').select('*', { count: 'exact', head: true }).gt('last_active', tenMinutesAgo),
+        // C. 查总注册人数
+        supabase.from('profiles').select('*', { count: 'exact', head: true })
+    ]);
+
+    if (dbCheck.error) {
+        healthStatus.database = 'offline';
+        healthStatus.details = `DB Error: ${dbCheck.error.message}`;
+    } else {
+        healthStatus.database = 'online';
+        // 填充真实数据 (如果出错则默认为 0)
+        healthStatus.user_stats.active_10min = activeCount.count || 0;
+        healthStatus.user_stats.total = totalCount.count || 0;
+    }
+
+    // 3. AI 服务检查 (保持简单 Ping)
     const openai = new OpenAI({
         apiKey: process.env.DEEPSEEK_API_KEY || 'dummy',
         baseURL: 'https://api.deepseek.com',
-        timeout: 5000 // 5秒超时
+        timeout: 5000
     });
 
     try {
-        await openai.models.list(); // 列出模型列表通常比生成文本快且便宜
+        await openai.models.list();
         healthStatus.ai_service = 'online';
     } catch (aiErr: any) {
-        console.error("Health Check AI Error:", aiErr);
         healthStatus.ai_service = 'offline';
         healthStatus.details = `AI Error: ${aiErr.message}`;
     }
