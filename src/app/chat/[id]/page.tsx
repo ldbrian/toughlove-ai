@@ -8,32 +8,26 @@ import {
   UserPen, Globe, Download, Coffee, RotateCcw, X as XIcon, Bug,
   MessageSquarePlus, Zap, Heart, Flame, Activity
 } from 'lucide-react';
-// 🔥 1. 引入 Supabase
 import { createClient } from '@/utils/supabase/client';
 import { getDeviceId } from '@/lib/utils';
 
 import { getMemory, saveMemory } from '@/lib/storage';
 import { getLocalTimeInfo, getSimpleWeather } from '@/lib/env'; 
-// 🔥 引入全局类型 LangType
 import { LootItem, LangType } from '@/types'; 
 
-// Modals
 import { DonateModal, NameModal, FeedbackModal, InstallModal, LangSetupModal } from '@/components/modals/SystemModals';
 import { DailyBriefingModal } from '@/components/modals/DailyBriefingModal'; 
 import { InventoryModal } from '@/components/modals/InventoryModal'; 
 import { FocusModal } from '@/components/modals/FocusModal';
 import { MemoModal } from '@/components/modals/MemoModal';
 
-// 🔥 2. 初始化 Supabase 客户端
 const supabase = createClient(); 
 
-// 消息类型定义
 interface Message {
   role: string;
   content: string;
 }
 
-// 常量 (Persona配置属于静态配置，保留)
 const PERSONAS: Record<string, any> = {
   ash: { name: 'Ash', avatar: '/avatars/ash_hero.jpg', color: 'text-cyan-400' },
   rin: { name: 'Rin', avatar: '/avatars/rin_hero.jpg', color: 'text-purple-400' },
@@ -50,13 +44,11 @@ const WALLPAPER_MAP: Record<string, string> = {
   echo: '/wallpapers/echo_room.jpg',
 };
 
-// 负面词库
 const TOXIC_KEYWORDS = ['滚', '傻', '闭嘴', '废物', '讨厌', '去死', 'fuck', 'stupid', 'shut up', 'hate'];
 
-// 这里只定义了 zh 和 en，后续组件里我们会做 fallback 处理
 const UI_TEXT: Record<'zh' | 'en', any> = {
   zh: { 
-    menu: '菜单', editName: '修改昵称', lang: '切换语言', install: '安装应用', donate: '请喝咖啡', feedback: '反馈 Bug', reset: '重置数据', 
+    menu: '菜单', editName: '修改昵称', lang: '切换语言 (EN)', install: '安装应用', donate: '请喝咖啡', feedback: '反馈 Bug', reset: '重置数据', 
     resetConfirm: '⚠️ 警告：确认重置记忆？这将清除聊天记录、背包和塔罗牌，系统将重启并重新进行心理测试。',
     modalTitle: '修改昵称', placeholderName: '请输入昵称', cancel: '取消', save: '保存', feedbackSent: '已收到反馈',
     online: '在线', typing: '对方正在输入...', placeholder: '输入信号...', error: '信号中断', systemInit: '神经连接已建立。',
@@ -65,7 +57,7 @@ const UI_TEXT: Record<'zh' | 'en', any> = {
     actionRin: '能量补给', actionSol: '绝对专注' 
   },
   en: { 
-    menu: 'MENU', editName: 'Edit Name', lang: 'Language', install: 'Install App', donate: 'Buy Coffee', feedback: 'Feedback', reset: 'Reset Data', 
+    menu: 'MENU', editName: 'Edit Name', lang: 'Language (中)', install: 'Install App', donate: 'Buy Coffee', feedback: 'Feedback', reset: 'Reset Data', 
     resetConfirm: '⚠️ WARNING: Reset memory? This will wipe chat history, inventory and tarot cards. System will reboot to psychological test.',
     modalTitle: 'Edit Name', placeholderName: 'Enter Name', cancel: 'Cancel', save: 'Save', feedbackSent: 'Feedback sent',
     online: 'ONLINE', typing: 'Typing...', placeholder: 'Enter signal...', error: 'Signal Lost', systemInit: 'Neural link established.',
@@ -78,8 +70,6 @@ const UI_TEXT: Record<'zh' | 'en', any> = {
 const getDynamicSuggestion = (lastMsg: string, lang: LangType): string => {
   if (!lastMsg) return '...';
   const text = lastMsg.toLowerCase();
-  
-  // 简单判断是不是中文环境
   const isZh = lang === 'zh' || lang === 'tw';
 
   if (text.endsWith('?') || text.endsWith('？')) {
@@ -93,7 +83,6 @@ const getDynamicSuggestion = (lastMsg: string, lang: LangType): string => {
 
 const LootCard = ({ itemId, lang }: { itemId: string, lang: LangType }) => {
   const [accepted, setAccepted] = useState(false);
-  // Fallback: 如果不是中文，就用英文文案
   const t = (lang === 'zh' || lang === 'tw') ? UI_TEXT.zh : UI_TEXT.en;
   
   return (
@@ -119,7 +108,6 @@ const LootCard = ({ itemId, lang }: { itemId: string, lang: LangType }) => {
 
 interface GlobalMenuProps { onClose: () => void; onEditName: () => void; onSwitchLang: () => void; onInstall: () => void; onDonate: () => void; onReset: () => void; onFeedback: () => void; lang: LangType; }
 const GlobalMenu = ({ onClose, onEditName, onSwitchLang, onInstall, onDonate, onReset, onFeedback, lang }: GlobalMenuProps) => {
-  // Fallback
   const t = (lang === 'zh' || lang === 'tw') ? UI_TEXT.zh : UI_TEXT.en;
   return (
     <div className="absolute top-16 right-6 w-48 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl z-[100] flex flex-col p-1 animate-in fade-in zoom-in-95 duration-200 pointer-events-auto">
@@ -159,9 +147,7 @@ export default function ChatRoomPage() {
   const [showFocus, setShowFocus] = useState(false);
   const [showMemo, setShowMemo] = useState(false);
 
-  // 语言设置
   const [lang, setLang] = useState<LangType>('zh'); 
-  // 根据 lang 获取文案 (fallback)
   const t = (lang === 'zh' || lang === 'tw') ? UI_TEXT.zh : UI_TEXT.en;
 
   const [showNameModal, setShowNameModal] = useState(false);
@@ -185,7 +171,7 @@ export default function ChatRoomPage() {
   const initRef = useRef(false);
   const isInitialScrollDone = useRef(false);
 
-  // 🔥 修复：找回丢失的 renderMessageContent 函数
+  // 🔥 找回缺失的函数 1: 渲染消息
   const renderMessageContent = (content: string, isAI: boolean) => {
     const names = Object.keys(PERSONAS); 
     const regex = new RegExp(`(${names.join('|')})`, 'gi');
@@ -218,6 +204,21 @@ export default function ChatRoomPage() {
         })}
       </div>
     );
+  };
+
+  // 🔥 找回缺失的函数 2: 本地图片映射
+  const getTarotFilename = (id: string) => {
+      const map: Record<string, string> = {
+          '0': 'fool.jpg', '1': 'magician.jpg', '2': 'high_priestess.jpg', '3': 'empress.jpg',
+          '4': 'emperor.jpg', '5': 'hierophant.jpg', '6': 'lovers.jpg', '7': 'chariot.jpg',
+          '8': 'strength.jpg', '9': 'hermit.jpg', '10': 'wheel_of_fortune.jpg', '11': 'justice.jpg',
+          '12': 'hanged_man.jpg', '13': 'death.jpg', '14': 'temperance.jpg', '15': 'devil.jpg',
+          '16': 'tower.jpg', '17': 'star.jpg', '18': 'moon.jpg', '19': 'sun.jpg',
+          '20': 'judgement.jpg', '21': 'world.jpg'
+      };
+      // 兼容 "tarot_0" 和 "0"
+      const cleanId = String(id).replace(/^tarot_/, '');
+      return map[cleanId] || 'fool.jpg';
   };
 
   const handleOpenLangMenu = () => {
@@ -292,15 +293,42 @@ export default function ChatRoomPage() {
       }
   };
 
+  // 🔥 核心修正：水合函数兼容纯数字 ID
   const hydrateInventory = (items: any[]): LootItem[] => {
       if (!items || !Array.isArray(items)) return [];
       
       return items.map(item => {
-          const id = typeof item === 'string' ? item : item.id;
-          const dbItem = itemLibrary[id];
+          const id = String(typeof item === 'string' ? item : item.id).trim();
+          
+          // 🔥 1. 关键：尝试匹配 DB 中的 item
+          // 库存里可能是 "tarot_0"，DB 里是 "0"，所以去掉前缀去查
+          const dbKey = id.replace(/^tarot_/, '');
+          const dbItem = itemLibrary[id] || itemLibrary[dbKey];
+          
           if (dbItem) {
-              return { id, ...dbItem } as LootItem;
+              // 找到了！但是要把 ID 保持为 inventory 里的样子 (带 tarot_ 前缀)，否则点击等逻辑可能会断
+              return { ...dbItem, id: id } as LootItem;
           }
+
+          // 2. 本地塔罗牌兜底逻辑 (防止数据库延迟导致显示 Unknown)
+          if (id.startsWith('tarot_') || /^\d+$/.test(id)) {
+              // 如果 ID 是 tarot_XX 或 纯数字，且数据库没加载出来，手动构造
+              const cleanId = id.replace(/^tarot_/, '');
+              // 简单判断范围
+              if (parseInt(cleanId) >= 0 && parseInt(cleanId) <= 21) {
+                  return {
+                      id: id,
+                      name: { zh: '塔罗牌 (同步中...)', en: 'Tarot Card (Syncing...)' },
+                      description: { zh: '数据正在从以太网下载...', en: 'Data downloading...' },
+                      // 🔥 使用本地图片路径，确保兜底时也有图
+                      image: `/tarot/${getTarotFilename(cleanId)}`, 
+                      rarity: 'epic',
+                      type: 'collectible',
+                      price: 0
+                  } as LootItem;
+              }
+          }
+
           if (isCatalogLoading) {
               return {
                   id,
@@ -313,6 +341,7 @@ export default function ChatRoomPage() {
                   type: 'special'
               } as LootItem;
           }
+
           return {
               id,
               name: { zh: `未知残留物 (${id})`, en: `Unknown Remnant (${id})` },
@@ -583,6 +612,7 @@ export default function ChatRoomPage() {
             onCollect={loadInventory}
         />
         
+        {/* 🔥 6. 传递处理过的完整数据给 Modal */}
         <InventoryModal 
             show={showInventory} 
             onClose={() => setShowInventory(false)} 

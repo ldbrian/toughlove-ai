@@ -1,8 +1,7 @@
 
 
 import { useState, useEffect } from 'react';
-import { X, Download, Share2, Loader2 } from 'lucide-react';
-// 🔥 FIX: 引入 LangType
+import { X, Download, Share2, Loader2, Image as ImageIcon, Check } from 'lucide-react';
 import { LangType } from '@/types';
 
 interface ShareModalProps {
@@ -10,7 +9,6 @@ interface ShareModalProps {
   onClose: () => void;
   type: 'tarot' | 'focus' | 'memo';
   data: Record<string, string>;
-  // 🔥 FIX: 使用 LangType 替代 'zh' | 'en'
   lang: LangType;
 }
 
@@ -18,8 +16,11 @@ export const ShareModal = ({ show, onClose, type, data, lang }: ShareModalProps)
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  
+  // 新增：保存状态反馈
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // 简单的语言判断：简体或繁体都视为中文显示
   const isZh = lang === 'zh' || lang === 'tw';
 
   useEffect(() => {
@@ -27,6 +28,7 @@ export const ShareModal = ({ show, onClose, type, data, lang }: ShareModalProps)
       setLoading(true);
       setError(false);
       setImageUrl(null);
+      setSaveSuccess(false);
 
       const params = new URLSearchParams(data);
       params.append('t', Date.now().toString());
@@ -46,11 +48,49 @@ export const ShareModal = ({ show, onClose, type, data, lang }: ShareModalProps)
     }
   }, [show, type, JSON.stringify(data)]);
 
+  // 🔥 核心修复：使用 Blob 流下载，防止页面跳转
+  const handleSaveImage = async () => {
+    if (!imageUrl) return;
+    setIsSaving(true);
+
+    try {
+        // 1. 请求图片数据
+        const response = await fetch(imageUrl);
+        const blob = await response.blob();
+        
+        // 2. 创建内存临时地址
+        const blobUrl = window.URL.createObjectURL(blob);
+        
+        // 3. 构造隐形下载链接
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = `toughlove_${type}_${Date.now()}.png`;
+        document.body.appendChild(link);
+        
+        // 4. 触发点击
+        link.click();
+        
+        // 5. 清理现场
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(blobUrl);
+        
+        // 6. 成功反馈
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 3000);
+
+    } catch (e) {
+        console.error("Save failed:", e);
+        alert(isZh ? "保存失败，请长按图片手动保存" : "Save failed. Please long-press the image.");
+    } finally {
+        setIsSaving(false);
+    }
+  };
+
   if (!show) return null;
 
   return (
-    <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/95 backdrop-blur-xl p-6 animate-in fade-in duration-200">
-      <div className="w-full max-w-md flex flex-col gap-4">
+    <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/95 backdrop-blur-xl p-6 animate-in fade-in duration-200" onClick={onClose}>
+      <div className="w-full max-w-md flex flex-col gap-4" onClick={e => e.stopPropagation()}>
         
         {/* Header */}
         <div className="flex justify-between items-center text-gray-400">
@@ -87,7 +127,6 @@ export const ShareModal = ({ show, onClose, type, data, lang }: ShareModalProps)
             />
           )}
           
-          {/* 装饰性扫描线 */}
           <div className="absolute inset-0 bg-[linear-gradient(transparent_50%,rgba(0,0,0,0.5)_50%)] bg-[size:100%_4px] pointer-events-none opacity-20"></div>
         </div>
 
@@ -96,15 +135,26 @@ export const ShareModal = ({ show, onClose, type, data, lang }: ShareModalProps)
            <button onClick={onClose} className="flex-1 py-3 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs font-bold tracking-widest transition-colors">
              {isZh ? '关闭' : 'CLOSE'}
            </button>
+           
            {imageUrl && (
-             <a 
-               href={imageUrl} 
-               download={`toughlove_${type}_${Date.now()}.png`}
-               className="flex-[2] py-3 bg-[#7F5CFF] hover:bg-[#6b4bd6] text-white rounded-lg text-xs font-bold tracking-widest flex items-center justify-center gap-2 transition-colors shadow-[0_0_20px_rgba(127,92,255,0.3)]"
+             <button 
+               onClick={handleSaveImage}
+               disabled={isSaving}
+               className={`flex-[2] py-3 rounded-lg text-xs font-bold tracking-widest flex items-center justify-center gap-2 transition-all shadow-[0_0_20px_rgba(127,92,255,0.3)]
+                 ${saveSuccess 
+                    ? 'bg-green-500 text-black hover:bg-green-400' 
+                    : 'bg-[#7F5CFF] text-white hover:bg-[#6b4bd6]'
+                 }
+               `}
              >
-               <Download size={16} />
-               {isZh ? '保存影像' : 'SAVE IMAGE'}
-             </a>
+               {isSaving ? (
+                   <Loader2 size={16} className="animate-spin" />
+               ) : saveSuccess ? (
+                   <><Check size={16} /> {isZh ? '已保存' : 'SAVED'}</>
+               ) : (
+                   <><Download size={16} /> {isZh ? '保存影像' : 'SAVE IMAGE'}</>
+               )}
+             </button>
            )}
         </div>
         
