@@ -500,80 +500,95 @@ export default function ChatRoomPage() {
     }
   }, [messages, isReady]);
 
-  const handleSend = async (textOverride?: string, isHidden: boolean = false) => {
-    const textToSend = textOverride || input;
-    if (!textToSend.trim() || isLoading) return;
+ // ... existing code ...
 
-    if (!isHidden) {
-        const isToxic = TOXIC_KEYWORDS.some(k => textToSend.includes(k));
-        if (isToxic) {
-          updateStats('toxic');
-        } else {
-          updateStats('chat');
-        }
-    }
+ const handleSend = async (textOverride?: string, isHidden: boolean = false) => {
+  const textToSend = textOverride || input;
+  if (!textToSend.trim() || isLoading) return;
 
-    let newHistory = messages;
-    if (!isHidden) {
-        const userMsg = { role: 'user', content: textToSend };
-        setMessages(prev => { newHistory = [...prev, userMsg]; return newHistory; });
-    }
-    
-    setInput('');
-    setIsLoading(true);
+  // 🔥 修复开始：分离“显示内容”与“发送内容”
+  // 检测是否包含 [SYSTEM_CONTEXT...] 这种隐藏指令
+  const systemPattern = /^\[SYSTEM_CONTEXT:[\s\S]*?\]/;
+  const match = textToSend.match(systemPattern);
+  
+  // 如果有指令，界面上只显示指令后面的部分；否则显示全部
+  const displayContent = match ? textToSend.replace(match[0], '') : textToSend;
+  // 🔥 修复结束
 
-    try {
-      const timeInfo = getLocalTimeInfo();
-      const weather = await getSimpleWeather();
-      const envInfo = { 
-          ...timeInfo, 
-          weather: weather || "未知",
-          system_note: "Strict Rule: The setting is a generic futuristic city. NEVER use the term 'Night City' (夜之城). Use 'The City' or 'Neon City'. Treat [SYSTEM_CONTEXT] as absolute facts about yourself."
-      };
-      
-      const dailyData = JSON.parse(localStorage.getItem('toughlove_daily_feed_v1') || '{}');
-      const myDaily = dailyData.data?.find((d: any) => d.persona === config.name);
-      
-      const fullInventory = hydrateInventory(inventoryItems);
-      const realUserId = getDeviceId();
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-            message: textToSend, 
-            history: newHistory.slice(-12), 
-            partnerId: partnerId, 
-            userId: realUserId,
-            inventory: fullInventory, 
-            envInfo, 
-            dailyEvent: myDaily 
-        })
-      });
-
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
-
-      setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
-
-      if (data.fragmentTriggered) {
-          if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 200]);
-          const isZh = lang === 'zh' || lang === 'tw';
-          const shardMsg = isZh
-            ? `[✨灵魂共鸣-捕获记忆碎片✨]`
-            : `[✨Soul Resonance-Memory Fragment Captured✨]`;
-          setTimeout(() => {
-             setMessages(prev => [...prev, { role: 'assistant', content: shardMsg }]);
-          }, 600);
-          localStorage.setItem('has_new_shard', 'true');
+  if (!isHidden) {
+      const isToxic = TOXIC_KEYWORDS.some(k => displayContent.includes(k)); // 毒性检测也改用 displayContent
+      if (isToxic) {
+        updateStats('toxic');
+      } else {
+        updateStats('chat');
       }
+  }
 
-    } catch (error) {
-      console.error(error);
-      setMessages(prev => [...prev, { role: 'assistant', content: `🔴 ${t.error}` }]);
-    } finally {
-      setIsLoading(false);
+  let newHistory = messages;
+  if (!isHidden) {
+      // 🔥 关键点：UI 里只添加纯净的 displayContent
+      const userMsg = { role: 'user', content: displayContent };
+      setMessages(prev => { newHistory = [...prev, userMsg]; return newHistory; });
+  }
+  
+  setInput('');
+  setIsLoading(true);
+
+  try {
+    const timeInfo = getLocalTimeInfo();
+    const weather = await getSimpleWeather();
+    const envInfo = { 
+        ...timeInfo, 
+        weather: weather || "未知",
+        system_note: "Strict Rule: The setting is a generic futuristic city. NEVER use the term 'Night City' (夜之城). Use 'The City' or 'Neon City'. Treat [SYSTEM_CONTEXT] as absolute facts about yourself."
+    };
+    
+    const dailyData = JSON.parse(localStorage.getItem('toughlove_daily_feed_v1') || '{}');
+    const myDaily = dailyData.data?.find((d: any) => d.persona === config.name);
+    
+    const fullInventory = hydrateInventory(inventoryItems);
+    const realUserId = getDeviceId();
+    
+    // 发送给 API 的依然是 textToSend (包含指令的完整版)，这样 AI 才能读到 System Context
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+          message: textToSend, // <--- AI 接收完整指令
+          history: newHistory.slice(-12), // <--- 历史记录里存的是纯净版（符合逻辑）
+          partnerId: partnerId, 
+          userId: realUserId,
+          inventory: fullInventory, 
+          envInfo, 
+          dailyEvent: myDaily 
+      })
+    });
+
+    // ... rest of the function remains the same ...
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+
+    setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
+
+    if (data.fragmentTriggered) {
+        if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 200]);
+        const isZh = lang === 'zh' || lang === 'tw';
+        const shardMsg = isZh
+          ? `[✨灵魂共鸣-捕获记忆碎片✨]`
+          : `[✨Soul Resonance-Memory Fragment Captured✨]`;
+        setTimeout(() => {
+           setMessages(prev => [...prev, { role: 'assistant', content: shardMsg }]);
+        }, 600);
+        localStorage.setItem('has_new_shard', 'true');
     }
-  };
+
+  } catch (error) {
+    console.error(error);
+    setMessages(prev => [...prev, { role: 'assistant', content: `🔴 ${t.error}` }]);
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const handleTarotJump = (payload: any) => {
     setShowTarot(false);
