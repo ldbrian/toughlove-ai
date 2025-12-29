@@ -1,3 +1,8 @@
+// public/service-worker.js
+
+// ==========================================
+// PART 1: PWA 缓存逻辑 (保持不变)
+// ==========================================
 const CACHE_NAME = 'toughlove-cache-v1';
 const OFFLINE_URL = '/';
 
@@ -18,7 +23,6 @@ self.addEventListener('install', (event) => {
       return cache.addAll(ASSETS_TO_CACHE);
     })
   );
-  // 强制立即激活，不用等待旧的 SW 停止
   self.skipWaiting();
 });
 
@@ -37,20 +41,16 @@ self.addEventListener('activate', (event) => {
       );
     })
   );
-  // 立即接管所有页面
   return self.clients.claim();
 });
 
-// 3. 请求拦截：优先使用缓存 (Cache First) 或 网络优先 (Network First)
-// 这里使用 Stale-While-Revalidate 策略的简化版：先网络，失败走缓存
+// 3. 请求拦截：优先使用缓存
 self.addEventListener('fetch', (event) => {
-  // 只处理 HTTP/HTTPS 请求 (过滤 chrome-extension 等)
   if (!event.request.url.startsWith('http')) return;
 
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        // 如果网络请求成功，克隆一份存入缓存（更新缓存）
         if (response && response.status === 200 && response.type === 'basic') {
           const responseToCache = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
@@ -60,8 +60,65 @@ self.addEventListener('fetch', (event) => {
         return response;
       })
       .catch(() => {
-        // 网络失败（离线），尝试读取缓存
         return caches.match(event.request);
       })
+  );
+});
+
+// ==========================================
+// PART 2: v3.0 主动唤醒 (新增 Push 逻辑) 🔥 补全这部分
+// ==========================================
+
+// 4. 监听推送事件 (Push)
+self.addEventListener('push', function(event) {
+  if (!event.data) return;
+
+  // 解析后端发来的 JSON
+  const data = event.data.json();
+  const { title, body, icon, data: notificationData } = data;
+
+  const options = {
+    body: body || '有新的消息',
+    icon: icon || '/avatars/sol_hero.jpg', // 默认可以用 Sol 的头像，或者 '/icon.png'
+    badge: '/icon.png', // Android 状态栏小图标
+    vibrate: [100, 50, 100], // 震动模式
+    data: {
+      url: notificationData?.url || '/', 
+      persona: notificationData?.persona || 'System'
+    },
+    actions: [
+      { action: 'open', title: '查看' },
+      { action: 'close', title: '忽略' }
+    ]
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(title || 'TOUGH Love', options)
+  );
+});
+
+// 5. 监听通知点击事件 (Notification Click)
+self.addEventListener('notificationclick', function(event) {
+  event.notification.close();
+
+  if (event.action === 'close') return;
+
+  // 点击通知打开窗口或聚焦已有窗口
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
+      const url = event.notification.data.url || '/';
+      
+      // 尝试聚焦已打开的 Tab
+      for (let i = 0; i < clientList.length; i++) {
+        const client = clientList[i];
+        if (client.url.includes(url) && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      // 否则打开新窗口
+      if (clients.openWindow) {
+        return clients.openWindow(url);
+      }
+    })
   );
 });

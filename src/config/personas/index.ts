@@ -8,14 +8,16 @@ import { ASH_CONFIG } from './ash';
 import { RIN_CONFIG } from './rin';
 import { VEE_CONFIG } from './vee';
 // 如果有 sol.ts 和 echo.ts 也要在这里引入
-// import { SOL_CONFIG } from './sol';
-// import { ECHO_CONFIG } from './echo';
+import { SOL_CONFIG } from './sol';
+import { ECHO_CONFIG } from './echo';
 
 // 3. 导出汇总注册表
 export const PERSONAS_REGISTRY: Record<string, PersonaConfig> = {
     ash: ASH_CONFIG,
     rin: RIN_CONFIG,
     vee: VEE_CONFIG,
-    // sol: SOL_CONFIG,
-    // echo: ECHO_CONFIG,
+    sol: SOL_CONFIG,
+    echo: ECHO_CONFIG,
 };
+
+export const PERSONAS_LIST = Object.values(PERSONAS_REGISTRY);

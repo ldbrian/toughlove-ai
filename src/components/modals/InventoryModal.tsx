@@ -1,196 +1,235 @@
-import { useState } from 'react';
-import { X, PackageOpen, Package, Eye, Zap } from 'lucide-react';
-import { InventoryModalProps, LootItem } from '@/types'; 
 
-export function InventoryModal({ 
-  show, 
-  onClose, 
-  inventory, 
-  setInventory, 
-  handleSend, 
-  partnerId, 
-  lang 
-}: InventoryModalProps) {
+
+import React, { useState, useMemo, useEffect } from 'react';
+import { X, Package, ArrowRight, Loader2 } from 'lucide-react';
+import { getDeviceId } from '@/lib/utils';
+// 🔥 引入你的 i18n 模块
+import { getDict, Dictionary, baseEn } from '@/lib/i18n/dictionaries';
+import { LangType } from '@/types';
+
+interface InventoryItem {
+  id: string;
+  name: { zh: string; en: string };
+  description: { zh: string; en: string };
+  rarity: 'common' | 'rare' | 'epic' | 'legendary';
+  type: string;
+  image: string;
+  price: number;
+  count?: number; 
+}
+
+interface InventoryModalProps {
+  show: boolean;
+  onClose: () => void;
+  inventory: any[]; 
+  onUseItem?: (msg: string) => void; 
+}
+
+// 稀有度颜色映射 (UI 样式，不涉及文案)
+const RARITY_COLOR_MAP: Record<string, string> = {
+  legendary: 'border-yellow-500/50 text-yellow-500 shadow-yellow-500/20',
+  epic: 'border-purple-500/50 text-purple-500 shadow-purple-500/20',
+  rare: 'border-blue-500/50 text-blue-500 shadow-blue-500/20',
+  common: 'border-gray-700 text-gray-400' 
+};
+
+export function InventoryModal({ show, onClose, inventory, onUseItem }: InventoryModalProps) {
+  const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+  const [isUsing, setIsUsing] = useState(false);
   
-  const [selectedItem, setSelectedItem] = useState<LootItem | null>(null);
+  // 🔥 管理语言状态
+  const [lang, setLang] = useState<LangType>('zh');
+  const [dict, setDict] = useState<Dictionary>(baseEn);
+
+  useEffect(() => {
+    // 从 localStorage 读取语言，默认为 zh
+    const savedLang = (localStorage.getItem('toughlove_lang') as LangType) || 'zh';
+    setLang(savedLang);
+    setDict(getDict(savedLang));
+  }, []);
+
+  const stackedInventory = useMemo(() => {
+    const map = new Map<string, InventoryItem>();
+    inventory.forEach((item) => {
+      if (map.has(item.id)) {
+        const existing = map.get(item.id)!;
+        existing.count = (existing.count || 1) + 1;
+      } else {
+        map.set(item.id, { ...item, count: 1 });
+      }
+    });
+    return Array.from(map.values());
+  }, [inventory]);
 
   if (!show) return null;
 
-  // 1. 定义背包最小格子数 (例如 20格)
-  const MIN_SLOTS = 20;
-  
-  // 计算需要补多少个空格子
-  const emptySlotsCount = Math.max(0, MIN_SLOTS - inventory.length);
-  const emptySlots = new Array(emptySlotsCount).fill(null);
+  const handleConfirmUse = async () => {
+    if (!selectedItem) return;
 
-  const itemIsOwned = (item: LootItem) => {
-      if (item.id === 'placeholder_tarot') return false; 
-      return inventory.some(i => i.id === item.id);
-  };
+    setIsUsing(true);
+    try {
+      const userId = getDeviceId();
+      const targetPersona = 'ash'; 
 
-  const handleItemClick = (item: LootItem) => {
-    setSelectedItem(item);
-  };
+      const res = await fetch('/api/shop/use', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          itemId: selectedItem.id,
+          targetPersona 
+        })
+      });
 
-  // 🔥 核心修改：使用/展示物品的逻辑
-  const handleConfirmUse = () => {
-    if (selectedItem && itemIsOwned(selectedItem)) {
-        const itemName = lang === 'zh' ? (selectedItem.name?.zh || '未知物品') : (selectedItem.name?.en || 'Unknown Item');
-        const isSpecial = selectedItem.type === 'special';
-        
-        let actionMessage = "";
+      const data = await res.json();
 
-        // 3. 根据类型生成不同的“显性”剧情提示词
-        if (lang === 'zh') {
-            if (isSpecial) {
-                // 剧情道具：展示给对方看
-                actionMessage = `(从背包里小心翼翼地拿出了【${itemName}】，展示给你看)`; 
-            } else {
-                // 消耗品：直接使用
-                actionMessage = `(使用了物品【${itemName}】)`;
-            }
-        } else {
-            if (isSpecial) {
-                actionMessage = `(Takes out [${itemName}] and shows it to you)`;
-            } else {
-                actionMessage = `(Used item [${itemName}])`;
-            }
-        }
-        
-        // 发送这条消息到聊天框 (AI 会看到，用户也会看到)
-        handleSend(actionMessage, false); // false = 不隐藏，显示在聊天记录里
-        
-        setSelectedItem(null); 
-        onClose(); 
-    }
-  };
-
-  const getRarityStyles = (rarity: string) => {
-    switch (rarity) {
-      case 'legendary': return 'border-amber-500 bg-amber-500/10 text-amber-200 shadow-[0_0_15px_rgba(245,158,11,0.3)]';
-      case 'epic': return 'border-purple-500 bg-purple-500/10 text-purple-200 shadow-[0_0_15px_rgba(168,85,247,0.3)]';
-      case 'rare': return 'border-cyan-500 bg-cyan-500/10 text-cyan-200 shadow-[0_0_10px_rgba(6,182,212,0.3)]';
-      default: return 'border-white/10 bg-white/5 text-gray-400';
-    }
-  };
-
-  const renderItemIcon = (item: LootItem, isLarge = false) => {
-      // @ts-ignore
-      const src = item.image || item.iconSvg || '📦';
-      const isImage = src.startsWith('/') || src.startsWith('http');
-
-      if (isImage) {
-          return (
-              <div className="w-full h-full overflow-hidden flex items-center justify-center rounded-md">
-                  <img 
-                      src={src} 
-                      alt="item" 
-                      className={`w-full h-full object-cover transition-transform duration-500 ${isLarge ? '' : 'hover:scale-110'}`} 
-                  />
-              </div>
-          );
-      } else {
-          return <span className={isLarge ? "text-5xl drop-shadow-md" : "text-3xl drop-shadow-sm"}>{src}</span>;
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed');
       }
+
+      if (onUseItem) {
+          // 🔥 动态拼接反馈文案 (使用字典)
+          const moodText = dict.inventory.msg_success_mood;
+          const favText = dict.inventory.msg_success_fav;
+
+          const moodChange = data.moodBoost ? `${moodText} +${data.moodBoost}` : '';
+          const favChange = data.favBoost ? `${favText} +${data.favBoost}` : '';
+          
+          let statsText = '';
+          if (moodChange || favChange) {
+              statsText = ` [${[moodChange, favChange].filter(Boolean).join(', ')}]`;
+          }
+
+          const resultText = `${dict.inventory.system_prefix} ${data.message}${statsText}`; 
+          onUseItem(resultText);
+      }
+      
+      setSelectedItem(null);
+      onClose();
+
+    } catch (error: any) {
+      console.error("Failed to use item:", error);
+      alert(`Error: ${error.message}`);
+    } finally {
+      setIsUsing(false);
+    }
+  };
+
+  const getRarityColor = (rarity: string) => {
+    return RARITY_COLOR_MAP[rarity] || RARITY_COLOR_MAP['common'];
+  };
+
+  // 获取稀有度的本地化显示
+  const getRarityLabel = (rarity: string) => {
+    // @ts-ignore
+    return dict.inventory.rarity[rarity] || dict.inventory.rarity.common;
+  }
+
+  // 获取物品名称 (优先取当前语言)
+  const getItemName = (item: InventoryItem) => {
+     if (lang === 'zh' || lang === 'tw') return item.name?.zh || item.name?.en;
+     return item.name?.en || item.name?.zh;
+  };
+
+  // 获取物品描述
+  const getItemDesc = (item: InventoryItem) => {
+    if (lang === 'zh' || lang === 'tw') return item.description?.zh || item.description?.en;
+    return item.description?.en || item.description?.zh;
   };
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200 pointer-events-auto">
-      <div className="absolute inset-0 bg-black/90 backdrop-blur-sm" onClick={onClose} />
-      
-      <div className="relative w-full max-w-md h-[65vh] bg-[#090909] border border-white/10 rounded-3xl shadow-2xl overflow-hidden flex flex-col ring-1 ring-white/10">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="w-full max-w-md bg-[#0f0f0f] border border-gray-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
         
         {/* Header */}
-        <div className="flex justify-between items-center px-6 py-4 bg-[#111] border-b border-white/5 shrink-0">
-          <div className="flex items-center gap-3">
-            <PackageOpen size={18} className="text-[#7F5CFF]" />
-            <h2 className="text-sm font-black text-gray-200 tracking-[0.2em] uppercase">
-                {lang === 'zh' ? '背包' : 'INVENTORY'}
-            </h2>
+        <div className="flex items-center justify-between p-4 border-b border-gray-800 bg-[#151515]">
+          <div className="flex items-center gap-2 text-cyan-500">
+            <Package size={20} />
+            <h2 className="font-bold tracking-wider">{dict.inventory.title}</h2>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors"><X size={16} className="text-gray-400" /></button>
+          <button onClick={onClose} className="p-1 hover:bg-white/10 rounded-full transition-colors">
+            <X size={20} className="text-gray-400" />
+          </button>
         </div>
 
-        {/* Grid List */}
-        <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-          <div className="grid grid-cols-4 gap-3">
-             {/* 渲染真实物品 */}
-             {inventory.map((item, idx) => {
-                const isSelected = selectedItem?.id === item.id;
-                return (
-                    <div 
-                        key={`${item.id}-${idx}`}
-                        onClick={() => handleItemClick(item)}
-                        className={`
-                            aspect-square rounded-xl border flex items-center justify-center cursor-pointer transition-all duration-200 relative overflow-hidden group
-                            ${getRarityStyles(item.rarity)}
-                            ${isSelected ? 'ring-2 ring-white/50 scale-95' : 'hover:border-white/30'}
-                        `}
-                    >
-                        <div className="w-[70%] h-[70%] flex items-center justify-center">
-                            {renderItemIcon(item)}
-                        </div>
-                        {isSelected && <div className="absolute inset-0 bg-white/10 animate-pulse"></div>}
-                    </div>
-                );
-             })}
-
-             {/* 1. 渲染空格子 (占位符) */}
-             {emptySlots.map((_, idx) => (
-                <div 
-                    key={`empty-${idx}`}
-                    className="aspect-square rounded-xl border border-white/5 bg-white/[0.02] flex items-center justify-center relative"
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-4 min-h-[300px]">
+          {inventory.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-gray-600 space-y-3 opacity-50">
+                <Package size={48} strokeWidth={1} />
+                <p className="font-mono text-sm">{dict.inventory.empty_state}</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-4 gap-3">
+              {stackedInventory.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => setSelectedItem(item)}
+                  className={`aspect-square relative group rounded-xl border flex items-center justify-center bg-[#1a1a1a] hover:bg-[#252525] transition-all hover:scale-105 active:scale-95 ${
+                    selectedItem?.id === item.id ? 'border-cyan-500 ring-2 ring-cyan-500/20' : 'border-white/5 hover:border-white/20'
+                  }`}
                 >
-                    {/* 给空格子加一点点细节，比如一个小十字或者斜线，显得更有科技感 */}
-                    <div className="w-2 h-2 rounded-full bg-white/5"></div>
-                </div>
-             ))}
-          </div>
+                  <span className="text-2xl filter drop-shadow-lg">{item.image}</span>
+                  {item.count && item.count > 1 && (
+                    <span className="absolute top-1 right-1 bg-gray-800 border border-gray-600 text-gray-200 text-[10px] px-1.5 rounded-full font-mono shadow-md">
+                        x{item.count}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Detail Panel */}
-        <div className={`
-            bg-[#111] border-t border-white/10 transition-all duration-300 ease-out shrink-0
-            ${selectedItem ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 absolute bottom-0 w-full'}
-        `}>
-            {selectedItem && (
-                <div className="p-6 flex gap-5">
-                    {/* 左侧大图 */}
-                    <div className={`w-16 h-16 rounded-lg border shrink-0 flex items-center justify-center overflow-hidden bg-black/50 ${getRarityStyles(selectedItem.rarity)}`}>
-                         {renderItemIcon(selectedItem, true)}
-                    </div>
-                    
-                    {/* 右侧信息 */}
-                    <div className="flex-1 flex flex-col justify-between">
-                        <div>
-                            <h3 className="text-white font-bold text-sm tracking-wide">
-                                {lang === 'zh' ? (selectedItem.name?.zh || '...') : (selectedItem.name?.en || '...')}
-                            </h3>
-                            <p className="text-gray-400 text-[10px] leading-relaxed mt-1 line-clamp-2">
-                                {lang === 'zh' ? (selectedItem.description?.zh || '...') : (selectedItem.description?.en || '...')}
-                            </p>
-                        </div>
-                        
-                        {/* 2. 动态按钮：根据物品类型显示“使用”或“展示” */}
-                        <button 
-                            onClick={handleConfirmUse} 
-                            className={`mt-3 w-full py-2 text-xs font-black uppercase tracking-widest rounded transition-colors active:scale-95 flex items-center justify-center gap-2
-                                ${selectedItem.type === 'special' 
-                                    ? 'bg-purple-500 hover:bg-purple-400 text-white'  // 剧情道具用紫色
-                                    : 'bg-white hover:bg-gray-200 text-black'         // 普通道具用白色
-                                }
-                            `}
-                        >
-                            {selectedItem.type === 'special' ? (
-                                <><Eye size={12} /> {lang === 'zh' ? '展示给 TA' : 'SHOW'}</>
-                            ) : (
-                                <><Zap size={12} /> {lang === 'zh' ? '使用' : 'USE'}</>
-                            )}
-                        </button>
-                    </div>
-                </div>
-            )}
-        </div>
+        {/* Footer */}
+        {selectedItem ? (
+           <div className="p-4 bg-[#151515] border-t border-gray-800 animate-in slide-in-from-bottom-2 duration-200">
+              <div className="flex gap-4">
+                  <div className={`w-16 h-16 rounded-xl border flex items-center justify-center bg-black/50 text-3xl shadow-lg ${getRarityColor(selectedItem.rarity)}`}>
+                      {selectedItem.image}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-start">
+                        <h3 className="font-bold text-gray-200 truncate pr-2">
+                            {getItemName(selectedItem) || dict.common.unknown}
+                        </h3>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${getRarityColor(selectedItem.rarity)} bg-transparent`}>
+                            {getRarityLabel(selectedItem.rarity)}
+                        </span>
+                      </div>
+                      
+                      <p className="text-xs text-gray-500 mt-1 line-clamp-2 leading-relaxed">
+                        {getItemDesc(selectedItem) || '...'}
+                      </p>
+                      
+                      <p className="text-[10px] text-gray-600 mt-2 font-mono">
+                          {dict.inventory.owned}: {selectedItem.count || 1}
+                      </p>
+                  </div>
+              </div>
+              
+              <button 
+                onClick={handleConfirmUse}
+                disabled={isUsing}
+                className="w-full mt-4 bg-cyan-600 hover:bg-cyan-500 text-white py-3 rounded-xl font-bold tracking-wide flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
+              >
+                {isUsing ? (
+                    <>
+                        <Loader2 className="animate-spin" size={18} />
+                        {dict.inventory.btn_using}
+                    </>
+                ) : (
+                    <>
+                        {dict.inventory.btn_use} <ArrowRight size={16} />
+                    </>
+                )}
+              </button>
+           </div>
+        ) : (
+            <div className="p-3 text-center text-xs text-gray-600 font-mono border-t border-white/5">
+                {dict.inventory.select_tip}
+            </div>
+        )}
       </div>
     </div>
   );

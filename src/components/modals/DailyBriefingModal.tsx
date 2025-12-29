@@ -1,17 +1,18 @@
-import { useState, useEffect } from 'react';
-import { X, Sparkles, Download, Clock, Share2 } from 'lucide-react';
-import { LangType } from '@/types';
-import { useContent } from '@/contexts/ContentContext';
-import { ShareModal } from '@/components/shared/ShareModal';
 
-// 🔥 1. 升级接口定义：严格匹配双语结构
+import { useState, useEffect } from 'react';
+import { X, Sparkles, Download, Share2, RefreshCw } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { LangType } from '@/types';
+import { ShareModal } from '@/components/shared/ShareModal';
+import { createClient } from '@/utils/supabase/client';
+import { memoryService } from '@/services/memoryService';
+
 interface TarotCardData {
   id: string;
+  dbId: number;
   name: { zh: string; en: string };
   image: string;
-  // 必须是双语对象
   desc: { zh: string; en: string }; 
-  // 关键词也支持双语
   keywords: { zh: string[]; en: string[] }; 
 }
 
@@ -19,300 +20,239 @@ interface DailyBriefingModalProps {
   show: boolean;
   onClose: () => void;
   lang: LangType;
-  onJumpToChat?: (payload: any) => void; 
-  forcedSpeaker?: string;
   onCollect?: () => void;
-  partnerId: string;
 }
 
-const STORAGE_KEY = 'toughlove_daily_tarot_log';
-
 export const DailyBriefingModal = ({ show, onClose, lang, onCollect }: DailyBriefingModalProps) => {
-  const { tarotDeck } = useContent(); 
+  // 新增 REVIEW 状态，用于回看
   const [step, setStep] = useState<'LOADING' | 'SHUFFLE' | 'DRAW' | 'REVEAL' | 'REVIEW'>('LOADING');
+  const [deck, setDeck] = useState<TarotCardData[]>([]);
   const [selectedCard, setSelectedCard] = useState<TarotCardData | null>(null);
-  const [isFlipping, setIsFlipping] = useState(false);
-  
   const [showShare, setShowShare] = useState(false);
 
-  // 辅助：获取本地图片文件名
-  const getTarotFilename = (id: string) => {
-      const map: Record<string, string> = {
-          '0': 'fool.jpg', '1': 'magician.jpg', '2': 'high_priestess.jpg', '3': 'empress.jpg',
-          '4': 'emperor.jpg', '5': 'hierophant.jpg', '6': 'lovers.jpg', '7': 'chariot.jpg',
-          '8': 'strength.jpg', '9': 'hermit.jpg', '10': 'wheel_of_fortune.jpg', '11': 'justice.jpg',
-          '12': 'hanged_man.jpg', '13': 'death.jpg', '14': 'temperance.jpg', '15': 'devil.jpg',
-          '16': 'tower.jpg', '17': 'star.jpg', '18': 'moon.jpg', '19': 'sun.jpg',
-          '20': 'judgement.jpg', '21': 'world.jpg'
-      };
-      const cleanId = String(id).replace(/^tarot_/, '');
-      return map[cleanId] || 'fool.jpg';
-  };
-
-  // 🔥 2. 数据清洗函数
-  const normalizeCard = (raw: any): TarotCardData => {
-      if (!raw) return { 
-          id: 'unknown', 
-          name: {zh:'?',en:'?'}, 
-          image: '', 
-          desc: {zh:'...',en:'...'}, 
-          keywords: {zh:[], en:[]} 
-      };
-      
-      const nameObj = {
-          zh: raw.name_zh || raw.name?.zh || '未知',
-          en: raw.name_en || raw.name?.en || 'Unknown'
-      };
-
-      const descObj = {
-          zh: raw.desc_zh || raw.description_zh || raw.desc?.zh || raw.meaning?.zh || '暂无解读...',
-          en: raw.desc_en || raw.description_en || raw.desc?.en || raw.meaning?.en || 'No description available.'
-      };
-
-      let keysZh: string[] = [];
-      let keysEn: string[] = [];
-
-      if (Array.isArray(raw.keywords)) keysZh = raw.keywords;
-      else if (typeof raw.keywords === 'string') keysZh = [raw.keywords]; 
-      else if (raw.metadata?.keywords) keysZh = raw.metadata.keywords;
-
-      if (Array.isArray(raw.keywords_en)) keysEn = raw.keywords_en;
-      else if (typeof raw.keywords_en === 'string') keysEn = [raw.keywords_en];
-
-      if (keysZh.length === 0) keysZh = ['命运'];
-      if (keysEn.length === 0) keysEn = ['Fate'];
-
-      let imgSrc = raw.image_url || raw.image || '';
-      if (!imgSrc || !imgSrc.includes('/')) {
-          if (raw.id !== undefined) {
-             imgSrc = `/tarot/${getTarotFilename(raw.id)}`; 
-          }
-      }
-
-      return {
-          id: raw.id,
-          name: nameObj,
-          image: imgSrc,
-          desc: descObj,
-          keywords: { zh: keysZh, en: keysEn }
-      };
-  };
-
-  // 🔥 3. 核心修复：依赖项增加 tarotDeck，并处理数据未加载的情况
+  // 1. 初始化逻辑：判断是“新抽”还是“回看”
   useEffect(() => {
     if (show) {
-      checkDailyStatus();
+      checkTodayStatus();
     }
-  }, [show, tarotDeck]); // <--- 关键：当牌组加载完毕后，会再次触发检查
+  }, [show]);
 
-  const checkDailyStatus = () => {
-    // 🛡️ 防御：如果牌组还没从 DB 加载回来，先不要做决定，保持 LOADING
-    if (!tarotDeck || tarotDeck.length === 0) {
-        return; 
-    }
+  const checkTodayStatus = async () => {
+      // 检查本地缓存
+      const today = new Date().toDateString();
+      const lastDraw = localStorage.getItem('toughlove_daily_tarot_log');
+      
+      let foundToday = false;
+      if (lastDraw) {
+          try {
+              const log = JSON.parse(lastDraw);
+              if (log.date === today && log.result) {
+                  // 命中缓存：直接进入 REVIEW 模式
+                  const savedCard = JSON.parse(log.result);
+                  setSelectedCard(savedCard);
+                  setStep('REVIEW');
+                  foundToday = true;
+              }
+          } catch (e) { console.error(e); }
+      }
 
-    // 🕒 时区修复：使用本地日期，而不是 UTC
-    const today = new Date().toLocaleDateString(); 
-    const savedLog = localStorage.getItem(STORAGE_KEY);
-    
-    if (savedLog) {
-        try {
-            const log = JSON.parse(savedLog);
-            // 检查是否是今天，并且记录了 cardId
-            if (log.date === today && log.cardId !== undefined) {
-                // 强制类型转换 String 比较，防止 '0' !== 0
-                const raw = tarotDeck.find((c:any) => String(c.id) === String(log.cardId));
-                
-                if (raw) {
-                    setSelectedCard(normalizeCard(raw));
-                    setStep('REVIEW'); // 命中今日记录，直接进 REVIEW
-                    return; 
-                }
-            }
-        } catch (e) {
-            console.error("Log parse error", e);
-        }
-    }
-
-    // 如果没有今日记录，或者解析失败，进入洗牌流程
-    setStep('SHUFFLE');
-    setSelectedCard(null);
-    setTimeout(() => setStep('DRAW'), 1200);
+      // 如果没抽过，才去拉取牌库准备洗牌
+      if (!foundToday) {
+          setStep('LOADING');
+          fetchDeck();
+      }
   };
 
-  const handleDraw = () => {
-    if (step !== 'DRAW') return;
-    if (!tarotDeck || tarotDeck.length === 0) return;
-
-    const randomRaw = tarotDeck[Math.floor(Math.random() * tarotDeck.length)];
-    const card = normalizeCard(randomRaw);
+  const fetchDeck = async () => {
+    const supabase = createClient();
+    const { data, error } = await supabase.from('tarot_cards').select('*');
     
-    setSelectedCard(card);
-    setIsFlipping(true);
+    if (error || !data) {
+        console.error("Failed to fetch deck:", error);
+        return;
+    }
 
-    // 🕒 时区修复：保存时也用本地日期
-    const today = new Date().toLocaleDateString();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        date: today,
-        cardId: randomRaw.id
+    const formattedDeck: TarotCardData[] = data.map(card => ({
+        id: `tarot_${card.id}`,
+        dbId: card.id,
+        name: { zh: card.name_zh, en: card.name_en },
+        image: card.image_url,
+        desc: card.meaning,
+        keywords: card.keywords
     }));
+
+    setDeck(formattedDeck);
+    // 自动开始洗牌
+    setTimeout(() => setStep('SHUFFLE'), 500);
+  };
+
+  // 2. 抽卡流程
+  const handleDraw = () => {
+    if (step !== 'SHUFFLE' || deck.length === 0) return;
     
+    if (navigator.vibrate) navigator.vibrate(50);
+    setStep('DRAW');
+    
+    const randomIndex = Math.floor(Math.random() * deck.length);
+    const card = deck[randomIndex];
+    setSelectedCard(card);
+
     setTimeout(() => {
         setStep('REVEAL');
-        setIsFlipping(false);
-    }, 600);
+        if (navigator.vibrate) navigator.vibrate([50, 100]);
+        
+        // 🔥 关键修改：只保存数据，不关闭窗口！
+        saveResultToStorageAndDB(card);
+    }, 1500);
   };
 
-  const handleCollect = () => {
-    if (!selectedCard) return;
+  // 3. 保存逻辑
+  const saveResultToStorageAndDB = async (card: TarotCardData) => {
+      // 存本地
+      const log = {
+          date: new Date().toDateString(),
+          cardName: lang === 'zh' ? card.name.zh : card.name.en,
+          result: JSON.stringify(card),
+          timestamp: Date.now()
+      };
+      localStorage.setItem('toughlove_daily_tarot_log', JSON.stringify(log));
 
-    const strId = String(selectedCard.id);
-    const newLootId = strId.startsWith('tarot_') ? strId : `tarot_${strId}`;
+      // 存数据库 (后台静默执行)
+      memoryService.addTarotToInventory(card.id).catch(console.error);
 
-    const savedInv = localStorage.getItem('toughlove_inventory');
-    let currentInv: string[] = savedInv ? JSON.parse(savedInv) : [];
+      // 通知首页变色，但不关闭模态框
+      if (onCollect) onCollect(); 
+      window.dispatchEvent(new Event('storage'));
+  };
 
-    currentInv = currentInv.filter(id => !id.startsWith('tarot_'));
-    if (!currentInv.includes(newLootId)) {
-        currentInv.push(newLootId);
-    }
-
-    localStorage.setItem('toughlove_inventory', JSON.stringify(currentInv));
-    if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
-    if (onCollect) onCollect();
-    onClose();
+  // 4. 用户点击关闭/收下
+  const handleConfirmClose = () => {
+      onClose();
+      // 延迟重置状态，避免动画跳变
+      setTimeout(() => {
+          setStep('LOADING');
+          setSelectedCard(null);
+      }, 300);
   };
 
   if (!show) return null;
 
   return (
-    <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/95 backdrop-blur-xl p-4 animate-in fade-in duration-300">
-      
-      {step !== 'SHUFFLE' && step !== 'LOADING' && !isFlipping && (
-          <button onClick={onClose} className="absolute top-6 right-6 p-2 bg-white/10 rounded-full hover:bg-white/20 transition-colors z-50">
-            <X size={20} className="text-white" />
-          </button>
-      )}
+    <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center font-sans touch-none">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-purple-900/20 via-black to-black pointer-events-none" />
 
-      <div className="flex flex-col items-center justify-center w-full max-w-md text-center relative">
-        <div className="mb-8 space-y-2 h-16"> 
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-400 text-[10px] font-bold tracking-widest uppercase">
-                <Sparkles size={12} /> {lang === 'zh' ? '每日命运' : 'DAILY FATE'}
-            </div>
-            <h2 className="text-2xl font-black text-white tracking-tight animate-[fadeIn_0.5s]">
-                {step === 'LOADING' && (lang === 'zh' ? '正在连接命运...' : 'CONNECTING FATE...')}
-                {step === 'SHUFFLE' && (lang === 'zh' ? '正在洗牌...' : 'SHUFFLING...')}
-                {step === 'DRAW' && (lang === 'zh' ? '抽取你的暗示' : 'DRAW YOUR CARD')}
-                {(step === 'REVEAL' || step === 'REVIEW') && selectedCard && (lang === 'zh' ? selectedCard.name.zh : selectedCard.name.en)}
-            </h2>
-        </div>
-
-        <div className="relative w-64 h-96 mb-8 perspective-1000 flex-shrink-0">
-            {(step === 'SHUFFLE' || step === 'LOADING') && (
-                <div className="absolute inset-0 w-full h-full">
-                    {[0, 1, 2].map((i) => (
-                        <div key={i} className="absolute inset-0 bg-gradient-to-br from-[#2a2a2a] to-[#111] border border-white/10 rounded-xl shadow-2xl animate-[pulse_1s_infinite]" 
-                             style={{ 
-                                 transform: `translate(${i * 4}px, ${i * 4}px) rotate(${i * 2}deg)`,
-                                 zIndex: 10 - i
-                             }}>
-                             <div className="absolute inset-0 flex items-center justify-center opacity-10">
-                                 <Sparkles size={48} />
-                             </div>
-                        </div>
-                    ))}
-                </div>
-            )}
-
-            {step === 'DRAW' && (
-                <div 
-                    onClick={handleDraw}
-                    className="absolute inset-0 w-full h-full bg-gradient-to-br from-[#7F5CFF] to-[#3b218f] border-2 border-white/20 rounded-xl shadow-[0_0_30px_rgba(127,92,255,0.3)] flex items-center justify-center cursor-pointer hover:scale-[1.02] transition-transform duration-300 group z-20"
-                >
-                    <div className="absolute inset-2 border border-white/20 border-dashed rounded-lg flex items-center justify-center">
-                        <span className="text-4xl animate-bounce">👆</span>
-                    </div>
-                    <div className="absolute bottom-6 text-xs font-bold tracking-widest text-white/50 group-hover:text-white transition-colors">
-                        TAP TO REVEAL
-                    </div>
-                </div>
-            )}
-
-            {(step === 'REVEAL' || step === 'REVIEW' || isFlipping) && selectedCard && (
-                <div className={`absolute inset-0 w-full h-full transition-all duration-500 transform-style-3d z-30 ${isFlipping ? 'rotate-y-180 opacity-0 scale-90' : 'opacity-100 scale-100'}`}>
-                    <div className="w-full h-full bg-black rounded-xl overflow-hidden border-2 border-purple-500 shadow-[0_0_50px_rgba(168,85,247,0.4)] relative">
-                        <img 
-                            src={selectedCard.image} 
-                            className="w-full h-full object-cover" 
-                            alt="tarot" 
-                            onError={(e) => {
-                                console.error('Image load failed:', selectedCard.image);
-                                e.currentTarget.style.display = 'none'; 
-                            }}
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-90"></div>
-                        <div className="absolute bottom-0 left-0 right-0 p-6 text-left">
-                            <p className="text-purple-400 text-xs font-bold tracking-widest mb-1 uppercase">
-                                {lang === 'zh' 
-                                    ? (selectedCard.keywords.zh[0] || '神秘') 
-                                    : (selectedCard.keywords.en[0] || 'MYSTERY')}
-                            </p>
-                            <p className="text-gray-200 text-sm leading-relaxed font-medium">
-                                {lang === 'zh' ? selectedCard.desc.zh : selectedCard.desc.en}
-                            </p>
-                        </div>
-                        {step === 'REVIEW' && (
-                            <div className="absolute top-2 right-2 px-2 py-1 bg-black/60 rounded text-[9px] text-gray-400 flex items-center gap-1 border border-white/10">
-                                <Clock size={10} /> {lang === 'zh' ? '今日已抽' : 'Daily Record'}
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
-        </div>
-
-        {(step === 'REVEAL' || step === 'REVIEW') && selectedCard && (
-            <div className="w-full max-w-xs flex flex-col gap-3">
-                <button 
-                    onClick={() => setShowShare(true)}
-                    className="w-full py-3 border border-white/20 bg-white/5 text-white font-bold text-xs tracking-widest rounded-xl hover:bg-white/10 transition-colors flex items-center justify-center gap-2"
-                >
-                    <Share2 size={16} />
-                    {lang === 'zh' ? '分享命运' : 'SHARE FATE'}
-                </button>
-
-                <button 
-                    onClick={handleCollect}
-                    className="w-full py-4 bg-white text-black font-black text-sm tracking-widest rounded-xl hover:bg-gray-200 transition-all active:scale-95 flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(255,255,255,0.2)]"
-                >
-                    {step === 'REVIEW' ? (
-                        lang === 'zh' ? '关闭' : 'CLOSE'
-                    ) : (
-                        <>
-                            <Download size={18} />
-                            {lang === 'zh' ? '收入背包' : 'COLLECT CARD'}
-                        </>
-                    )}
-                </button>
-
-                <ShareModal 
-                    show={showShare}
-                    onClose={() => setShowShare(false)}
-                    type="tarot"
-                    lang={lang}
-                    data={{
-                        lang: lang,
-                        card: lang === 'zh' ? selectedCard.name.zh : selectedCard.name.en,
-                        keyword: lang === 'zh' ? (selectedCard.keywords.zh[0] || '命运') : (selectedCard.keywords.en[0] || 'FATE'),
-                        desc_zh: selectedCard.desc.zh,
-                        desc_en: selectedCard.desc.en,
-                        img: getTarotFilename(selectedCard.id)
-                    }}
-                />
-            </div>
+        {/* 只有在 Review 或 Loading 模式允许直接关闭，正在抽的时候锁死 */}
+        {(step === 'REVIEW' || step === 'LOADING' || step === 'SHUFFLE') && (
+            <button onClick={handleConfirmClose} className="absolute top-6 right-6 p-4 text-gray-500 hover:text-white z-20">
+                <X size={24} />
+            </button>
         )}
 
-      </div>
+        <AnimatePresence mode="wait">
+            
+            {/* 阶段 1: 洗牌 */}
+            {(step === 'SHUFFLE' || step === 'LOADING') && (
+                <motion.div 
+                    key="shuffle"
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 1.2, filter: "blur(10px)" }}
+                    className="relative flex flex-col items-center gap-8 cursor-pointer"
+                    onClick={handleDraw}
+                >
+                    <div className="relative w-64 h-96">
+                        {[...Array(3)].map((_, i) => (
+                            <motion.div 
+                                key={i}
+                                animate={{ 
+                                    rotate: step === 'SHUFFLE' ? [0, 5, -5, 0] : 0,
+                                    y: step === 'SHUFFLE' ? [0, -10, 0] : 0
+                                }}
+                                transition={{ repeat: Infinity, duration: 2, delay: i * 0.2, ease: "easeInOut" }}
+                                className="absolute inset-0 rounded-xl border border-white/10 bg-zinc-900 shadow-2xl"
+                                style={{ zIndex: 10 - i, transform: `translateY(${i * 4}px) scale(${1 - i * 0.05})` }}
+                            >
+                                <div className="w-full h-full bg-[url('/tarot/card_back.jpg')] bg-cover bg-center rounded-xl opacity-80" />
+                            </motion.div>
+                        ))}
+                        
+                        <div className="absolute inset-0 rounded-xl border-2 border-purple-500/30 bg-zinc-900 shadow-[0_0_30px_rgba(168,85,247,0.2)] flex items-center justify-center z-20">
+                             <div className="w-full h-full bg-[url('/tarot/card_back.jpg')] bg-cover bg-center rounded-xl opacity-90" />
+                             <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-xl backdrop-blur-[1px]">
+                                 {step === 'LOADING' ? <RefreshCw className="text-white/50 animate-spin" size={48} /> : <Sparkles className="text-purple-400 animate-pulse" size={64} />}
+                             </div>
+                        </div>
+                    </div>
+                    <p className="text-xs font-mono text-purple-300/70 tracking-[0.3em] animate-pulse">
+                        {step === 'LOADING' ? 'SYNCING...' : (lang === 'zh' ? '点击抽取命运' : 'TAP TO DRAW FATE')}
+                    </p>
+                </motion.div>
+            )}
+
+            {/* 阶段 2: 结果展示 (REVEAL / REVIEW) */}
+            {(step === 'REVEAL' || step === 'REVIEW') && selectedCard && (
+                <motion.div 
+                    key="reveal"
+                    initial={{ opacity: 0, rotateY: 90 }}
+                    animate={{ opacity: 1, rotateY: 0 }}
+                    transition={{ type: "spring", stiffness: 100, damping: 20 }}
+                    className="flex flex-col items-center max-w-md w-full px-6 z-10"
+                >
+                    <div className="w-72 h-[26rem] rounded-xl border border-white/20 overflow-hidden shadow-[0_0_60px_rgba(168,85,247,0.25)] mb-8 bg-black relative group">
+                        <img src={selectedCard.image} alt="Tarot" className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent opacity-80" />
+                        <div className="absolute bottom-0 w-full p-6 text-center">
+                            <h2 className="text-3xl font-black text-white font-serif tracking-wide mb-1">
+                                {lang === 'zh' ? selectedCard.name.zh : selectedCard.name.en}
+                            </h2>
+                            <div className="flex flex-wrap gap-2 justify-center mt-2 opacity-80">
+                                {(lang === 'zh' ? selectedCard.keywords.zh : selectedCard.keywords.en).map((kw, i) => (
+                                    <span key={i} className="text-[10px] px-2 py-0.5 rounded border border-white/20 uppercase tracking-wider text-gray-300 bg-white/5">
+                                        {kw}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="text-center space-y-6 w-full">
+                        <p className="text-sm text-gray-300 leading-relaxed italic font-serif px-4 border-l-2 border-purple-500/50 mx-auto max-w-[85%]">
+                            "{lang === 'zh' ? selectedCard.desc.zh : selectedCard.desc.en}"
+                        </p>
+
+                        <div className="flex gap-4 pt-4 w-full px-4">
+                            <button onClick={() => setShowShare(true)} className="flex-1 py-3 bg-white/5 border border-white/10 text-white rounded-xl text-xs font-bold tracking-widest hover:bg-white/10 transition-colors flex items-center justify-center gap-2">
+                                <Share2 size={16} />
+                                {lang === 'zh' ? '分享' : 'SHARE'}
+                            </button>
+                            <button onClick={handleConfirmClose} className="flex-[2] py-3 bg-white text-black rounded-xl text-xs font-black tracking-widest hover:bg-gray-200 transition-colors flex items-center justify-center gap-2">
+                                <Download size={16} />
+                                {/* 如果是刚抽的显示收入，如果是回看显示关闭 */}
+                                {step === 'REVEAL' 
+                                    ? (lang === 'zh' ? '收入背包' : 'COLLECT') 
+                                    : (lang === 'zh' ? '关闭' : 'CLOSE')}
+                            </button>
+                        </div>
+                    </motion.div>
+                </motion.div>
+            )}
+        </AnimatePresence>
+
+        {selectedCard && (
+            <ShareModal 
+                show={showShare}
+                onClose={() => setShowShare(false)}
+                type="tarot"
+                lang={lang}
+                data={{
+                    card: lang === 'zh' ? selectedCard.name.zh : selectedCard.name.en,
+                    desc_zh: selectedCard.desc.zh,
+                    desc_en: selectedCard.desc.en,
+                    img: selectedCard.image,
+                    keyword: (lang === 'zh' ? selectedCard.keywords.zh[0] : selectedCard.keywords.en[0]) || 'Fate'
+                }}
+            />
+        )}
     </div>
   );
 };

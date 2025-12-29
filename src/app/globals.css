@@ -50,3 +50,80 @@ body {
     transform: translateY(0);
   }
 } 
+
+@layer utilities {
+  /* 隐藏滚动条但允许滚动 */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* ⚡️ Ash's Layout Hack:
+  强制所有 fixed 元素在桌面端也遵循手机宽度。
+  这会影响 GlobalCapsule, FloatingDock 等所有 fixed 组件。
+*/
+@media (min-width: 430px) {
+  .fixed {
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    width: 100% !important;
+    max-width: 430px !important;
+  }
+  
+  /* 特例：如果有元素确实需要全屏 fixed (比如 Modal Backdrop)，
+    给它加一个 .fixed-fullscreen 类来覆盖上面的规则 
+  */
+  .fixed-fullscreen {
+    left: 0 !important;
+    transform: none !important;
+    width: 100vw !important;
+    max-width: none !important;
+  }
+}
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* 🔥 Ash's Layout Lock: 强制所有 fixed 元素在桌面端遵循手机宽度 */
+@media (min-width: 430px) {
+  /* 如果你用了 fixed 定位 (比如 GlobalCapsule, BottomNav)，
+     这段代码会强制把它们“吸”回到中间的手机框里 
+  */
+  .fixed {
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    width: 100% !important;
+    max-width: 430px !important;
+  }
+  
+  /* 特例：如果某些遮罩层确实需要全屏 (比如 Modal Backdrop) */
+  .fixed-fullscreen {
+    left: 0 !important;
+    transform: none !important;
+    width: 100vw !important;
+    max-width: none !important;
+  }
+}
+
+html, body {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+input, textarea {
+  -webkit-user-select: auto;
+  user-select: auto;
+}
+

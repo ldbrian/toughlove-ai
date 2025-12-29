@@ -16,6 +16,6 @@ const config: Config = {
       // 如果需要自定义动画，可以在这里加，目前默认即可
     },
   },
-  plugins: [],
+  plugins: [require('@tailwindcss/typography')],
 };
 export default config;

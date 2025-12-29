@@ -57,7 +57,22 @@ export const FocusModal = ({ show, onClose, lang, onReward, handleSend }: FocusM
           setShowShare(false);
       }
   }, [show, lang]);
+  useEffect(() => {
+    if (show) {
+      // 打开时：隐藏 Dock，禁止滚动
+      document.body.style.overflow = 'hidden';
+      window.dispatchEvent(new CustomEvent('toggle-dock', { detail: { visible: false } }));
+    } else {
+      // 关闭时：恢复
+      document.body.style.overflow = 'unset';
+      window.dispatchEvent(new CustomEvent('toggle-dock', { detail: { visible: true } }));
+    }
 
+    return () => {
+      document.body.style.overflow = 'unset';
+      window.dispatchEvent(new CustomEvent('toggle-dock', { detail: { visible: true } }));
+    };
+  }, [show]);
   useEffect(() => {
     let interval: any = null;
     if (isActive && timeLeft > 0) {

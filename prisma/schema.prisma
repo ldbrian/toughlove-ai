@@ -1,106 +1,229 @@
-// filename: prisma/schema.prisma
+// prisma/schema.prisma
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  //directUrl = env("DIRECT_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
-// --- 用户核心 (User Core) ---
+// ==========================================
+// 1. 系统物品表
+// ==========================================
+model SystemItem {
+  id              String   @id 
+  name            Json     
+  description     Json     
+  icon            String?  
+  type            String   
+  rarity          String   @default("common")
+  price           Int      @default(0) 
+  sourcePersona   String?  
+  triggerContext  String?  
+  effect          Json?    
+  
+  createdAt       DateTime @default(now())
+  
+  @@map("system_items")
+}
 
+// ==========================================
+// 2. 塔罗牌数据表
+// ==========================================
+model TarotCard {
+  id        Int      @id 
+  name      Json     
+  image     String
+  keywords  Json     
+  meaning   Json     
+  reactions Json     
+  
+  createdAt DateTime @default(now())
+
+  @@map("tarot_cards")
+}
+
+// ==========================================
+// 3. 心理测试题目表
+// ==========================================
+model PsychQuestion {
+  id        Int      @id @default(autoincrement())
+  text      Json     
+  options   Json     
+  order     Int      @default(0) 
+
+  @@map("psych_questions")
+}
+
+// ==========================================
+// 4. 人格配置表
+// ==========================================
+model SystemPersona {
+  id          String @id 
+  name        String
+  avatar      String
+  color       String
+  title       Json   
+  slogan      Json   
+  tags        Json   
+  
+  interactionMatrix Json? 
+  
+  @@map("system_personas")
+}
+
+// ==========================================
+// 5. 用户与业务数据
+// ==========================================
 model User {
-  id        String   @id @default(cuid())
-  deviceId  String   @unique // 目前主要识别方式
-  nickname  String?
-  
-  // 经济系统 (Tab 3: Terminal)
-  rinBalance Int     @default(100) 
-
-  // 关联
-  items     UserItem[]
-  shards    MemoryShard[]
-  chats     ChatSession[]
-  
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-// --- 镜面系统 (Project Mirror) ---
-// 对应 Tab 2: Mirror 的核心数据源
-
-model MemoryShard {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  // 来源对话 (用于点击碎片回溯)
-  sourceChatId String?
-  sourceChat   ChatSession? @relation(fields: [sourceChatId], references: [id])
-
-  // 核心内容：主观心理侧写 (Subjective Insight)
-  // 例："面对失去控制权时，表现出了极度的防御性攻击。"
-  content   String   @db.Text 
-
-  // 碎片属性
-  type      String   @default("insight") // "insight"(侧写) | "event"(重大事件)
-  emotion   String   // "anxiety", "joy", "rage" (决定碎片颜色)
-  weight    Int      @default(0) // 情感浓度 (0-100)。仅 >80 会显示在镜面上
-  
-  // 视觉位置 (Visuals)
-  // 用于 2D Mosaic 布局算法。
-  // 格式示例: "2x2" (大小), "12,4" (网格坐标 - 预留给前端算法填充)
-  gridSpec  String?  
-
-  createdAt DateTime @default(now())
-
-  @@index([userId])
-  @@index([weight]) // 方便快速筛选高权重碎片注入 Prompt
-}
-
-// --- 物品系统 (Anchor Economy) ---
-// 对应 Tab 3: Terminal / RAG Anchors
-
-model UserItem {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  itemId    String   // 对应 constants.ts (如 "rusty_harmonica")
-  
-  // RAG 锚点：物品即记忆
-  // 如果这个物品是 Ash 送的，这里记录当时的 Context
-  memoryAnchor String? @db.Text 
-
-  acquiredAt DateTime @default(now())
-}
-
-// --- 对话系统 (Chat System) ---
-
-model ChatSession {
   id        String    @id @default(cuid())
-  userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  partnerId String    // "ash", "rin", "sol", "vee", "echo"
-  summary   String?   // 对话结束后的简短摘要 (用于快速检索)
-  
-  messages  Message[]
-  shards    MemoryShard[] // 关联生成的碎片
-  
+  email     String    @unique
+  name      String?
+  birthday  DateTime?
+  createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
+
+  calibrations  UserCalibration[]
+  achievements  UserAchievement[]
+  inventory     UserInventory[]
+  // 🔥 新增关联
+  usageLogs     ItemUsageLog[]
+  personaStates PersonaState[]
+
+  @@map("users")
 }
 
-model Message {
-  id        String      @id @default(cuid())
-  sessionId String
-  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+model UserAchievement {
+  id            String   @id @default(cuid())
+  userId        String
+  achievementId String   
+  unlockedAt    DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, achievementId])
+  @@map("user_achievements")
+}
+
+model UserInventory {
+  id        String   @id @default(cuid())
   
-  role      String      // "user" | "assistant" | "system"
-  content   String      @db.Text
+  // 🔥 核心修复：加上 @map("user_id")
+  userId    String   @map("user_id")
   
-  createdAt DateTime    @default(now())
+  item_id   String
+  item_type String   
+  metadata  Json?    
+  acquired_at DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@map("user_inventory")
+}
+
+model DailyQuestion {
+  id          String           @id @default(cuid())
+  content     String
+  type        String 
+  tags        String[]
+  triggerRule Json?
+  cooldown    Int              @default(0)
+  weight      Int              @default(100)
+  createdAt   DateTime         @default(now())
+  
+  options      QuestionOption[]
+  calibrations UserCalibration[]
+
+  @@map("daily_questions")
+}
+
+model QuestionOption {
+  id         String  @id @default(cuid())
+  questionId String
+  label      String
+  value      String
+  dimension  String
+  score      Int
+  reaction   String?
+  impactTag  String?
+
+  question   DailyQuestion @relation(fields: [questionId], references: [id])
+  @@map("question_options")
+}
+
+model UserCalibration {
+  id         String   @id @default(cuid())
+  userId     String
+  questionId String
+  answer     String
+  createdAt  DateTime @default(now())
+
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question   DailyQuestion @relation(fields: [questionId], references: [id])
+  @@map("user_calibrations")
+}
+
+model HeroFeedItem {
+  id           String          @id @default(uuid())
+  type         String
+  title        Json            
+  content      Json            
+  personaName  String?         @default("Echo")
+  visualConfig Json?
+  actionLabel  Json?           
+  actionLink   String?
+  priority     Int             @default(0)
+  startTime    DateTime        @default(now())
+  endTime      DateTime?
+  
+  comments     CommentConfig[]
+  
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@map("hero_feed_items")
+}
+
+model CommentConfig {
+  id             String       @id @default(uuid())
+  heroFeedItemId String
+  heroFeedItem   HeroFeedItem @relation(fields: [heroFeedItemId], references: [id], onDelete: Cascade)
+  
+  personaName    String
+  content        Json         
+  stance         String
+  actionLink     String?
+  createdAt      DateTime     @default(now())
+
+  @@map("comment_configs")
+}
+
+// ==========================================
+// 🔥 6. 新增：物品日志与人格状态 (补全缺失表)
+// ==========================================
+
+model ItemUsageLog {
+  id            String   @id @default(cuid())
+  userId        String   @map("user_id") // 这里是对的
+  itemId        String   @map("item_id")
+  targetPersona String   @map("target_persona")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("item_usage_logs")
+}
+
+model PersonaState {
+  id           String    @id @default(cuid())
+  userId       String    @map("user_id")
+  persona      String    // Ash, Rin, Sol...
+  mood         Int       @default(60)
+  favorability Int       @default(0)
+  buffEndAt    DateTime? @map("buff_end_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, persona]) // 确保每个用户对每个人格只有一条状态记录
+  @@map("persona_states")
 }

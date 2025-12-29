@@ -1,117 +1,95 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { pgPool } from '@/lib/db-pg';
+import { pgPool } from '@/lib/db-pg'; // 复用之前的 Postgres 连接池
 
-// 🎲 盲盒逻辑：也需要改为读库
-async function rollLoot(inventory: string[], client: any) {
-  // 1. 获取所有可掉落物品 (假设 type != 'special' 且不是密钥)
-  // 这里简化逻辑：随机抽一个 rarity=common/rare/epic 的物品
-  const rand = Math.random();
-  let targetRarity = 'common';
-  if (rand > 0.99) targetRarity = 'legendary';
-  else if (rand > 0.90) targetRarity = 'epic';
-  else if (rand > 0.60) targetRarity = 'rare';
-
-  // 查询符合稀有度的物品
-  const res = await client.query(
-    "SELECT * FROM items WHERE rarity = $1 AND id NOT LIKE 'tarot%' AND id NOT LIKE 'key_v3'", 
-    [targetRarity]
-  );
-  
-  let pool = res.rows;
-  
-  // 过滤掉已拥有的 unique 物品 (假设数据库有 unique 字段，如果没有，暂时忽略或全部视为可重复)
-  // 如果 items 表没有 unique 字段，我们可以假设所有非消耗品都是 unique
-  // 这里简单处理：过滤掉背包里已有的 ID
-  pool = pool.filter((i: any) => !inventory.includes(i.id));
-
-  // 降级兜底
-  if (pool.length === 0) {
-      const commonRes = await client.query("SELECT * FROM items WHERE rarity = 'common'");
-      pool = commonRes.rows;
-  }
-  
-  if (pool.length === 0) return null;
-  const selected = pool[Math.floor(Math.random() * pool.length)];
-  return selected; // 返回完整对象以便前端展示
-}
+export const runtime = 'nodejs'; // 必须使用 Node.js 环境以支持 pg 库
 
 export async function POST(req: NextRequest) {
+  // 从请求体获取 userId (客户端传来的 DeviceID 或 UUID) 和 itemId
+  const { userId, itemId } = await req.json();
+
+  if (!userId || !itemId) {
+    return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
+  }
+
+  const client = await pgPool.connect();
+
   try {
-    const { userId, itemId, currentInventory = [] } = await req.json();
-    
-    const client = await pgPool.connect();
+    // 1. 开启事务
+    await client.query('BEGIN');
 
-    try {
-      await client.query('BEGIN');
+    // 2. 锁定并查询用户余额 (FOR UPDATE 防止并发双花)
+    // 注意：如果 user_wallets 还没记录，先尝试插入一条初始记录
+    let userRes = await client.query(
+      'SELECT rin_balance FROM user_wallets WHERE user_id = $1 FOR UPDATE', 
+      [userId]
+    );
 
-      // 1. 🔥 [FIX] 从数据库查询商品信息，不再查 constants
-      const itemRes = await client.query('SELECT * FROM items WHERE id = $1', [itemId]);
-      if (itemRes.rows.length === 0) {
-          throw new Error('Item not found');
-      }
-      const shopItem = itemRes.rows[0];
-
-      // 2. 查余额并锁行
-      const userRes = await client.query(
-        `SELECT rin_balance FROM user_wallets WHERE user_id = $1 FOR UPDATE`, 
+    if (userRes.rowCount === 0) {
+      // 新用户初始化 (默认 0 Rin)
+      await client.query(
+        'INSERT INTO user_wallets (user_id, rin_balance) VALUES ($1, 0)', 
         [userId]
       );
-      
-      if (userRes.rows.length === 0) {
-          // 容错：如果用户没钱包，尝试创建一个
-          await client.query(`INSERT INTO user_wallets (user_id, rin_balance) VALUES ($1, 0) ON CONFLICT DO NOTHING`, [userId]);
-          throw new Error('Insufficient funds (New Wallet)');
-      }
-      
-      const balance = parseFloat(userRes.rows[0].rin_balance);
-
-      // 3. 余额检查
-      if (balance < shopItem.price) {
-        await client.query('ROLLBACK');
-        return NextResponse.json({ error: 'Insufficient funds' }, { status: 402 });
-      }
-
-      // 4. 扣款
-      await client.query(
-        `UPDATE user_wallets SET rin_balance = rin_balance - $1 WHERE user_id = $2`,
-        [shopItem.price, userId]
+      // 再次锁定查询
+      userRes = await client.query(
+        'SELECT rin_balance FROM user_wallets WHERE user_id = $1 FOR UPDATE', 
+        [userId]
       );
-
-      // 5. 处理盲盒掉落
-      let droppedItem = null;
-      let logData: any = { type: 'direct_buy' };
-
-      if (itemId === 'supply_crate_v1') {
-          droppedItem = await rollLoot(currentInventory, client);
-          if (droppedItem) {
-             logData = { type: 'gacha', dropped: droppedItem.id };
-          }
-      }
-
-      // 6. 记录购买日志
-      await client.query(
-        `INSERT INTO purchases (user_id, item_id, cost, metadata) VALUES ($1, $2, $3, $4)`,
-        [userId, itemId, shopItem.price, JSON.stringify(logData)]
-      );
-
-      await client.query('COMMIT');
-      
-      return NextResponse.json({ 
-          success: true, 
-          newBalance: balance - shopItem.price,
-          droppedItem: droppedItem, // 返回完整对象
-          message: droppedItem ? 'Gacha success' : 'Purchase success'
-      });
-
-    } catch (e) {
-      await client.query('ROLLBACK');
-      throw e;
-    } finally {
-      client.release();
     }
 
+    const currentBalance = userRes.rows[0].rin_balance;
+
+    // 3. 查询商品详情
+    const itemRes = await client.query(
+      'SELECT * FROM shop_items WHERE id = $1', 
+      [itemId]
+    );
+    
+    if (itemRes.rowCount === 0) {
+      throw new Error('Item not found');
+    }
+
+    const item = itemRes.rows[0];
+
+    // 4. 余额校验
+    if (currentBalance < item.price) {
+      throw new Error('Insufficient funds');
+    }
+
+    // 5. 扣款
+    const newBalance = currentBalance - item.price;
+    await client.query(
+      'UPDATE user_wallets SET rin_balance = $1, updated_at = NOW() WHERE user_id = $2', 
+      [newBalance, userId]
+    );
+
+    // 6. 发货 (写入 inventory)
+    // 根据商品类型决定存入 inventory 的 type
+    // collectible -> loot (背包可见), consumable -> consumable (背包可见或直接使用), visual -> visual
+    const invType = item.type === 'collectible' ? 'loot' : item.type;
+    
+    // 写入 user_inventory (复用之前的表)
+    await client.query(
+      `INSERT INTO user_inventory (user_id, item_id, type, acquired_at) 
+       VALUES ($1, $2, $3, NOW())`,
+      [userId, itemId, invType]
+    );
+
+    // 7. 提交事务
+    await client.query('COMMIT');
+
+    return NextResponse.json({ 
+      success: true, 
+      newBalance, 
+      item,
+      message: 'Transaction successful' 
+    });
+
   } catch (error: any) {
-    console.error('Shop Buy Error:', error);
+    await client.query('ROLLBACK'); // 失败回滚
+    console.error('[Shop Transaction] Error:', error);
     return NextResponse.json({ error: error.message || 'Transaction failed' }, { status: 500 });
+  } finally {
+    client.release();
   }
 }
